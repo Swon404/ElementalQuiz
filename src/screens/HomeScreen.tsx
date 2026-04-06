@@ -108,6 +108,12 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           <span className="menu-desc">Challenge a friend or family!</span>
         </button>
 
+        <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
+          <span className="menu-icon">⚖️</span>
+          <span className="menu-label">Which is Bigger?</span>
+          <span className="menu-desc">Compare elements — heaviest, priciest, scariest!</span>
+        </button>
+
         <button className="menu-btn" onClick={() => onNavigate('explore')}>
           <span className="menu-icon">🔍</span>
           <span className="menu-label">Periodic Table</span>

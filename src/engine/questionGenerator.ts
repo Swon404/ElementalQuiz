@@ -913,3 +913,26 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
 
   return shuffleArray(questions);
 }
+
+/** Generate a quiz using only 'which-is-bigger' comparison questions */
+export function generateComparisonQuiz(difficulty: Difficulty, count: number): Question[] {
+  const config = DIFFICULTY_CONFIG[difficulty];
+  const pool = getElementPool(difficulty);
+  const gens = generators['which-is-bigger'];
+  const usedIds = new Set<string>();
+  const questions: Question[] = [];
+
+  let attempts = 0;
+  while (questions.length < count && attempts < 300) {
+    attempts++;
+    const gen = gens[Math.floor(Math.random() * gens.length)];
+    const element = pool[Math.floor(Math.random() * pool.length)];
+    const question = gen(element, pool, config.choiceCount);
+    if (question && !usedIds.has(question.id)) {
+      usedIds.add(question.id);
+      questions.push(question);
+    }
+  }
+
+  return shuffleArray(questions);
+}

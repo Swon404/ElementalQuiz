@@ -1,13 +1,13 @@
 import { useState, useCallback } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
-import { generateQuiz, generateDeepDiveQuiz, type Question } from '../engine/questionGenerator.ts';
+import { generateQuiz, generateDeepDiveQuiz, generateComparisonQuiz, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty, getRank, getNextRank } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
 import type { PlayerProgress } from '../engine/storage.ts';
 
 interface QuizScreenProps {
-  mode: 'quick-quiz' | 'sprint' | 'daily' | 'deep-dive';
+  mode: 'quick-quiz' | 'sprint' | 'daily' | 'deep-dive' | 'which-is-bigger';
   progress: PlayerProgress;
   onComplete: (earned: number, correct: number, total: number, collected: number[], difficulty: Difficulty) => void;
   onBack: () => void;
@@ -44,6 +44,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     if (mode === 'sprint') count = 50;
     if (mode === 'daily') count = 15;
     if (mode === 'deep-dive') count = 8;
+    if (mode === 'which-is-bigger') count = 10;
 
     let qs: Question[];
     if (mode === 'deep-dive') {
@@ -56,6 +57,8 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
         el = elements[Math.floor(Math.random() * poolSize)];
       }
       qs = generateDeepDiveQuiz(el, difficulty, count);
+    } else if (mode === 'which-is-bigger') {
+      qs = generateComparisonQuiz(difficulty, count);
     } else {
       qs = generateQuiz(difficulty, count);
     }
@@ -94,6 +97,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
 
   if (phase === 'setup') {
     const isDeepDive = mode === 'deep-dive';
+    const isComparison = mode === 'which-is-bigger';
     return (
       <div className="quiz-setup">
         <button className="back-btn" onClick={onBack}>← Back</button>
@@ -102,9 +106,10 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
           {mode === 'sprint' && '⏱️ Element Sprint'}
           {mode === 'daily' && '📅 Daily Challenge'}
           {isDeepDive && '🔬 Element Deep Dive'}
+          {isComparison && '⚖️ Which is Bigger?'}
         </h2>
 
-        <Elementor expression="greeting" message={isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
+        <Elementor expression="greeting" message={isComparison ? "Which element is heavier? Pricier? More dangerous? Let's find out!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
 
         <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => {
