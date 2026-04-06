@@ -650,6 +650,8 @@ body {
 .periodic-table {
   width: 100%;
   padding: 4px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .pt-grid {

@@ -59,6 +59,7 @@ export default function PeriodicTable({ collectedElements, onElementClick, compa
           gridTemplateColumns: `repeat(${cols}, 1fr)`,
           gridTemplateRows: compact ? undefined : `repeat(7, 1fr) 4px repeat(2, 1fr)`,
           gap: `${gap}px`,
+          minWidth: compact ? '500px' : '700px',
           width: '100%',
           height: compact ? undefined : 'calc(100vh - 180px)',
         }}
