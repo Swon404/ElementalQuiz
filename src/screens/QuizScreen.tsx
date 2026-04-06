@@ -106,10 +106,10 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
           {mode === 'sprint' && '⏱️ Element Sprint'}
           {mode === 'daily' && '📅 Daily Challenge'}
           {isDeepDive && '🔬 Element Deep Dive'}
-          {isComparison && '⚖️ Which is Bigger?'}
+          {isComparison && '💥 Element Showdown'}
         </h2>
 
-        <Elementor expression="greeting" message={isComparison ? "Which element is heavier? Pricier? More dangerous? Let's find out!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
+        <Elementor expression="greeting" message={isComparison ? "Element Showdown! Which is heavier? Pricier? More dangerous? Let's battle!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
 
         <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => {

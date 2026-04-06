@@ -1,5 +1,5 @@
 /**
- * Comparison data for "Which is Bigger?" quiz questions.
+ * Comparison data for "Element Showdown" quiz questions.
  * Keyed by atomic number.
  *
  * density        – g/cm³ at standard conditions (null = synthetic / unmeasured)
