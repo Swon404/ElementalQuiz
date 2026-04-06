@@ -24,7 +24,7 @@ export const DIFFICULTY_CONFIG = {
     timerSeconds: 30,
     basePoints: 10,
     secondChance: true,
-    questionCategories: ['symbol-name', 'atomic-number', 'state', 'fun-fact'],
+    questionCategories: ['symbol-name', 'atomic-number', 'state', 'fun-fact', 'which-is-bigger'],
   },
   scientist: {
     label: 'Scientist',
@@ -34,7 +34,7 @@ export const DIFFICULTY_CONFIG = {
     timerSeconds: 20,
     basePoints: 20,
     secondChance: false,
-    questionCategories: ['symbol-name', 'atomic-number', 'group-classification', 'discovery', 'state', 'radioactivity', 'compounds', 'fun-fact', 'uses', 'obtained-from'],
+    questionCategories: ['symbol-name', 'atomic-number', 'group-classification', 'discovery', 'state', 'radioactivity', 'compounds', 'fun-fact', 'uses', 'obtained-from', 'which-is-bigger'],
   },
   professor: {
     label: 'Professor',
@@ -44,7 +44,7 @@ export const DIFFICULTY_CONFIG = {
     timerSeconds: 15,
     basePoints: 30,
     secondChance: false,
-    questionCategories: ['symbol-name', 'atomic-number', 'group-classification', 'discovery', 'state', 'radioactivity', 'isotopes', 'compounds', 'position', 'fun-fact', 'uses', 'obtained-from'],
+    questionCategories: ['symbol-name', 'atomic-number', 'group-classification', 'discovery', 'state', 'radioactivity', 'isotopes', 'compounds', 'position', 'fun-fact', 'uses', 'obtained-from', 'which-is-bigger'],
   },
 } as const;
 

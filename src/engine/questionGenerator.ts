@@ -1,5 +1,6 @@
 import { elements, type Element } from '../data/elements.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from './scoring.ts';
+import { comparisonData, DANGER_LABELS, formatPrice } from '../data/comparisonData.ts';
 
 export type QuestionCategory =
   | 'symbol-name'
@@ -13,7 +14,8 @@ export type QuestionCategory =
   | 'position'
   | 'fun-fact'
   | 'uses'
-  | 'obtained-from';
+  | 'obtained-from'
+  | 'which-is-bigger';
 
 export type Question = {
   id: string;
@@ -556,6 +558,231 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: `${el.name} is ${el.obtainedFrom.charAt(0).toLowerCase()}${el.obtainedFrom.slice(1)}. ${randomFact(el)}`,
         hint: `Its symbol is ${el.symbol}.`,
+      };
+    },
+  ],
+
+  'which-is-bigger': [
+    // wb-1: Which element is the densest?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data || data.density === null) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && d.density !== null && e.atomicNumber !== el.atomicNumber;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      // Find the densest among choices
+      const densest = all.reduce((a, b) => {
+        const da = comparisonData[a.atomicNumber]!.density!;
+        const db = comparisonData[b.atomicNumber]!.density!;
+        return da >= db ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const densestData = comparisonData[densest.atomicNumber]!;
+      return {
+        id: `wb-1-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements is the DENSEST (heaviest for its size)?`,
+        choices,
+        correctIndex: choices.indexOf(densest.name),
+        element: densest,
+        explanation: `${densest.name} has a density of ${densestData.density} g/cm³ — that's super heavy! ${randomFact(densest)}`,
+        hint: `Think about which metals feel really heavy when you hold them.`,
+      };
+    },
+    // wb-2: Which element costs most per kg?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data || data.pricePerKg === null) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && d.pricePerKg !== null && e.atomicNumber !== el.atomicNumber;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      // Find the most expensive
+      const priciest = all.reduce((a, b) => {
+        const pa = comparisonData[a.atomicNumber]!.pricePerKg!;
+        const pb = comparisonData[b.atomicNumber]!.pricePerKg!;
+        return pa >= pb ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const price = comparisonData[priciest.atomicNumber]!.pricePerKg!;
+      return {
+        id: `wb-2-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `If you bought 1 kg of each, which would cost the MOST?`,
+        choices,
+        correctIndex: choices.indexOf(priciest.name),
+        element: priciest,
+        explanation: `1 kg of ${priciest.name} costs about ${formatPrice(price)} per kg! ${randomFact(priciest)}`,
+        hint: `Think about which of these is rarest or hardest to make.`,
+      };
+    },
+    // wb-3: Which element is the most dangerous?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && e.atomicNumber !== el.atomicNumber && d.dangerLevel !== data.dangerLevel;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      const mostDangerous = all.reduce((a, b) => {
+        const da = comparisonData[a.atomicNumber]!.dangerLevel;
+        const db = comparisonData[b.atomicNumber]!.dangerLevel;
+        return da >= db ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const dangerLvl = comparisonData[mostDangerous.atomicNumber]!.dangerLevel;
+      return {
+        id: `wb-3-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements is the MOST DANGEROUS?`,
+        choices,
+        correctIndex: choices.indexOf(mostDangerous.name),
+        element: mostDangerous,
+        explanation: `${mostDangerous.name} is rated ${dangerLvl}/10 — ${DANGER_LABELS[dangerLvl]}! ${randomFact(mostDangerous)}`,
+        hint: `Some elements are toxic or radioactive — which one sounds scariest?`,
+      };
+    },
+    // wb-4: Which element is rarer in Earth's crust?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data || data.abundanceCrust === null) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && d.abundanceCrust !== null && e.atomicNumber !== el.atomicNumber;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      // Rarest = lowest abundance
+      const rarest = all.reduce((a, b) => {
+        const aa = comparisonData[a.atomicNumber]!.abundanceCrust!;
+        const ab = comparisonData[b.atomicNumber]!.abundanceCrust!;
+        return aa <= ab ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      return {
+        id: `wb-4-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements is the RAREST in Earth's crust?`,
+        choices,
+        correctIndex: choices.indexOf(rarest.name),
+        element: rarest,
+        explanation: `${rarest.name} is super rare — only about ${comparisonData[rarest.atomicNumber]!.abundanceCrust} parts per million in Earth's crust! ${randomFact(rarest)}`,
+        hint: `Precious metals and noble gases tend to be very rare.`,
+      };
+    },
+    // wb-5: Which element has the highest atomic mass?
+    (el, pool, n) => {
+      const distractors = pickRandom(pool, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      const heaviest = all.reduce((a, b) => a.atomicMass >= b.atomicMass ? a : b);
+      const choices = all.map(e => e.name);
+      return {
+        id: `wb-5-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements has the BIGGEST atomic mass?`,
+        choices,
+        correctIndex: choices.indexOf(heaviest.name),
+        element: heaviest,
+        explanation: `${heaviest.name} has an atomic mass of ${heaviest.atomicMass}! The heavier the atom, the more protons and neutrons it has. ${randomFact(heaviest)}`,
+        hint: `Elements further down the periodic table are usually heavier.`,
+      };
+    },
+    // wb-6: Which element has the highest melting point?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data || data.meltingPoint === null) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && d.meltingPoint !== null && e.atomicNumber !== el.atomicNumber;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      const hottest = all.reduce((a, b) => {
+        const ma = comparisonData[a.atomicNumber]!.meltingPoint!;
+        const mb = comparisonData[b.atomicNumber]!.meltingPoint!;
+        return ma >= mb ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const mp = comparisonData[hottest.atomicNumber]!.meltingPoint!;
+      return {
+        id: `wb-6-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements has the HIGHEST melting point?`,
+        choices,
+        correctIndex: choices.indexOf(hottest.name),
+        element: hottest,
+        explanation: `${hottest.name} melts at ${mp}°C — that's ${mp > 1000 ? 'incredibly hot' : mp > 0 ? 'pretty warm' : 'actually below freezing'}! ${randomFact(hottest)}`,
+        hint: `Metals that are used in furnaces and light bulbs often have very high melting points.`,
+      };
+    },
+    // wb-7: Which element is the cheapest per kg?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data || data.pricePerKg === null) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && d.pricePerKg !== null && e.atomicNumber !== el.atomicNumber;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      const cheapest = all.reduce((a, b) => {
+        const pa = comparisonData[a.atomicNumber]!.pricePerKg!;
+        const pb = comparisonData[b.atomicNumber]!.pricePerKg!;
+        return pa <= pb ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const price = comparisonData[cheapest.atomicNumber]!.pricePerKg!;
+      return {
+        id: `wb-7-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements is the CHEAPEST to buy per kilogram?`,
+        choices,
+        correctIndex: choices.indexOf(cheapest.name),
+        element: cheapest,
+        explanation: `${cheapest.name} costs only about ${formatPrice(price)} per kg — what a bargain! ${randomFact(cheapest)}`,
+        hint: `Elements you see in everyday life are usually the cheapest.`,
+      };
+    },
+    // wb-8: Which is the safest?
+    (el, pool, n) => {
+      const data = comparisonData[el.atomicNumber];
+      if (!data) return null;
+      const candidates = pool.filter(e => {
+        const d = comparisonData[e.atomicNumber];
+        return d && e.atomicNumber !== el.atomicNumber && d.dangerLevel !== data.dangerLevel;
+      });
+      if (candidates.length < n - 1) return null;
+      const distractors = pickRandom(candidates, n - 1, [el]);
+      const all = shuffleArray([el, ...distractors]);
+      const safest = all.reduce((a, b) => {
+        const da = comparisonData[a.atomicNumber]!.dangerLevel;
+        const db = comparisonData[b.atomicNumber]!.dangerLevel;
+        return da <= db ? a : b;
+      });
+      const choices = all.map(e => e.name);
+      const dangerLvl = comparisonData[safest.atomicNumber]!.dangerLevel;
+      return {
+        id: `wb-8-${all.map(e => e.atomicNumber).sort().join('-')}`,
+        category: 'which-is-bigger' as QuestionCategory,
+        questionText: `Which of these elements is the SAFEST?`,
+        choices,
+        correctIndex: choices.indexOf(safest.name),
+        element: safest,
+        explanation: `${safest.name} is rated ${dangerLvl}/10 — ${DANGER_LABELS[dangerLvl]}! ${randomFact(safest)}`,
+        hint: `Think about elements you use or touch every day.`,
       };
     },
   ],
