@@ -704,6 +704,192 @@ body {
   color: var(--accent);
 }
 
+/* ===== Game Mode Picker ===== */
+.game-mode-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+.game-mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.game-mode-btn.selected {
+  border-color: var(--accent);
+  background: rgba(74, 144, 226, 0.15);
+}
+.gm-icon { font-size: 2rem; }
+.gm-name { font-weight: 700; color: var(--text-primary); font-size: 1.1rem; }
+.gm-desc { font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
+
+/* ===== Speed Race ===== */
+.speed-ready {
+  text-align: center;
+  padding: 2rem 1rem;
+}
+.speed-scores {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  margin: 1rem 0;
+}
+.speed-p {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.speed-instruction {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin: 1rem 0;
+}
+.speed-race-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  gap: 1rem;
+  min-height: 80vh;
+}
+.speed-element-display {
+  text-align: center;
+  margin: 1rem 0;
+}
+.speed-symbol {
+  display: block;
+  font-size: 4rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(74, 144, 226, 0.4);
+}
+.speed-number {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+.speed-choices-split {
+  display: flex;
+  gap: 0.5rem;
+  width: 100%;
+  flex: 1;
+}
+.speed-player-side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.speed-side-label {
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+.speed-choice {
+  padding: 0.6rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 2px solid rgba(255,255,255,0.1);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.speed-choice:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.speed-choice.correct {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+.speed-choice.wrong {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.speed-divider {
+  display: flex;
+  align-items: center;
+  font-weight: 800;
+  color: var(--accent);
+  font-size: 1rem;
+}
+
+/* ===== Element Match ===== */
+.element-match-playing {
+  padding: 1rem;
+}
+.match-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.match-turn {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.match-scores {
+  display: flex;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.match-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(4, 1fr);
+}
+.match-card {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 2px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.match-card:not(.flipped):not(.matched):hover {
+  border-color: var(--accent);
+}
+.match-card:not(.flipped):not(.matched):active {
+  transform: scale(0.92);
+}
+.match-card.flipped {
+  background: rgba(74, 144, 226, 0.2);
+  border-color: var(--accent);
+}
+.match-card.matched {
+  background: rgba(75, 181, 67, 0.2);
+  border-color: var(--success);
+  opacity: 0.7;
+}
+.match-card-inner {
+  font-size: 0.9rem;
+  text-align: center;
+  word-break: break-word;
+}
+.match-card:not(.flipped):not(.matched) .match-card-inner {
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  opacity: 0.4;
+}
+
 /* ===== Periodic Table ===== */
 .periodic-table {
   width: 100%;

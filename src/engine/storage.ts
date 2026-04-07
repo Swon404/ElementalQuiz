@@ -27,6 +27,21 @@ export type PlayerProfile = {
 const PROFILES_KEY = 'elementalquiz_profiles';
 const ACTIVE_PROFILE_KEY = 'elementalquiz_active_profile';
 const STORAGE_KEY = 'elementalquiz_progress'; // legacy single-player key
+const TWO_PLAYER_KEY = 'elementalquiz_2p_names';
+
+export type TwoPlayerNames = { name1: string; avatar1: string; name2: string; avatar2: string };
+
+export function loadTwoPlayerNames(): TwoPlayerNames {
+  try {
+    const raw = localStorage.getItem(TWO_PLAYER_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { name1: 'Player 1', avatar1: '⚛️', name2: 'Player 2', avatar2: '🚀' };
+}
+
+export function saveTwoPlayerNames(names: TwoPlayerNames): void {
+  localStorage.setItem(TWO_PLAYER_KEY, JSON.stringify(names));
+}
 
 function getDefaultProgress(): PlayerProgress {
   return {
