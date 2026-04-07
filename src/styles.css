@@ -819,6 +819,38 @@ body {
   margin-bottom: 1.5rem;
   line-height: 1.4;
 }
+.tf-timer-bar {
+  margin-top: 1rem;
+  height: 6px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.tf-timer-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 1s linear;
+}
+.tf-timer-fill.urgent {
+  background: var(--danger);
+}
+.tf-timer-num {
+  display: block;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
+.tf-timer-num.urgent {
+  color: var(--danger);
+  animation: pulse-text 0.5s ease-in-out infinite alternate;
+}
+@keyframes pulse-text {
+  from { opacity: 1; }
+  to { opacity: 0.5; }
+}
 
 /* ===== Element Match ===== */
 .element-match-playing {

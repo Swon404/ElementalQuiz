@@ -156,6 +156,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [tfTurn, setTfTurn] = useState(1);
   const [tfAnswered, setTfAnswered] = useState<boolean | null>(null);
   const [tfShowResult, setTfShowResult] = useState(false);
+  const [tfTimer, setTfTimer] = useState(10);
+  const tfTimerRef = useRef<ReturnType<typeof setInterval>>(null);
 
   // Element Match state
   const [matchCards, setMatchCards] = useState<MatchCard[]>([]);
@@ -210,8 +212,36 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   }, [currentPlayer, currentRound, rounds]);
 
   // --- True or False Blitz ---
+  const TF_SECONDS = 10;
+
+  const stopTfTimer = useCallback(() => {
+    if (tfTimerRef.current) { clearInterval(tfTimerRef.current); tfTimerRef.current = null; }
+  }, []);
+
+  const startTfTimer = useCallback(() => {
+    stopTfTimer();
+    setTfTimer(TF_SECONDS);
+    tfTimerRef.current = setInterval(() => {
+      setTfTimer(t => t - 1);
+    }, 1000);
+  }, [stopTfTimer]);
+
+  // Auto-expire when timer hits 0
+  useEffect(() => {
+    if (tfTimer <= 0 && phase === 'playing' && gameMode === 'tf-blitz' && tfAnswered === null) {
+      stopTfTimer();
+      playWrong();
+      setTfAnswered(null);
+      setTfShowResult(true);
+    }
+  }, [tfTimer, phase, gameMode, tfAnswered, stopTfTimer]);
+
+  // Clean up timer on unmount or phase change
+  useEffect(() => {
+    return () => stopTfTimer();
+  }, [stopTfTimer]);
+
   const startTFBlitz = useCallback(() => {
-    // Each player gets `rounds` statements, so total is rounds * 2
     setTfStatements(generateTFStatements(rounds * 2));
     setTfIndex(0);
     setTfTurn(1);
@@ -219,10 +249,20 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setTfShowResult(false);
     resetScores();
     setPhase('playing');
+    // Timer starts via effect below
   }, [rounds]);
 
+  // Start timer whenever a new TF round begins
+  useEffect(() => {
+    if (phase === 'playing' && gameMode === 'tf-blitz' && !tfShowResult) {
+      startTfTimer();
+    }
+    return () => stopTfTimer();
+  }, [phase, gameMode, tfIndex, tfShowResult, startTfTimer, stopTfTimer]);
+
   const handleTFAnswer = (answer: boolean) => {
-    if (tfAnswered !== null) return;
+    if (tfAnswered !== null || (tfTimer <= 0 && tfShowResult)) return;
+    stopTfTimer();
     const stmt = tfStatements[tfIndex];
     const correct = answer === stmt.answer;
     setTfAnswered(answer);
@@ -505,6 +545,12 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
         <div className="tf-statement-card">
           <p className="tf-statement">{stmt.text}</p>
+          {!tfShowResult && (
+            <div className="tf-timer-bar">
+              <div className={`tf-timer-fill ${tfTimer <= 3 ? 'urgent' : ''}`} style={{ width: `${(tfTimer / TF_SECONDS) * 100}%` }} />
+            </div>
+          )}
+          {!tfShowResult && <span className={`tf-timer-num ${tfTimer <= 3 ? 'urgent' : ''}`}>{tfTimer}s</span>}
         </div>
 
         {!tfShowResult ? (
@@ -514,8 +560,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         ) : (
           <div className="tf-result-feedback">
-            <p className={`tf-verdict ${tfAnswered === stmt.answer ? 'correct' : 'wrong'}`}>
-              {tfAnswered === stmt.answer ? '🎉 Correct!' : '😬 Wrong!'}
+            <p className={`tf-verdict ${tfAnswered !== null && tfAnswered === stmt.answer ? 'correct' : 'wrong'}`}>
+              {tfAnswered === null ? '⏰ Time\'s up!' : tfAnswered === stmt.answer ? '🎉 Correct!' : '😬 Wrong!'}
             </p>
             <p className="tf-explanation">{stmt.explanation}</p>
             <button className="start-btn" onClick={nextTFRound}>
