@@ -731,98 +731,93 @@ body {
 .gm-name { font-weight: 700; color: var(--text-primary); font-size: 1.1rem; }
 .gm-desc { font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
 
-/* ===== Speed Race ===== */
-.speed-ready {
-  text-align: center;
-  padding: 2rem 1rem;
-}
-.speed-scores {
-  display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin: 1rem 0;
-}
-.speed-p {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.speed-instruction {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  margin: 1rem 0;
-}
-.speed-race-playing {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+/* ===== True or False Blitz ===== */
+.tf-blitz-playing {
   padding: 1rem;
-  gap: 1rem;
-  min-height: 80vh;
+  max-width: 600px;
+  margin: 0 auto;
 }
-.speed-element-display {
-  text-align: center;
-  margin: 1rem 0;
-}
-.speed-symbol {
-  display: block;
-  font-size: 4rem;
-  font-weight: 800;
-  color: var(--accent);
-  text-shadow: 0 0 20px rgba(74, 144, 226, 0.4);
-}
-.speed-number {
-  font-size: 1rem;
-  color: var(--text-secondary);
-}
-.speed-choices-split {
+.tf-header {
   display: flex;
-  gap: 0.5rem;
-  width: 100%;
-  flex: 1;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
 }
-.speed-player-side {
+.tf-turn-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-}
-.speed-side-label {
-  text-align: center;
   font-weight: 700;
-  font-size: 0.85rem;
   color: var(--text-primary);
-  margin-bottom: 0.25rem;
 }
-.speed-choice {
-  padding: 0.6rem 0.5rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 2px solid rgba(255,255,255,0.1);
-  color: var(--text-primary);
-  font-size: 0.85rem;
+.tf-round {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.tf-scores {
+  display: flex;
+  gap: 0.5rem;
   font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.tf-statement-card {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 2rem 1.5rem;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  border: 2px solid rgba(255,255,255,0.08);
+}
+.tf-statement {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.tf-buttons {
+  display: flex;
+  gap: 1rem;
+}
+.tf-btn {
+  flex: 1;
+  padding: 1rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
   cursor: pointer;
   transition: all 0.2s;
 }
-.speed-choice:active:not(:disabled) {
+.tf-btn:active {
   transform: scale(0.95);
 }
-.speed-choice.correct {
-  background: var(--success);
+.tf-true {
+  background: rgba(75, 181, 67, 0.15);
+  color: var(--success);
   border-color: var(--success);
-  color: #fff;
 }
-.speed-choice.wrong {
-  background: var(--danger);
+.tf-false {
+  background: rgba(232, 65, 65, 0.15);
+  color: var(--danger);
   border-color: var(--danger);
-  color: #fff;
 }
-.speed-divider {
-  display: flex;
-  align-items: center;
+.tf-result-feedback {
+  text-align: center;
+}
+.tf-verdict {
+  font-size: 1.5rem;
   font-weight: 800;
-  color: var(--accent);
-  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.tf-verdict.correct { color: var(--success); }
+.tf-verdict.wrong { color: var(--danger); }
+.tf-explanation {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.4;
 }
 
 /* ===== Element Match ===== */
