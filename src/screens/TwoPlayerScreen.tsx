@@ -212,7 +212,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   }, [currentPlayer, currentRound, rounds]);
 
   // --- True or False Blitz ---
-  const TF_SECONDS = 10;
+  const TF_SECONDS = 20;
 
   const stopTfTimer = useCallback(() => {
     if (tfTimerRef.current) { clearInterval(tfTimerRef.current); tfTimerRef.current = null; }

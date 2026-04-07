@@ -748,7 +748,8 @@ body {
   display: flex;
   flex-direction: column;
   font-weight: 700;
-  color: var(--text-primary);
+  font-size: 1.35rem;
+  color: var(--accent);
 }
 .tf-round {
   font-size: 0.75rem;
