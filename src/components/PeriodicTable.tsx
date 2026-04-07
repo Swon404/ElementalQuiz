@@ -1,3 +1,4 @@
+import { useRef, useCallback, useState, useEffect } from 'react';
 import { elements } from '../data/elements.ts';
 
 interface PeriodicTableProps {
@@ -50,8 +51,56 @@ export default function PeriodicTable({ collectedElements, onElementClick, compa
   const cols = 18;
   const gap = compact ? 1 : 2;
 
+  // Touch-drag panning for small screens
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
+  const dragging = useRef(false);
+  const startPos = useRef({ x: 0, y: 0 });
+  const startScroll = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const check = () => setIsNarrow(window.innerWidth < 700);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    const el = viewportRef.current;
+    if (!el || !isNarrow) return;
+    dragging.current = true;
+    startPos.current = { x: e.clientX, y: e.clientY };
+    startScroll.current = { x: el.scrollLeft, y: el.scrollTop };
+    el.setPointerCapture(e.pointerId);
+    el.style.cursor = 'grabbing';
+  }, [isNarrow]);
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current || !viewportRef.current) return;
+    const dx = e.clientX - startPos.current.x;
+    const dy = e.clientY - startPos.current.y;
+    viewportRef.current.scrollLeft = startScroll.current.x - dx;
+    viewportRef.current.scrollTop = startScroll.current.y - dy;
+  }, []);
+
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    dragging.current = false;
+    if (viewportRef.current) {
+      viewportRef.current.releasePointerCapture(e.pointerId);
+      viewportRef.current.style.cursor = '';
+    }
+  }, []);
+
   return (
-    <div className={`periodic-table ${compact ? 'compact' : ''}`}>
+    <div
+      ref={viewportRef}
+      className={`periodic-table ${compact ? 'compact' : ''} ${isNarrow ? 'pt-pannable' : ''}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
+      {isNarrow && <p className="pt-drag-hint">☝️ Drag to explore the table</p>}
       <div
         className="pt-grid"
         style={{
@@ -59,9 +108,9 @@ export default function PeriodicTable({ collectedElements, onElementClick, compa
           gridTemplateColumns: `repeat(${cols}, 1fr)`,
           gridTemplateRows: compact ? undefined : `repeat(7, 1fr) 4px repeat(2, 1fr)`,
           gap: `${gap}px`,
-          minWidth: compact ? '500px' : '700px',
+          minWidth: compact ? '500px' : isNarrow ? '900px' : '700px',
           width: '100%',
-          height: compact ? undefined : 'calc(100vh - 180px)',
+          height: compact ? undefined : isNarrow ? '600px' : 'calc(100vh - 180px)',
         }}
       >
         {LAYOUT.map((row, ri) => {

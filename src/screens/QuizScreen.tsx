@@ -106,12 +106,12 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     const isComparison = mode === 'which-is-bigger';
     return (
       <div className="quiz-setup">
-        <button className="back-btn" onClick={onBack}>Ã¢â€ Â Back</button>
+        <button className="back-btn" onClick={onBack}>ÃƒÂ¢Ã¢â‚¬Â Ã‚Â Back</button>
         <h2 className="setup-title">
-          {mode === 'quick-quiz' && 'Ã¢Å¡Â¡ Quick Quiz'}
-          {mode === 'sprint' && 'Ã¢ÂÂ±Ã¯Â¸Â Element Sprint'}
-          {isDeepDive && 'Ã°Å¸â€Â¬ Element Deep Dive'}
-          {isComparison && 'Ã°Å¸â€™Â¥ Element Showdown'}
+          {mode === 'quick-quiz' && 'ÃƒÂ¢Ã…Â¡Ã‚Â¡ Quick Quiz'}
+          {mode === 'sprint' && 'ÃƒÂ¢Ã‚ÂÃ‚Â±ÃƒÂ¯Ã‚Â¸Ã‚Â Element Sprint'}
+          {isDeepDive && 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¬ Element Deep Dive'}
+          {isComparison && 'ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¥ Element Showdown'}
         </h2>
 
         <Elementor expression="greeting" message={isComparison ? "Element Showdown! Which is heavier? Pricier? More dangerous? Let's battle!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
@@ -128,9 +128,9 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
                 <span className="diff-label">{cfg.label}</span>
                 <span className="diff-desc">{cfg.description}</span>
                 <span className="diff-detail">
-                  {cfg.choiceCount} choices Ã‚Â· {cfg.basePoints} EP base
-                  {cfg.secondChance ? ' Ã‚Â· 2nd chance!' : ''}
-                  {mode === 'sprint' ? ` Ã‚Â· ${cfg.timerSeconds}s timer` : ''}
+                  {cfg.choiceCount} choices Ãƒâ€šÃ‚Â· {cfg.basePoints} EP base
+                  {cfg.secondChance ? ' Ãƒâ€šÃ‚Â· 2nd chance!' : ''}
+                  {mode === 'sprint' ? ` Ãƒâ€šÃ‚Â· ${cfg.timerSeconds}s timer` : ''}
                 </span>
               </button>
             );
@@ -144,7 +144,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
               className={`dd-random-btn ${selectedElement === null ? 'selected' : ''}`}
               onClick={() => setSelectedElement(null)}
             >
-              Ã°Å¸Å½Â² Random Element
+              ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â² Random Element
             </button>
             <div className="dd-element-grid">
               {elements.map(el => (
@@ -175,8 +175,8 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     return (
       <div className="quiz-playing">
         <div className="quiz-score-bar">
-          <button className="quiz-exit-btn" onClick={() => setShowExitConfirm(true)} title="Exit quiz">Ã¢Å“â€¢</button>
-          <span className="score-display">Ã¢Â­Â {score} EP</span>
+          <button className="quiz-exit-btn" onClick={() => setShowExitConfirm(true)} title="Exit quiz">ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¢</button>
+          <span className="score-display">ÃƒÂ¢Ã‚Â­Ã‚Â {score} EP</span>
         </div>
 
         {showExitConfirm && (
@@ -212,9 +212,9 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     const newNextRank = getNextRank(progress.totalEP + score);
     const resultMsg =
       correctCount >= questions.length * 0.7
+        ? "Outstanding work, scientist! You really know your elements!"
         : correctCount >= questions.length * 0.4
         ? "Good effort! Keep learning and you'll be a master!"
-        : "Every mistake teaches us something new! Try again!";
         : "Every mistake teaches us something new! Try again!";
 
     return (
