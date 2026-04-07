@@ -1,6 +1,17 @@
 /* ===== Reset & Base ===== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Remove tap/focus outlines on touch devices (iPhone red outline fix) */
+button, [role="button"] {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+button:focus:not(:focus-visible) {
+  outline: none;
+  border-color: inherit;
+  box-shadow: none;
+}
+
 :root {
   --bg-primary: #1a1a2e;
   --bg-secondary: #16213e;
@@ -329,15 +340,62 @@ body {
 }
 
 .quiz-score-bar {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+  justify-content: center;
 }
+
+.quiz-exit-btn {
+  position: absolute;
+  left: 16px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.quiz-exit-btn:hover { background: rgba(255,255,255,0.2); color: var(--text-primary); }
+
+.quiz-playing { position: relative; }
 
 .score-display {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--gold);
 }
+
+/* Exit confirm dialog */
+.exit-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.exit-confirm-card {
+  background: var(--bg-card);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  max-width: 320px;
+  width: 90%;
+}
+.exit-confirm-card p { margin-bottom: 8px; font-size: 1.1rem; font-weight: 600; }
+.exit-confirm-sub { color: var(--text-secondary); font-size: 0.85rem !important; font-weight: 400 !important; }
+.exit-confirm-actions { display: flex; gap: 12px; margin-top: 16px; }
+.exit-confirm-actions .start-btn, .exit-confirm-actions .back-btn { flex: 1; }
 
 /* ===== Quiz Setup ===== */
 .quiz-setup, .two-player-setup {
@@ -803,6 +861,7 @@ body {
   padding: 20px;
   color: #1a1a2e;
   font-weight: 700;
+  position: relative;
 }
 
 .ei-number { font-size: 0.85rem; opacity: 0.7; }
@@ -962,7 +1021,8 @@ body {
   flex-shrink: 0;
 }
 .tts-btn:hover { border-color: var(--accent); background: rgba(79,195,247,0.15); }
-.tts-btn-small { width: 28px; height: 28px; font-size: 0.9rem; margin-top: 4px; }
+.tts-btn-small { width: 28px; height: 28px; font-size: 0.9rem; margin-top: 0; }
+.tts-header-btn { position: absolute; right: 8px; bottom: 8px; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.4); }
 
 .quiz-question {
   display: flex;
@@ -1360,3 +1420,72 @@ body {
   background: rgba(255,255,255,0.15);
   color: #fff;
 }
+
+/* ===== Collection Table ===== */
+.collection-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.collection-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 360px;
+}
+.ct-row { display: flex; gap: 2px; }
+.ct-cell {
+  width: 20px;
+  height: 20px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.45rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+.ct-empty { background: transparent; }
+.ct-locked { background: rgba(255,255,255,0.06); }
+.ct-collected { animation: collectPop 0.3s ease; }
+@keyframes collectPop { 0% { transform: scale(0.8); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+.ct-count {
+  text-align: center;
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+/* ===== Milestones ===== */
+.milestones-panel {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.milestone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+}
+.milestone-done { background: rgba(79,195,247,0.10); }
+.milestone-locked { opacity: 0.5; }
+.milestone-icon { font-size: 1.3rem; }
+.milestone-info { display: flex; flex-direction: column; }
+.milestone-title { font-size: 0.85rem; font-weight: 600; }
+.milestone-desc { font-size: 0.7rem; color: var(--text-secondary); }
+
+/* ===== Ministat buttons ===== */
+.ministat-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.ministat-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }

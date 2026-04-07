@@ -62,6 +62,10 @@ function pickRandom<T>(arr: T[], count: number, exclude?: T[]): T[] {
 
 function getElementPool(difficulty: Difficulty): Element[] {
   const config = DIFFICULTY_CONFIG[difficulty];
+  if ('elementNumbers' in config && Array.isArray((config as Record<string, unknown>).elementNumbers)) {
+    const nums = (config as Record<string, unknown>).elementNumbers as number[];
+    return elements.filter(e => nums.includes(e.atomicNumber));
+  }
   return elements.slice(0, config.elementPool);
 }
 

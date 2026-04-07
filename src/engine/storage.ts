@@ -6,8 +6,6 @@ export type PlayerProgress = {
   bestStreak: number;
   elementsCollected: number[]; // atomic numbers
   quizHistory: QuizResult[];
-  dailyChallengeDate: string | null;
-  dailyChallengeScore: number;
 };
 
 export type QuizResult = {
@@ -37,8 +35,6 @@ function getDefaultProgress(): PlayerProgress {
     bestStreak: 0,
     elementsCollected: [],
     quizHistory: [],
-    dailyChallengeDate: null,
-    dailyChallengeScore: 0,
   };
 }
 

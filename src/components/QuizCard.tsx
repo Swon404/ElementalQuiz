@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, calculatePoints, type Difficulty } from '../engine/scoring.ts';
+import { speakText } from '../engine/tts.ts';
+import { playCorrect, playWrong, playStreak } from '../engine/sounds.ts';
 import Elementor from './Elementor.tsx';
 
 interface QuizCardProps {
@@ -63,16 +65,19 @@ export default function QuizCard({
       const timeRemainingPct = timedMode ? timeLeft / config.timerSeconds : 0.5;
       const pts = calculatePoints(difficulty, true, streak, secondChanceUsed, timeRemainingPct);
       setPendingResult({ correct: true, points: pts, elementNum: question.element.atomicNumber });
+      if (streak >= 2) playStreak(); else playCorrect();
     } else {
       if (config.secondChance && !secondChanceUsed) {
         // Second chance: grey out wrong answer, give hint
         setSecondChanceUsed(true);
         setDisabledChoices(new Set([index]));
         setSelected(null);
+        playWrong();
       } else {
         setAnswered(true);
         setShowResult(true);
         setPendingResult({ correct: false, points: 0, elementNum: question.element.atomicNumber });
+        playWrong();
       }
     }
   };
@@ -111,15 +116,7 @@ export default function QuizCard({
     }
   };
 
-  const speakText = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.85;
-      utterance.pitch = 1.1;
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+
 
   const timerPct = timedMode ? (timeLeft / config.timerSeconds) * 100 : 100;
   const timerColor = timerPct > 50 ? '#66bb6a' : timerPct > 25 ? '#ffa726' : '#ef5350';

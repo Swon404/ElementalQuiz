@@ -1,4 +1,5 @@
 import { elements } from '../data/elements.ts';
+import { speakText, stopSpeaking } from '../engine/tts.ts';
 
 interface ElementInfoProps {
   atomicNumber: number;
@@ -36,16 +37,28 @@ export default function ElementInfo({ atomicNumber, onClose }: ElementInfoProps)
   if (!el) return null;
   const color = CATEGORY_COLORS[el.category] || '#666';
 
+  const buildSummary = () => {
+    let text = `${el.name}. Element number ${el.atomicNumber}, symbol ${el.symbol}. `;
+    text += `It is a ${CATEGORY_LABELS[el.category] || el.category}. `;
+    text += `At room temperature it is a ${el.stateAtRoomTemp}. `;
+    if (el.uses && el.uses.length > 0) text += `Uses include: ${el.uses.join(', ')}. `;
+    text += el.funFact;
+    return text;
+  };
+
+  const handleClose = () => { stopSpeaking(); onClose(); };
+
   return (
-    <div className="element-info-overlay" onClick={onClose}>
+    <div className="element-info-overlay" onClick={handleClose}>
       <div className="element-info-card" onClick={e => e.stopPropagation()} style={{ borderColor: color }}>
-        <button className="close-btn" onClick={onClose}>×</button>
+        <button className="close-btn" onClick={handleClose}>×</button>
 
         <div className="ei-header" style={{ backgroundColor: color }}>
           <span className="ei-number">{el.atomicNumber}</span>
           <span className="ei-symbol">{el.symbol}</span>
           <span className="ei-name">{el.name}</span>
           <span className="ei-mass">{el.atomicMass}</span>
+          <button className="tts-btn tts-header-btn" onClick={() => speakText(buildSummary())} title="Read aloud">🔊</button>
         </div>
 
         <div className="ei-body">
@@ -108,7 +121,7 @@ export default function ElementInfo({ atomicNumber, onClose }: ElementInfoProps)
 
           {el.uses && el.uses.length > 0 && (
             <div className="ei-section">
-              <span className="ei-label">Uses</span>
+              <span className="ei-label">Uses <button className="tts-btn tts-btn-small" onClick={() => speakText(`Uses of ${el.name}: ${el.uses!.join(', ')}`)} title="Read aloud">🔊</button></span>
               <ul className="ei-list">
                 {el.uses.map((use, i) => <li key={i}>{use}</li>)}
               </ul>
@@ -117,19 +130,19 @@ export default function ElementInfo({ atomicNumber, onClose }: ElementInfoProps)
 
           {el.obtainedFrom && (
             <div className="ei-section">
-              <span className="ei-label">How It's Obtained</span>
+              <span className="ei-label">How It's Obtained <button className="tts-btn tts-btn-small" onClick={() => speakText(el.obtainedFrom!)} title="Read aloud">🔊</button></span>
               <p className="ei-text">{el.obtainedFrom}</p>
             </div>
           )}
 
           <div className="ei-funfact">
-            <span className="ei-label">Fun Fact</span>
+            <span className="ei-label">Fun Fact <button className="tts-btn tts-btn-small" onClick={() => speakText(el.funFact)} title="Read aloud">🔊</button></span>
             <p>{el.funFact}</p>
           </div>
 
           {el.additionalFacts && el.additionalFacts.length > 0 && (
             <div className="ei-section">
-              <span className="ei-label">More Facts</span>
+              <span className="ei-label">More Facts <button className="tts-btn tts-btn-small" onClick={() => speakText(el.additionalFacts!.join('. '))} title="Read aloud">🔊</button></span>
               <ul className="ei-list">
                 {el.additionalFacts.map((fact, i) => <li key={i}>{fact}</li>)}
               </ul>

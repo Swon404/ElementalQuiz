@@ -3,11 +3,13 @@ import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
 import { generateQuiz, generateDeepDiveQuiz, generateComparisonQuiz, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty, getRank, getNextRank } from '../engine/scoring.ts';
+import { speakText } from '../engine/tts.ts';
+import { playRankUp, playCollect } from '../engine/sounds.ts';
 import { elements } from '../data/elements.ts';
 import type { PlayerProgress } from '../engine/storage.ts';
 
 interface QuizScreenProps {
-  mode: 'quick-quiz' | 'sprint' | 'daily' | 'deep-dive' | 'which-is-bigger';
+  mode: 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger';
   progress: PlayerProgress;
   onComplete: (earned: number, correct: number, total: number, collected: number[], difficulty: Difficulty) => void;
   onBack: () => void;
@@ -38,11 +40,11 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
   const [streak, setStreak] = useState(0);
   const [collectedInSession, setCollectedInSession] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<number | null>(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   const startQuiz = useCallback(() => {
     let count = 10;
     if (mode === 'sprint') count = 50;
-    if (mode === 'daily') count = 15;
     if (mode === 'deep-dive') count = 8;
     if (mode === 'which-is-bigger') count = 10;
 
@@ -86,6 +88,10 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
 
     if (currentQ + 1 >= questions.length) {
       setPhase('result');
+      // Play result sound: rank up check vs collection sound
+      const wouldRankUp = getRank(progress.totalEP + score + points).name !== getRank(progress.totalEP).name;
+      if (wouldRankUp) playRankUp();
+      else if (collectedInSession.length > 0 || (correct && !progress.elementsCollected.includes(elementNum))) playCollect();
     } else {
       setCurrentQ(q => q + 1);
     }
@@ -100,13 +106,12 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     const isComparison = mode === 'which-is-bigger';
     return (
       <div className="quiz-setup">
-        <button className="back-btn" onClick={onBack}>← Back</button>
+        <button className="back-btn" onClick={onBack}>Ã¢â€ Â Back</button>
         <h2 className="setup-title">
-          {mode === 'quick-quiz' && '⚡ Quick Quiz'}
-          {mode === 'sprint' && '⏱️ Element Sprint'}
-          {mode === 'daily' && '📅 Daily Challenge'}
-          {isDeepDive && '🔬 Element Deep Dive'}
-          {isComparison && '💥 Element Showdown'}
+          {mode === 'quick-quiz' && 'Ã¢Å¡Â¡ Quick Quiz'}
+          {mode === 'sprint' && 'Ã¢ÂÂ±Ã¯Â¸Â Element Sprint'}
+          {isDeepDive && 'Ã°Å¸â€Â¬ Element Deep Dive'}
+          {isComparison && 'Ã°Å¸â€™Â¥ Element Showdown'}
         </h2>
 
         <Elementor expression="greeting" message={isComparison ? "Element Showdown! Which is heavier? Pricier? More dangerous? Let's battle!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
@@ -123,8 +128,9 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
                 <span className="diff-label">{cfg.label}</span>
                 <span className="diff-desc">{cfg.description}</span>
                 <span className="diff-detail">
-                  {cfg.choiceCount} choices · {cfg.timerSeconds}s · {cfg.basePoints} EP base
-                  {cfg.secondChance ? ' · 2nd chance!' : ''}
+                  {cfg.choiceCount} choices Ã‚Â· {cfg.basePoints} EP base
+                  {cfg.secondChance ? ' Ã‚Â· 2nd chance!' : ''}
+                  {mode === 'sprint' ? ` Ã‚Â· ${cfg.timerSeconds}s timer` : ''}
                 </span>
               </button>
             );
@@ -138,7 +144,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
               className={`dd-random-btn ${selectedElement === null ? 'selected' : ''}`}
               onClick={() => setSelectedElement(null)}
             >
-              🎲 Random Element
+              Ã°Å¸Å½Â² Random Element
             </button>
             <div className="dd-element-grid">
               {elements.map(el => (
@@ -169,8 +175,22 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     return (
       <div className="quiz-playing">
         <div className="quiz-score-bar">
-          <span className="score-display">⭐ {score} EP</span>
+          <button className="quiz-exit-btn" onClick={() => setShowExitConfirm(true)} title="Exit quiz">Ã¢Å“â€¢</button>
+          <span className="score-display">Ã¢Â­Â {score} EP</span>
         </div>
+
+        {showExitConfirm && (
+          <div className="exit-confirm-overlay" onClick={() => setShowExitConfirm(false)}>
+            <div className="exit-confirm-card" onClick={e => e.stopPropagation()}>
+              <p>Are you sure you want to quit?</p>
+              <p className="exit-confirm-sub">You'll lose your progress in this quiz.</p>
+              <div className="exit-confirm-actions">
+                <button className="start-btn" onClick={() => setShowExitConfirm(false)}>Keep Playing</button>
+                <button className="back-btn" onClick={onBack}>Quit Quiz</button>
+              </div>
+            </div>
+          </div>
+        )}
         <QuizCard
           question={questions[currentQ]}
           difficulty={difficulty}
@@ -178,30 +198,32 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
           questionNumber={currentQ + 1}
           totalQuestions={questions.length}
           onAnswer={handleAnswer}
-          timedMode={mode !== 'deep-dive'}
+          timedMode={mode === 'sprint'}
         />
       </div>
     );
   }
+
 
   if (phase === 'result') {
     const oldRank = getRank(progress.totalEP);
     const newRank = getRank(progress.totalEP + score);
     const rankedUp = newRank.name !== oldRank.name;
     const newNextRank = getNextRank(progress.totalEP + score);
+    const resultMsg =
+      correctCount >= questions.length * 0.7
+        : correctCount >= questions.length * 0.4
+        ? "Good effort! Keep learning and you'll be a master!"
+        : "Every mistake teaches us something new! Try again!";
+        : "Every mistake teaches us something new! Try again!";
 
     return (
       <div className="quiz-result">
         <Elementor
           expression={correctCount >= questions.length * 0.7 ? 'celebrate' : correctCount >= questions.length * 0.4 ? 'correct' : 'hint'}
-          message={
-            correctCount >= questions.length * 0.7
-              ? "Outstanding work, scientist! You really know your elements!"
-              : correctCount >= questions.length * 0.4
-              ? "Good effort! Keep learning and you'll be a master!"
-              : "Every mistake teaches us something new! Try again!"
-          }
+          message={resultMsg}
         />
+        <button className="tts-btn tts-btn-small" onClick={() => speakText(resultMsg)} title="Read aloud">🔊</button>
 
         <div className="result-card">
           <h2>Quiz Complete!</h2>

@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
-import { getRank, getNextRank } from '../engine/scoring.ts';
+import CollectionTable from '../components/CollectionTable.tsx';
+import { getRank, getNextRank, getUnlockedMilestones, MILESTONES } from '../engine/scoring.ts';
+import { speakText } from '../engine/tts.ts';
 import type { PlayerProgress } from '../engine/storage.ts';
 
 const ELEMENTOR_TIPS = [
@@ -36,6 +38,9 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
     : 100;
 
   const tip = useMemo(() => ELEMENTOR_TIPS[Math.floor(Math.random() * ELEMENTOR_TIPS.length)], []);
+  const unlocked = useMemo(() => getUnlockedMilestones(progress), [progress]);
+  const [showCollection, setShowCollection] = useState(false);
+  const [showMilestones, setShowMilestones] = useState(false);
 
   return (
     <div className="home-screen">
@@ -49,6 +54,7 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           message={tip}
           className="elementor-wobble"
         />
+        <button className="tts-btn tts-btn-small" onClick={() => speakText(tip)} title="Read aloud">🔊</button>
       </div>
 
       <div className="home-stats">
@@ -67,14 +73,40 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           {nextRank && (
             <div className="ep-progress">
               <div className="ep-bar" style={{ width: `${progressPct}%` }} />
-              <span className="ep-next">{nextRank.minEP - progress.totalEP} EP to {nextRank.name}</span>
+              <span className="ep-next">{nextRank.minEP - progress.totalEP} EP to {nextRank.icon} {nextRank.name}</span>
             </div>
           )}
         </div>
         <div className="home-ministat">
-          <span>🧪 {progress.elementsCollected.length}/118 collected</span>
+          <button className="ministat-btn" onClick={() => setShowCollection(v => !v)}>
+            🧪 {progress.elementsCollected.length}/118 collected
+          </button>
           <span>🔥 Best streak: {progress.bestStreak}</span>
+          <button className="ministat-btn" onClick={() => setShowMilestones(v => !v)}>
+            🏅 {unlocked.length}/{MILESTONES.length} milestones
+          </button>
         </div>
+
+        {showCollection && (
+          <CollectionTable collectedElements={progress.elementsCollected} />
+        )}
+
+        {showMilestones && (
+          <div className="milestones-panel">
+            {MILESTONES.map(m => {
+              const done = unlocked.some(u => u.id === m.id);
+              return (
+                <div key={m.id} className={`milestone ${done ? 'milestone-done' : 'milestone-locked'}`}>
+                  <span className="milestone-icon">{done ? m.icon : '🔒'}</span>
+                  <div className="milestone-info">
+                    <span className="milestone-title">{m.title}</span>
+                    <span className="milestone-desc">{m.description}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <nav className="home-menu">
@@ -88,12 +120,6 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           <span className="menu-icon">⏱️</span>
           <span className="menu-label">Element Sprint</span>
           <span className="menu-desc">Race against the clock!</span>
-        </button>
-
-        <button className="menu-btn" onClick={() => onNavigate('daily')}>
-          <span className="menu-icon">📅</span>
-          <span className="menu-label">Daily Challenge</span>
-          <span className="menu-desc">{progress.dailyChallengeDate === new Date().toDateString() ? `Today: ${progress.dailyChallengeScore} EP ✅` : "Today's challenge awaits!"}</span>
         </button>
 
         <button className="menu-btn" onClick={() => onNavigate('deep-dive')}>

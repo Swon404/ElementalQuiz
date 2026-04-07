@@ -12,7 +12,7 @@ import {
 } from './engine/storage.ts';
 import type { Difficulty } from './engine/scoring.ts';
 
-type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'daily' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore';
+type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore';
 
 const INTRO_SEEN_KEY = 'elementalquiz_intro_seen';
 
@@ -104,10 +104,6 @@ export default function App() {
         total,
         mode: screen,
       });
-      if (screen === 'daily') {
-        updated.dailyChallengeDate = new Date().toDateString();
-        updated.dailyChallengeScore = earnedEP;
-      }
       saveProgress(updated);
       return updated;
     });
@@ -157,7 +153,7 @@ export default function App() {
           )}
         </>
       )}
-      {(screen === 'quick-quiz' || screen === 'sprint' || screen === 'daily' || screen === 'deep-dive' || screen === 'which-is-bigger') && (
+      {(screen === 'quick-quiz' || screen === 'sprint' || screen === 'deep-dive' || screen === 'which-is-bigger') && (
         <QuizScreen
           mode={screen}
           progress={progress}
