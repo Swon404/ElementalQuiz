@@ -57,22 +57,17 @@ export default function AtomModel({ atomicNumber, symbol, size = 200 }: AtomMode
 
             {/* Electrons on this shell */}
             {Array.from({ length: electronCount }).map((_, ei) => {
-              const angle = (ei / electronCount) * 360;
+              const startAngle = (ei / electronCount) * 360;
+              const endAngle = startAngle + 360 * direction;
               return (
-                <circle key={ei} r={2.5} fill={color} opacity="0.9">
+                <circle key={ei} cx={cx + r} cy={cy} r={2.5} fill={color} opacity="0.9">
                   <animateTransform
                     attributeName="transform"
                     type="rotate"
-                    from={`${angle * direction} ${cx} ${cy}`}
-                    to={`${(angle + 360) * direction} ${cx} ${cy}`}
+                    from={`${startAngle} ${cx} ${cy}`}
+                    to={`${endAngle} ${cx} ${cy}`}
                     dur={`${animDuration}s`}
                     repeatCount="indefinite"
-                  />
-                  <animateMotion
-                    dur={`${animDuration}s`}
-                    repeatCount="indefinite"
-                    path={`M${cx + r},${cy} A${r},${r} 0 1,${direction > 0 ? 1 : 0} ${cx + r},${cy - 0.01}`}
-                    begin={`${(ei / electronCount) * animDuration}s`}
                   />
                 </circle>
               );
