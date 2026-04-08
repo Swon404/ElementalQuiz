@@ -27,7 +27,7 @@ const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈
 type TFStatement = { text: string; answer: boolean; explanation: string };
 
 // --- Element Match types ---
-type MatchCard = { id: number; text: string; elementNum: number; flipped: boolean; matched: boolean };
+type MatchCard = { id: number; text: string; elementNum: number; flipped: boolean; matched: boolean; matchedBy?: 1 | 2 };
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -317,7 +317,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       if (first.elementNum === second.elementNum) {
         playCorrect();
         const matched = updated.map(c =>
-          c.elementNum === first.elementNum ? { ...c, matched: true } : c
+          c.elementNum === first.elementNum ? { ...c, matched: true, matchedBy: matchTurn as 1 | 2 } : c
         );
         setMatchCards(matched);
         if (matchTurn === 1) setP1Score(s => s + 1);
@@ -589,18 +589,25 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         </div>
         <div className="match-grid" style={{ gridTemplateColumns: `repeat(4, 1fr)` }}>
-          {matchCards.map(card => (
-            <button
-              key={card.id}
-              className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${card.matched ? 'matched' : ''}`}
-              onClick={() => handleMatchFlip(card.id)}
-              disabled={card.matched || card.flipped}
-            >
-              <span className="match-card-inner">
-                {(card.flipped || card.matched) ? card.text : '?'}
-              </span>
-            </button>
-          ))}
+          {matchCards.map(card => {
+            const matchClass = card.matched
+              ? card.matchedBy === 1 ? 'matched matched-p1' : 'matched matched-p2'
+              : '';
+            return (
+              <button
+                key={card.id}
+                className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${matchClass}`}
+                onClick={() => handleMatchFlip(card.id)}
+                disabled={card.matched || card.flipped}
+              >
+                <span className="match-card-inner">
+                  {(card.flipped || card.matched)
+                    ? <>{card.matched && <span className="match-owner">{card.matchedBy === 1 ? player1.avatar : player2.avatar}</span>}{card.text}</>
+                    : '?'}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     );

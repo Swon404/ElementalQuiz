@@ -60,6 +60,22 @@ function pickRandom<T>(arr: T[], count: number, exclude?: T[]): T[] {
   return pool.slice(0, count);
 }
 
+/** Pick N unique distractor *values* from a pool, excluding ones matching correctValue */
+function pickUniqueDistractors(pool: Element[], count: number, mapper: (e: Element) => string, correctValue: string, excludeElement?: Element): string[] {
+  const used = new Set<string>([correctValue]);
+  const shuffled = shuffleArray(excludeElement ? pool.filter(e => e.atomicNumber !== excludeElement.atomicNumber) : [...pool]);
+  const result: string[] = [];
+  for (const el of shuffled) {
+    const val = mapper(el);
+    if (!used.has(val)) {
+      used.add(val);
+      result.push(val);
+      if (result.length >= count) break;
+    }
+  }
+  return result;
+}
+
 function getElementPool(difficulty: Difficulty): Element[] {
   const config = DIFFICULTY_CONFIG[difficulty];
   if ('elementNumbers' in config && Array.isArray((config as Record<string, unknown>).elementNumbers)) {
@@ -173,12 +189,15 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     },
     (el, pool, n) => {
       if (el.group === null) return null;
-      const distractors = pickRandom(
-        pool.filter(e => e.group !== null && e.group !== el.group),
-        n - 1,
-        [el]
-      ).map(e => String(e.group));
       const correct = String(el.group);
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.group !== null),
+        n - 1,
+        e => String(e.group),
+        correct,
+        el
+      );
+      if (distractors.length < n - 1) return null;
       const choices = shuffleArray([correct, ...distractors]);
       return {
         id: `gc-2-${el.atomicNumber}`,
@@ -196,11 +215,14 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
   'discovery': [
     (el, pool, n) => {
       if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
-      const distractors = pickRandom(
-        pool.filter(e => e.discoveredBy !== 'Ancient' && e.discoveredBy !== el.discoveredBy),
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.discoveredBy !== 'Ancient' && e.discoveredBy),
         n - 1,
-        [el]
-      ).map(e => e.discoveredBy);
+        e => e.discoveredBy,
+        el.discoveredBy,
+        el
+      );
+      if (distractors.length < n - 1) return null;
       const choices = shuffleArray([el.discoveredBy, ...distractors]);
       return {
         id: `di-1-${el.atomicNumber}`,
@@ -216,11 +238,14 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     (el, pool, n) => {
       if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
       const correct = String(el.discoveryYear);
-      const distractors = pickRandom(
-        pool.filter(e => e.discoveryYear && e.discoveryYear !== el.discoveryYear),
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.discoveryYear !== null),
         n - 1,
-        [el]
-      ).map(e => String(e.discoveryYear));
+        e => String(e.discoveryYear),
+        correct,
+        el
+      );
+      if (distractors.length < n - 1) return null;
       const choices = shuffleArray([correct, ...distractors]);
       return {
         id: `di-2-${el.atomicNumber}`,
@@ -273,11 +298,13 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     },
     (el, pool, n) => {
       if (!el.radioactive || !el.halfLife) return null;
-      const distractors = pickRandom(
-        pool.filter(e => e.radioactive && e.halfLife && e.halfLife !== el.halfLife),
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.radioactive && e.halfLife),
         n - 1,
-        [el]
-      ).map(e => e.halfLife!);
+        e => e.halfLife!,
+        el.halfLife,
+        el
+      );
       if (distractors.length < n - 1) return null;
       const choices = shuffleArray([el.halfLife, ...distractors]);
       return {
@@ -329,11 +356,13 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         [el]
       );
       const distractorCompounds: string[] = [];
+      const usedCompounds = new Set<string>([compound]);
       for (const e of distractorElements) {
         if (distractorCompounds.length >= n - 1) break;
         const c = e.compounds[Math.floor(Math.random() * e.compounds.length)];
-        // Skip if the distractor compound happens to contain the target element's symbol
-        if (!symbolPattern.test(c)) {
+        // Skip if duplicate or contains the target element's symbol
+        if (!symbolPattern.test(c) && !usedCompounds.has(c)) {
+          usedCompounds.add(c);
           distractorCompounds.push(c);
         }
       }

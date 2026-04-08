@@ -1,5 +1,6 @@
 import { elements } from '../data/elements.ts';
 import { speakText, stopSpeaking } from '../engine/tts.ts';
+import AtomModel from './AtomModel.tsx';
 
 interface ElementInfoProps {
   atomicNumber: number;
@@ -59,6 +60,11 @@ export default function ElementInfo({ atomicNumber, onClose }: ElementInfoProps)
           <span className="ei-name">{el.name}</span>
           <span className="ei-mass">{el.atomicMass}</span>
           <button className="tts-btn tts-header-btn" onClick={() => speakText(buildSummary())} title="Read aloud">🔊</button>
+        </div>
+
+        <div className="atom-model-container">
+          <AtomModel atomicNumber={el.atomicNumber} symbol={el.symbol} size={180} />
+          <p className="atom-model-label">Bohr Model — {el.atomicNumber} electron{el.atomicNumber !== 1 ? 's' : ''}</p>
         </div>
 
         <div className="ei-body">

@@ -5,6 +5,9 @@ import HomeScreen from './screens/HomeScreen.tsx';
 import QuizScreen from './screens/QuizScreen.tsx';
 import TwoPlayerScreen from './screens/TwoPlayerScreen.tsx';
 import ExploreScreen from './screens/ExploreScreen.tsx';
+import MemoryGameScreen from './screens/MemoryGameScreen.tsx';
+import ElementOrderScreen from './screens/ElementOrderScreen.tsx';
+import AtomQuizScreen from './screens/AtomQuizScreen.tsx';
 import {
   loadProgress, saveProgress, collectElement, addQuizResult,
   loadProfiles, createProfile, deleteProfile, resetProfile, setActiveProfileId, getActiveProfileId,
@@ -12,7 +15,7 @@ import {
 } from './engine/storage.ts';
 import type { Difficulty } from './engine/scoring.ts';
 
-type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore';
+type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz';
 
 const INTRO_SEEN_KEY = 'elementalquiz_intro_seen';
 
@@ -172,6 +175,15 @@ export default function App() {
           progress={progress}
           onBack={() => setScreen('home')}
         />
+      )}
+      {screen === 'memory-game' && (
+        <MemoryGameScreen onBack={() => setScreen('home')} />
+      )}
+      {screen === 'element-order' && (
+        <ElementOrderScreen onBack={() => setScreen('home')} />
+      )}
+      {screen === 'atom-quiz' && (
+        <AtomQuizScreen onBack={() => setScreen('home')} />
       )}
     </div>
   );

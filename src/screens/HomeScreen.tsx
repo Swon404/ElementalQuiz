@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import CollectionTable from '../components/CollectionTable.tsx';
 import { getRank, getNextRank, getUnlockedMilestones, MILESTONES } from '../engine/scoring.ts';
-import { speakText } from '../engine/tts.ts';
+import { speakText, getAvailableVoices, getSelectedVoiceName, setVoiceName, getSpeechRate, setSpeechRate } from '../engine/tts.ts';
 import type { PlayerProgress } from '../engine/storage.ts';
 
 const ELEMENTOR_TIPS = [
@@ -41,6 +41,22 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
   const unlocked = useMemo(() => getUnlockedMilestones(progress), [progress]);
   const [showCollection, setShowCollection] = useState(false);
   const [showMilestones, setShowMilestones] = useState(false);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
+  const [rate, setRate] = useState(getSpeechRate);
+
+  useEffect(() => {
+    const load = () => {
+      setVoices(getAvailableVoices());
+      setSelectedVoice(getSelectedVoiceName());
+    };
+    load();
+    // Voices may load async
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = load;
+    }
+  }, []);
 
   return (
     <div className="home-screen">
@@ -140,12 +156,67 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
         </button>
 
+        <button className="menu-btn" onClick={() => onNavigate('memory-game')}>
+          <span className="menu-icon">🧠</span>
+          <span className="menu-label">Element Memory</span>
+          <span className="menu-desc">Match symbols to names — test your memory!</span>
+        </button>
+
+        <button className="menu-btn" onClick={() => onNavigate('element-order')}>
+          <span className="menu-icon">📊</span>
+          <span className="menu-label">Element Order</span>
+          <span className="menu-desc">Put elements in order by atomic number!</span>
+        </button>
+
+        <button className="menu-btn" onClick={() => onNavigate('atom-quiz')}>
+          <span className="menu-icon">⚛️</span>
+          <span className="menu-label">Atom Quiz</span>
+          <span className="menu-desc">Learn about protons, electrons & shells!</span>
+        </button>
+
         <button className="menu-btn" onClick={() => onNavigate('explore')}>
           <span className="menu-icon">🔍</span>
           <span className="menu-label">Periodic Table</span>
           <span className="menu-desc">Explore & learn about elements</span>
         </button>
       </nav>
+
+      <button className="voice-settings-toggle" onClick={() => setShowVoiceSettings(v => !v)}>
+        ⚙️ Voice Settings
+      </button>
+
+      {showVoiceSettings && (
+        <div className="voice-settings-panel">
+          <h3>🔊 Voice Settings</h3>
+          <label className="voice-setting-label">
+            Voice
+            <select
+              className="voice-select"
+              value={selectedVoice || ''}
+              onChange={e => { setVoiceName(e.target.value); setSelectedVoice(e.target.value); }}
+            >
+              {voices.map(v => (
+                <option key={v.name} value={v.name}>{v.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="voice-setting-label">
+            Speed: {rate.toFixed(1)}x
+            <input
+              type="range"
+              min="0.5"
+              max="2.0"
+              step="0.1"
+              value={rate}
+              onChange={e => { const r = parseFloat(e.target.value); setRate(r); setSpeechRate(r); }}
+              className="voice-range"
+            />
+          </label>
+          <button className="start-btn" style={{ marginTop: '0.5rem', fontSize: '0.85rem' }} onClick={() => speakText('Hello! I am Elementor, your element quiz buddy!')}>
+            🔊 Test Voice
+          </button>
+        </div>
+      )}
     </div>
   );
 }

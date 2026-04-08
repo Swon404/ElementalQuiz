@@ -907,6 +907,22 @@ body {
   border-color: var(--success);
   opacity: 0.7;
 }
+.match-card.matched-p1 {
+  background: rgba(74, 144, 226, 0.25);
+  border-color: #4a90e2;
+  opacity: 0.8;
+}
+.match-card.matched-p2 {
+  background: rgba(232, 121, 53, 0.25);
+  border-color: #e87935;
+  opacity: 0.8;
+}
+.match-owner {
+  display: block;
+  font-size: 0.65rem;
+  line-height: 1;
+  margin-bottom: 2px;
+}
 .match-card-inner {
   font-size: 0.9rem;
   text-align: center;
@@ -1106,6 +1122,21 @@ body {
 .ei-mass { font-size: 0.85rem; opacity: 0.8; }
 
 .ei-body { padding: 16px 20px; }
+
+/* Atom Model */
+.atom-model-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem;
+  background: rgba(0,0,0,0.3);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+.atom-model-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-top: 0.25rem;
+}
 
 .ei-row {
   display: flex;
@@ -1725,3 +1756,207 @@ body {
   border-radius: 4px;
 }
 .ministat-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-primary); }
+
+/* ===== Voice Settings ===== */
+.voice-settings-toggle {
+  display: block;
+  margin: 1rem auto 0;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text-secondary);
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.voice-settings-toggle:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+.voice-settings-panel {
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-top: 0.75rem;
+}
+.voice-settings-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+.voice-setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+.voice-select {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem;
+  font-size: 0.85rem;
+}
+.voice-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+/* ===== Single-Player Memory ===== */
+.sp-memory-playing { padding: 1rem; }
+.sp-memory-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.sp-memory-stat {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.sp-memory-stars {
+  font-size: 2rem;
+  text-align: center;
+  margin: 0.5rem 0 1rem;
+  letter-spacing: 0.3rem;
+}
+
+/* ===== Element Order ===== */
+.eo-playing { padding: 1rem; }
+.eo-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.eo-round { font-weight: 700; color: var(--text-primary); }
+.eo-score { font-size: 0.85rem; color: var(--text-secondary); margin-left: auto; }
+.eo-instruction {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+.eo-placed {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 1rem;
+  min-height: 3rem;
+  padding: 0.5rem;
+  border: 2px dashed rgba(75,181,67,0.3);
+  border-radius: var(--radius-md);
+  background: rgba(75,181,67,0.05);
+}
+.eo-remaining {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.eo-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  min-width: 60px;
+  font-size: 0.85rem;
+}
+.eo-card.placed {
+  background: rgba(75,181,67,0.15);
+  border: 1px solid rgba(75,181,67,0.3);
+}
+.eo-card.clickable {
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.15);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.eo-card.clickable:hover { border-color: var(--accent); transform: scale(1.05); }
+.eo-card.clickable:active { transform: scale(0.95); }
+.eo-card.wrong-flash {
+  animation: wrong-shake 0.4s;
+  border-color: var(--danger) !important;
+  background: rgba(239,83,80,0.15) !important;
+}
+@keyframes wrong-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  50% { transform: translateX(6px); }
+  75% { transform: translateX(-4px); }
+}
+.eo-card-num { font-size: 0.65rem; color: var(--text-secondary); }
+.eo-card-sym { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.eo-card-name { font-size: 0.7rem; color: var(--text-secondary); }
+.eo-round-complete { text-align: center; font-size: 1.2rem; color: var(--accent); margin-top: 1rem; }
+
+/* ===== Atom Quiz ===== */
+.aq-playing { padding: 1rem; }
+.aq-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.aq-progress { font-weight: 700; color: var(--text-primary); }
+.aq-score { font-size: 0.9rem; color: var(--text-secondary); margin-left: auto; }
+.aq-streak { font-size: 0.85rem; color: #ff9800; font-weight: 600; }
+.aq-atom-display {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+.aq-question {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.aq-question-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+.aq-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.aq-choice {
+  background: var(--surface);
+  border: 2px solid rgba(255,255,255,0.12);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, background 0.2s;
+}
+.aq-choice:hover:not(:disabled) { border-color: var(--accent); }
+.aq-choice:active:not(:disabled) { transform: scale(0.98); }
+.aq-choice.correct {
+  border-color: var(--success);
+  background: rgba(75,181,67,0.15);
+}
+.aq-choice.wrong {
+  border-color: var(--danger);
+  background: rgba(239,83,80,0.15);
+}
+.aq-explanation {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+.aq-explanation p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
