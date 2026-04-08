@@ -171,7 +171,7 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
         <button className="menu-btn" onClick={() => onNavigate('atom-quiz')}>
           <span className="menu-icon">⚛️</span>
           <span className="menu-label">Atom Quiz</span>
-          <span className="menu-desc">Learn about protons, electrons & shells!</span>
+          <span className="menu-desc">Learn how atoms work — structure, forces & fun facts!</span>
         </button>
 
         <button className="menu-btn" onClick={() => onNavigate('explore')}>

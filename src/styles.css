@@ -1904,10 +1904,11 @@ body {
 .aq-progress { font-weight: 700; color: var(--text-primary); }
 .aq-score { font-size: 0.9rem; color: var(--text-secondary); margin-left: auto; }
 .aq-streak { font-size: 0.85rem; color: #ff9800; font-weight: 600; }
-.aq-atom-display {
-  display: flex;
-  justify-content: center;
+.aq-illustration {
+  text-align: center;
+  font-size: 3rem;
   margin-bottom: 0.5rem;
+  line-height: 1;
 }
 .aq-question {
   display: flex;
