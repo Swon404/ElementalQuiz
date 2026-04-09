@@ -126,25 +126,44 @@ function generateMatchCards(pairCount: number): MatchCard[] {
 }
 
 // --- Element Snap types ---
-type SnapClue = { clueText: string; correctName: string; choices: string[] };
+type SnapRound = {
+  clues: string[];        // 5 progressive clues, vague → obvious
+  correctName: string;
+  choices: string[];       // 8 element names
+};
 
-function generateSnapClues(count: number): SnapClue[] {
-  const pool = shuffleArray(elements.slice(0, 50));
-  const clues: SnapClue[] = [];
+function generateSnapRounds(count: number): SnapRound[] {
+  const pool = shuffleArray(elements.slice(0, 60));
+  const rounds: SnapRound[] = [];
   for (let i = 0; i < count && i < pool.length; i++) {
     const el = pool[i];
-    const type = i % 5;
-    let clueText: string;
-    if (type === 0) clueText = `I have ${el.atomicNumber} protons!`;
-    else if (type === 1) clueText = `My symbol is ${el.symbol}.`;
-    else if (type === 2) clueText = `I'm a ${el.stateAtRoomTemp} and I'm in group ${el.group || 'N/A'}.`;
-    else if (type === 3) clueText = `I was discovered by ${el.discoveredBy}.`;
-    else clueText = `I'm ${CATEGORY_LABELS[el.category] || el.category} in period ${el.period}.`;
-    const distractors = shuffleArray(elements.filter(e => e.name !== el.name)).slice(0, 3).map(e => e.name);
-    const choices = shuffleArray([el.name, ...distractors]);
-    clues.push({ clueText, correctName: el.name, choices });
+    const catLabel = CATEGORY_LABELS[el.category] || el.category;
+
+    // 5 clues: vague → obvious
+    const clues: string[] = [
+      // Clue 1 — very vague
+      el.funFact || `This element is ${catLabel}.`,
+      // Clue 2 — category + state hint
+      `I'm a ${el.stateAtRoomTemp} at room temperature and I'm ${catLabel}.`,
+      // Clue 3 — discovery / era
+      el.discoveryYear
+        ? `I was discovered in ${el.discoveryCountry} around ${el.discoveryYear}.`
+        : `I've been known since ancient times from ${el.discoveryCountry || 'many places'}.`,
+      // Clue 4 — narrowing down
+      `I'm in period ${el.period}${el.group ? `, group ${el.group}` : ''} and I have ${el.atomicNumber} protons.`,
+      // Clue 5 — almost a giveaway
+      `My symbol is "${el.symbol}" and my atomic mass is ${el.atomicMass}.`,
+    ];
+
+    // 8 choices: correct + 7 distractors from similar elements
+    const sameCat = elements.filter(e => e.category === el.category && e.name !== el.name);
+    const others = elements.filter(e => e.category !== el.category && e.name !== el.name);
+    const distractorPool = shuffleArray([...sameCat.slice(0, 4), ...others]).slice(0, 7);
+    const choices = shuffleArray([el.name, ...distractorPool.map(e => e.name)]);
+
+    rounds.push({ clues, correctName: el.name, choices });
   }
-  return clues;
+  return rounds;
 }
 
 // --- Championship config ---
@@ -198,10 +217,15 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Element Snap state
-  const [snapClues, setSnapClues] = useState<SnapClue[]>([]);
-  const [snapIndex, setSnapIndex] = useState(0);
+  const [snapRounds, setSnapRounds] = useState<SnapRound[]>([]);
+  const [snapIndex, setSnapIndex] = useState(0);         // which round (element)
+  const [snapClueIdx, setSnapClueIdx] = useState(0);     // which clue visible (0-4)
+  const [snapTimer, setSnapTimer] = useState(10);         // seconds until next clue
+  const snapTimerRef = useRef<ReturnType<typeof setInterval>>(null);
   const [snapBuzzer, setSnapBuzzer] = useState<1 | 2 | null>(null);
   const [snapAnswered, setSnapAnswered] = useState<number | null>(null);
+  const [snapWrongBuzzer, setSnapWrongBuzzer] = useState(false); // true = buzzer got it wrong, other player's turn
+  const [snapAllRevealed, setSnapAllRevealed] = useState(false); // all clues shown
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
@@ -385,44 +409,102 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   };
 
   // --- Element Snap ---
+  const SNAP_CLUE_SECONDS = 10;
+
+  const stopSnapTimer = useCallback(() => {
+    if (snapTimerRef.current) { clearInterval(snapTimerRef.current); snapTimerRef.current = null; }
+  }, []);
+
+  const startSnapTimer = useCallback(() => {
+    stopSnapTimer();
+    setSnapTimer(SNAP_CLUE_SECONDS);
+    snapTimerRef.current = setInterval(() => {
+      setSnapTimer(t => t - 1);
+    }, 1000);
+  }, [stopSnapTimer]);
+
+  // Auto-advance clue when timer hits 0
+  useEffect(() => {
+    if (snapTimer <= 0 && phase === 'playing' && gameMode === 'element-snap' && snapBuzzer === null) {
+      stopSnapTimer();
+      if (snapClueIdx < 4) {
+        setSnapClueIdx(c => c + 1);
+        startSnapTimer();
+      }
+      // If all 5 clues shown, just wait for buzz (no auto-advance)
+    }
+  }, [snapTimer, phase, gameMode, snapBuzzer, snapClueIdx, stopSnapTimer, startSnapTimer]);
+
+  // Clean up snap timer on unmount / phase change
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'element-snap') stopSnapTimer();
+  }, [phase, gameMode, stopSnapTimer]);
+
   const startElementSnap = useCallback(() => {
-    setSnapClues(generateSnapClues(rounds));
+    setSnapRounds(generateSnapRounds(rounds));
     setSnapIndex(0);
+    setSnapClueIdx(0);
     setSnapBuzzer(null);
     setSnapAnswered(null);
+    setSnapWrongBuzzer(false);
+    setSnapAllRevealed(false);
     if (!isChampionship) resetScores();
     setPhase('playing');
+    // Timer will start from JSX render effect below
   }, [rounds, isChampionship]);
 
+  // Start the clue timer when a new snap round begins
+  useEffect(() => {
+    if (phase === 'playing' && gameMode === 'element-snap' && snapBuzzer === null && !snapWrongBuzzer) {
+      startSnapTimer();
+    }
+    return () => stopSnapTimer();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapIndex, phase, gameMode]);
+
   const handleSnapBuzz = (player: 1 | 2) => {
-    if (snapBuzzer !== null) return;
+    if (snapBuzzer !== null || snapWrongBuzzer) return;
+    stopSnapTimer();
     setSnapBuzzer(player);
   };
 
   const handleSnapAnswer = (idx: number) => {
     if (snapAnswered !== null) return;
     setSnapAnswered(idx);
-    const clue = snapClues[snapIndex];
-    if (clue.choices[idx] === clue.correctName) {
+    const round = snapRounds[snapIndex];
+    if (round.choices[idx] === round.correctName) {
       playCorrect();
-      if (snapBuzzer === 1) setP1Score(s => s + 1);
-      else setP2Score(s => s + 1);
+      // Points: 5 for clue 1, 4 for clue 2, ... 1 for clue 5
+      const pts = 5 - snapClueIdx;
+      const scorer = snapWrongBuzzer
+        ? (snapBuzzer === 1 ? 2 : 1)   // other player after wrong buzz
+        : snapBuzzer!;
+      if (scorer === 1) setP1Score(s => s + pts);
+      else setP2Score(s => s + pts);
     } else {
       playWrong();
-      // Wrong answer: point to opponent
-      if (snapBuzzer === 1) setP2Score(s => s + 1);
-      else setP1Score(s => s + 1);
+      if (!snapWrongBuzzer) {
+        // First wrong: reveal all clues to the other player
+        setSnapWrongBuzzer(true);
+        setSnapAllRevealed(true);
+        setSnapAnswered(null); // reset so other player can answer
+        return;
+      }
+      // Both wrong — no points, move on
     }
   };
 
   const nextSnapRound = () => {
     const nextIdx = snapIndex + 1;
-    if (nextIdx >= snapClues.length) {
+    if (nextIdx >= snapRounds.length) {
       finishCurrentGame();
     } else {
       setSnapIndex(nextIdx);
+      setSnapClueIdx(0);
       setSnapBuzzer(null);
       setSnapAnswered(null);
+      setSnapWrongBuzzer(false);
+      setSnapAllRevealed(false);
     }
   };
 
@@ -471,10 +553,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setRounds(4);
       setPhase('playing');
     } else if (mode === 'element-snap') {
-      setSnapClues(generateSnapClues(5));
+      setSnapRounds(generateSnapRounds(5));
       setSnapIndex(0);
+      setSnapClueIdx(0);
       setSnapBuzzer(null);
       setSnapAnswered(null);
+      setSnapWrongBuzzer(false);
+      setSnapAllRevealed(false);
       setRounds(5);
       setPhase('playing');
     }
@@ -799,14 +884,20 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   }
 
   // --- PLAYING: Element Snap ---
-  if (phase === 'playing' && gameMode === 'element-snap') {
-    const clue = snapClues[snapIndex];
+  if (phase === 'playing' && gameMode === 'element-snap' && snapRounds.length > 0) {
+    const round = snapRounds[snapIndex];
+    const visibleClues = snapAllRevealed ? round.clues : round.clues.slice(0, snapClueIdx + 1);
+    const pointsAvailable = 5 - snapClueIdx;
+    const buzzerPlayer = snapBuzzer === 1 ? player1 : snapBuzzer === 2 ? player2 : null;
+    const otherPlayer = snapBuzzer === 1 ? player2 : player1;
+    const guessingPlayer = snapWrongBuzzer ? otherPlayer : buzzerPlayer;
+
     return (
       <div className="snap-playing">
         {quitOverlay}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
-          <span className="snap-round">Clue {snapIndex + 1}/{snapClues.length}</span>
+          <span className="snap-round">Element {snapIndex + 1}/{snapRounds.length}</span>
           <div className="snap-scores">
             <span>{player1.avatar} {p1Score}</span>
             <span>vs</span>
@@ -814,11 +905,34 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         </div>
 
-        <div className="snap-clue-card">
-          <p className="snap-clue-text">{clue.clueText}</p>
+        {/* Points indicator */}
+        {snapAnswered === null && (
+          <div className="snap-points-bar">
+            <span className="snap-points-label">Worth: <strong>{pointsAvailable} pt{pointsAvailable !== 1 ? 's' : ''}</strong></span>
+            {snapBuzzer === null && !snapWrongBuzzer && (
+              <span className="snap-timer-badge">Next clue: {snapTimer}s</span>
+            )}
+          </div>
+        )}
+
+        {/* Progressive clues */}
+        <div className="snap-clues-list">
+          {visibleClues.map((clue, i) => (
+            <div key={i} className={`snap-clue-item ${i === visibleClues.length - 1 && !snapAllRevealed ? 'snap-clue-new' : ''}`}>
+              <span className="snap-clue-num">Clue {i + 1}</span>
+              <span className="snap-clue-text">{clue}</span>
+            </div>
+          ))}
+          {!snapAllRevealed && snapClueIdx < 4 && snapBuzzer === null && (
+            <div className="snap-clue-item snap-clue-pending">
+              <span className="snap-clue-num">Clue {snapClueIdx + 2}</span>
+              <span className="snap-clue-text">???</span>
+            </div>
+          )}
         </div>
 
-        {snapBuzzer === null ? (
+        {/* Buzzer phase — no one has buzzed yet */}
+        {snapBuzzer === null && !snapWrongBuzzer && (
           <div className="snap-buzzers">
             <button className="snap-buzz snap-buzz-p1" onClick={() => handleSnapBuzz(1)}>
               {player1.avatar} {player1.name} — BUZZ!
@@ -827,22 +941,34 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
               {player2.avatar} {player2.name} — BUZZ!
             </button>
           </div>
-        ) : snapAnswered === null ? (
+        )}
+
+        {/* Answer phase — someone buzzed in (or wrong buzzer passed to other) */}
+        {guessingPlayer && snapAnswered === null && (
           <div className="snap-answer-phase">
-            <p className="snap-buzzer-name">{snapBuzzer === 1 ? player1.avatar : player2.avatar} {snapBuzzer === 1 ? player1.name : player2.name} buzzed in!</p>
+            <p className="snap-buzzer-name">
+              {snapWrongBuzzer
+                ? `${guessingPlayer.avatar} ${guessingPlayer.name}, all clues revealed — your turn to guess!`
+                : `${guessingPlayer.avatar} ${guessingPlayer.name} buzzed in!`}
+            </p>
             <div className="snap-choices">
-              {clue.choices.map((ch, i) => (
+              {round.choices.map((ch, i) => (
                 <button key={i} className="snap-choice" onClick={() => handleSnapAnswer(i)}>{ch}</button>
               ))}
             </div>
           </div>
-        ) : (
+        )}
+
+        {/* Result feedback */}
+        {snapAnswered !== null && (
           <div className="snap-result-feedback">
-            <p className={`snap-verdict ${clue.choices[snapAnswered] === clue.correctName ? 'correct' : 'wrong'}`}>
-              {clue.choices[snapAnswered] === clue.correctName ? '🎉 Correct!' : `😬 Wrong! It was ${clue.correctName}`}
-            </p>
+            {round.choices[snapAnswered] === round.correctName ? (
+              <p className="snap-verdict correct">🎉 Correct! +{5 - (snapAllRevealed ? 0 : snapClueIdx)} pts for {guessingPlayer?.avatar} {guessingPlayer?.name}!</p>
+            ) : (
+              <p className="snap-verdict wrong">😬 Wrong! It was <strong>{round.correctName}</strong></p>
+            )}
             <button className="start-btn" onClick={nextSnapRound}>
-              {snapIndex + 1 >= snapClues.length ? 'See Results' : 'Next Clue →'}
+              {snapIndex + 1 >= snapRounds.length ? 'See Results' : 'Next Element →'}
             </button>
           </div>
         )}
