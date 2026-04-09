@@ -196,3 +196,46 @@ export function addQuizResult(progress: PlayerProgress, result: QuizResult): Pla
     quizHistory: [...progress.quizHistory.slice(-49), result], // keep last 50
   };
 }
+
+/* ===== Custom Elements (Element Lab) ===== */
+
+const CUSTOM_ELEMENTS_KEY = 'elementalquiz_custom_elements';
+
+export type CustomElement = {
+  id: string;
+  atomicNumber: number;
+  symbol: string;
+  name: string;
+  category: string;
+  stateAtRoomTemp: string;
+  color: string;
+  superpower: string;
+  funFact: string;
+  discoveredBy: string;
+  createdAt: string;
+};
+
+export function loadCustomElements(): CustomElement[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_ELEMENTS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return [];
+}
+
+export function saveCustomElement(el: CustomElement): void {
+  const all = loadCustomElements();
+  all.push(el);
+  localStorage.setItem(CUSTOM_ELEMENTS_KEY, JSON.stringify(all));
+}
+
+export function deleteCustomElement(id: string): void {
+  const all = loadCustomElements().filter(e => e.id !== id);
+  localStorage.setItem(CUSTOM_ELEMENTS_KEY, JSON.stringify(all));
+}
+
+export function getNextCustomAtomicNumber(): number {
+  const all = loadCustomElements();
+  if (all.length === 0) return 119;
+  return Math.max(...all.map(e => e.atomicNumber)) + 1;
+}

@@ -1,9 +1,11 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import { elements } from '../data/elements.ts';
+import { loadCustomElements, type CustomElement } from '../engine/storage.ts';
 
 interface PeriodicTableProps {
   collectedElements: number[];
   onElementClick?: (atomicNumber: number) => void;
+  onCustomElementClick?: (el: CustomElement) => void;
   compact?: boolean;
 }
 
@@ -47,9 +49,11 @@ const LAYOUT: number[][] = [
   [0,0,0,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103],
 ];
 
-export default function PeriodicTable({ collectedElements, onElementClick, compact }: PeriodicTableProps) {
+export default function PeriodicTable({ collectedElements, onElementClick, onCustomElementClick, compact }: PeriodicTableProps) {
   const cols = 18;
   const gap = compact ? 1 : 2;
+
+  const [customElements, setCustomElements] = useState<CustomElement[]>([]);
 
   // Touch-drag panning for small screens
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -63,6 +67,10 @@ export default function PeriodicTable({ collectedElements, onElementClick, compa
     check();
     window.addEventListener('resize', check);
     return () => window.removeEventListener('resize', check);
+  }, []);
+
+  useEffect(() => {
+    setCustomElements(loadCustomElements());
   }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -160,6 +168,32 @@ export default function PeriodicTable({ collectedElements, onElementClick, compa
       <div className="pt-stats">
         <span>{collectedElements.length} / 118 elements collected</span>
       </div>
+      {customElements.length > 0 && (
+        <div className="pt-custom-section">
+          <h3 className="pt-custom-heading">Your Elements ⭐</h3>
+          <div className="pt-custom-grid">
+            {customElements.map(cel => (
+              <button
+                key={cel.id}
+                className="pt-cell element collected"
+                style={{ backgroundColor: cel.color, borderColor: cel.color }}
+                onClick={() => onCustomElementClick?.(cel)}
+                title={`${cel.name} (${cel.symbol})`}
+              >
+                {compact ? (
+                  <span className="pt-symbol">{cel.symbol}</span>
+                ) : (
+                  <>
+                    <span className="pt-number">{cel.atomicNumber}</span>
+                    <span className="pt-symbol">{cel.symbol}</span>
+                    <span className="pt-name">{cel.name}</span>
+                  </>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

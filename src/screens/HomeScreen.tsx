@@ -174,6 +174,18 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           <span className="menu-desc">Learn how atoms work — structure, forces & fun facts!</span>
         </button>
 
+        <button className="menu-btn" onClick={() => onNavigate('exotic-quiz')}>
+          <span className="menu-icon">☢️</span>
+          <span className="menu-label">Exotic Elements</span>
+          <span className="menu-desc">Explore synthetic, superheavy & unstable elements!</span>
+        </button>
+
+        <button className="menu-btn" onClick={() => onNavigate('element-lab')}>
+          <span className="menu-icon">🧪</span>
+          <span className="menu-label">Element Lab</span>
+          <span className="menu-desc">Create your own elements and add them to the table!</span>
+        </button>
+
         <button className="menu-btn" onClick={() => onNavigate('explore')}>
           <span className="menu-icon">🔍</span>
           <span className="menu-label">Periodic Table</span>

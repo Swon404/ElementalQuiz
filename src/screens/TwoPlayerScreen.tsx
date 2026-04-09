@@ -12,8 +12,8 @@ interface TwoPlayerScreenProps {
   onBack: () => void;
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match';
-type Phase = 'mode-select' | 'setup' | 'playing' | 'result';
+type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'element-snap' | 'championship';
+type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
   name: string;
@@ -125,6 +125,37 @@ function generateMatchCards(pairCount: number): MatchCard[] {
   return shuffleArray(cards);
 }
 
+// --- Element Snap types ---
+type SnapClue = { clueText: string; correctName: string; choices: string[] };
+
+function generateSnapClues(count: number): SnapClue[] {
+  const pool = shuffleArray(elements.slice(0, 50));
+  const clues: SnapClue[] = [];
+  for (let i = 0; i < count && i < pool.length; i++) {
+    const el = pool[i];
+    const type = i % 5;
+    let clueText: string;
+    if (type === 0) clueText = `I have ${el.atomicNumber} protons!`;
+    else if (type === 1) clueText = `My symbol is ${el.symbol}.`;
+    else if (type === 2) clueText = `I'm a ${el.stateAtRoomTemp} and I'm in group ${el.group || 'N/A'}.`;
+    else if (type === 3) clueText = `I was discovered by ${el.discoveredBy}.`;
+    else clueText = `I'm ${CATEGORY_LABELS[el.category] || el.category} in period ${el.period}.`;
+    const distractors = shuffleArray(elements.filter(e => e.name !== el.name)).slice(0, 3).map(e => e.name);
+    const choices = shuffleArray([el.name, ...distractors]);
+    clues.push({ clueText, correctName: el.name, choices });
+  }
+  return clues;
+}
+
+// --- Championship config ---
+const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'element-snap'];
+const CHAMP_LABELS: Record<string, string> = {
+  'quiz-battle': '⚔️ Quiz Battle',
+  'tf-blitz': '✅ True or False Blitz',
+  'element-match': '🃏 Element Match',
+  'element-snap': '⚡ Element Snap',
+};
+
 export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenProps) {
   const [phase, setPhase] = useState<Phase>('mode-select');
   const [gameMode, setGameMode] = useState<GameMode>('quiz-battle');
@@ -166,6 +197,17 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [matchLocked, setMatchLocked] = useState(false);
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
+  // Element Snap state
+  const [snapClues, setSnapClues] = useState<SnapClue[]>([]);
+  const [snapIndex, setSnapIndex] = useState(0);
+  const [snapBuzzer, setSnapBuzzer] = useState<1 | 2 | null>(null);
+  const [snapAnswered, setSnapAnswered] = useState<number | null>(null);
+
+  // Championship state
+  const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
+  const [champScores, setChampScores] = useState<{ p1: number; p2: number }[]>([]);
+  const [isChampionship, setIsChampionship] = useState(false);
+
   // Save names whenever they change
   useEffect(() => {
     saveTwoPlayerNames({ name1: player1.name, avatar1: player1.avatar, name2: player2.name, avatar2: player2.avatar });
@@ -202,7 +244,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     } else {
       if (correct) { setP2Score(c => c + 1); setP2Streak(s => s + 1); } else { setP2Streak(0); }
       if (currentRound >= rounds) {
-        setPhase('result');
+        finishCurrentGame();
       } else {
         setCurrentRound(r => r + 1);
         setCurrentPlayer(1);
@@ -280,7 +322,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const nextTFRound = () => {
     const nextIdx = tfIndex + 1;
     if (nextIdx >= tfStatements.length) {
-      setPhase('result');
+      finishCurrentGame();
     } else {
       setTfIndex(nextIdx);
       setTfTurn(tfTurn === 1 ? 2 : 1);
@@ -326,7 +368,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         setMatchLocked(false);
 
         if (matched.every(c => c.matched)) {
-          setTimeout(() => setPhase('result'), 600);
+          setTimeout(() => finishCurrentGame(), 600);
         }
       } else {
         playWrong();
@@ -342,10 +384,130 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     }
   };
 
+  // --- Element Snap ---
+  const startElementSnap = useCallback(() => {
+    setSnapClues(generateSnapClues(rounds));
+    setSnapIndex(0);
+    setSnapBuzzer(null);
+    setSnapAnswered(null);
+    if (!isChampionship) resetScores();
+    setPhase('playing');
+  }, [rounds, isChampionship]);
+
+  const handleSnapBuzz = (player: 1 | 2) => {
+    if (snapBuzzer !== null) return;
+    setSnapBuzzer(player);
+  };
+
+  const handleSnapAnswer = (idx: number) => {
+    if (snapAnswered !== null) return;
+    setSnapAnswered(idx);
+    const clue = snapClues[snapIndex];
+    if (clue.choices[idx] === clue.correctName) {
+      playCorrect();
+      if (snapBuzzer === 1) setP1Score(s => s + 1);
+      else setP2Score(s => s + 1);
+    } else {
+      playWrong();
+      // Wrong answer: point to opponent
+      if (snapBuzzer === 1) setP2Score(s => s + 1);
+      else setP1Score(s => s + 1);
+    }
+  };
+
+  const nextSnapRound = () => {
+    const nextIdx = snapIndex + 1;
+    if (nextIdx >= snapClues.length) {
+      finishCurrentGame();
+    } else {
+      setSnapIndex(nextIdx);
+      setSnapBuzzer(null);
+      setSnapAnswered(null);
+    }
+  };
+
+  // --- Championship orchestration ---
+  const startChampionship = useCallback(() => {
+    setIsChampionship(true);
+    setChampStep(0);
+    setChampScores([]);
+    setP1Score(0);
+    setP2Score(0);
+    const firstGame = CHAMP_GAMES[0];
+    setGameMode(firstGame);
+    // Start first sub-game with fixed rounds
+    launchSubGame(firstGame);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player1.difficulty, player2.difficulty]);
+
+  const launchSubGame = useCallback((mode: GameMode) => {
+    setGameMode(mode);
+    setP1Score(0);
+    setP2Score(0);
+    if (mode === 'quiz-battle') {
+      setP1Questions(generateQuiz(player1.difficulty, 3));
+      setP2Questions(generateQuiz(player2.difficulty, 3));
+      setCurrentPlayer(1);
+      setCurrentRound(1);
+      setQIndex(0);
+      setP1Streak(0);
+      setP2Streak(0);
+      setShowPassDevice(false);
+      setRounds(3);
+      setPhase('playing');
+    } else if (mode === 'tf-blitz') {
+      setTfStatements(generateTFStatements(6));
+      setTfIndex(0);
+      setTfTurn(1);
+      setTfAnswered(null);
+      setTfShowResult(false);
+      setRounds(3);
+      setPhase('playing');
+    } else if (mode === 'element-match') {
+      setMatchCards(generateMatchCards(4));
+      setMatchTurn(1);
+      setMatchFirst(null);
+      setMatchLocked(false);
+      setRounds(4);
+      setPhase('playing');
+    } else if (mode === 'element-snap') {
+      setSnapClues(generateSnapClues(5));
+      setSnapIndex(0);
+      setSnapBuzzer(null);
+      setSnapAnswered(null);
+      setRounds(5);
+      setPhase('playing');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player1.difficulty, player2.difficulty]);
+
+  const finishCurrentGame = () => {
+    if (isChampionship) {
+      // Save this game's scores and show interstitial
+      setChampScores(prev => [...prev, { p1: p1Score, p2: p2Score }]);
+      if (champStep + 1 >= CHAMP_GAMES.length) {
+        setPhase('champ-result');
+      } else {
+        setPhase('champ-between');
+      }
+    } else {
+      setPhase('result');
+    }
+  };
+
+  const nextChampGame = () => {
+    const next = champStep + 1;
+    setChampStep(next);
+    launchSubGame(CHAMP_GAMES[next]);
+  };
+
   const startGame = () => {
+    setIsChampionship(false);
     if (gameMode === 'quiz-battle') startQuizBattle();
     else if (gameMode === 'tf-blitz') startTFBlitz();
-    else startElementMatch();
+    else if (gameMode === 'element-match') startElementMatch();
+    else if (gameMode === 'element-snap') startElementSnap();
+    else if (gameMode === 'championship') startChampionship();
   };
 
   // Quit confirm overlay (shared)
@@ -394,6 +556,22 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <span className="gm-name">Element Match</span>
             <span className="gm-desc">Memory game — match symbols to names!</span>
           </button>
+          <button
+            className={`game-mode-btn ${gameMode === 'element-snap' ? 'selected' : ''}`}
+            onClick={() => setGameMode('element-snap')}
+          >
+            <span className="gm-icon">⚡</span>
+            <span className="gm-name">Element Snap</span>
+            <span className="gm-desc">Race to identify the element first!</span>
+          </button>
+          <button
+            className={`game-mode-btn championship ${gameMode === 'championship' ? 'selected' : ''}`}
+            onClick={() => setGameMode('championship')}
+          >
+            <span className="gm-icon">🏆</span>
+            <span className="gm-name">Championship</span>
+            <span className="gm-desc">Play all 4 games — running score decides the champion!</span>
+          </button>
         </div>
 
         <button className="start-btn" onClick={() => setPhase('setup')}>Next →</button>
@@ -410,6 +588,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           {gameMode === 'quiz-battle' && '⚔️ Quiz Battle'}
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
           {gameMode === 'element-match' && '🃏 Element Match'}
+          {gameMode === 'element-snap' && '⚡ Element Snap'}
+          {gameMode === 'championship' && '🏆 Championship'}
         </h2>
         <Elementor expression="greeting" message="Set up your players!" />
 
@@ -452,18 +632,23 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           ))}
         </div>
 
-        <div className="rounds-select">
-          <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-          {(gameMode === 'element-match' ? [4, 6, 8] : [3, 5, 10]).map(r => (
-            <button
-              key={r}
-              className={`round-btn ${rounds === r ? 'selected' : ''}`}
-              onClick={() => setRounds(r)}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        {gameMode !== 'championship' && (
+          <div className="rounds-select">
+            <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
+            {(gameMode === 'element-match' ? [4, 6, 8] : gameMode === 'element-snap' ? [3, 5, 8] : [3, 5, 10]).map(r => (
+              <button
+                key={r}
+                className={`round-btn ${rounds === r ? 'selected' : ''}`}
+                onClick={() => setRounds(r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        )}
+        {gameMode === 'championship' && (
+          <p className="champ-info">All 4 games in sequence: Quiz Battle (3), T/F Blitz (3), Element Match (4 pairs), Element Snap (5). Running score decides the champion!</p>
+        )}
 
         <button className="start-btn" onClick={startGame}>Start!</button>
       </div>
@@ -613,10 +798,157 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     );
   }
 
+  // --- PLAYING: Element Snap ---
+  if (phase === 'playing' && gameMode === 'element-snap') {
+    const clue = snapClues[snapIndex];
+    return (
+      <div className="snap-playing">
+        {quitOverlay}
+        <div className="snap-header">
+          <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
+          <span className="snap-round">Clue {snapIndex + 1}/{snapClues.length}</span>
+          <div className="snap-scores">
+            <span>{player1.avatar} {p1Score}</span>
+            <span>vs</span>
+            <span>{p2Score} {player2.avatar}</span>
+          </div>
+        </div>
+
+        <div className="snap-clue-card">
+          <p className="snap-clue-text">{clue.clueText}</p>
+        </div>
+
+        {snapBuzzer === null ? (
+          <div className="snap-buzzers">
+            <button className="snap-buzz snap-buzz-p1" onClick={() => handleSnapBuzz(1)}>
+              {player1.avatar} {player1.name} — BUZZ!
+            </button>
+            <button className="snap-buzz snap-buzz-p2" onClick={() => handleSnapBuzz(2)}>
+              {player2.avatar} {player2.name} — BUZZ!
+            </button>
+          </div>
+        ) : snapAnswered === null ? (
+          <div className="snap-answer-phase">
+            <p className="snap-buzzer-name">{snapBuzzer === 1 ? player1.avatar : player2.avatar} {snapBuzzer === 1 ? player1.name : player2.name} buzzed in!</p>
+            <div className="snap-choices">
+              {clue.choices.map((ch, i) => (
+                <button key={i} className="snap-choice" onClick={() => handleSnapAnswer(i)}>{ch}</button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="snap-result-feedback">
+            <p className={`snap-verdict ${clue.choices[snapAnswered] === clue.correctName ? 'correct' : 'wrong'}`}>
+              {clue.choices[snapAnswered] === clue.correctName ? '🎉 Correct!' : `😬 Wrong! It was ${clue.correctName}`}
+            </p>
+            <button className="start-btn" onClick={nextSnapRound}>
+              {snapIndex + 1 >= snapClues.length ? 'See Results' : 'Next Clue →'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- CHAMPIONSHIP: Between-games interstitial ---
+  if (phase === 'champ-between') {
+    const justFinished = CHAMP_GAMES[champStep];
+    const nextGame = CHAMP_GAMES[champStep + 1];
+    const allScores = [...champScores, { p1: p1Score, p2: p2Score }];
+    const totalP1 = allScores.reduce((s, g) => s + g.p1, 0);
+    const totalP2 = allScores.reduce((s, g) => s + g.p2, 0);
+    const justWinner = p1Score > p2Score ? player1 : p2Score > p1Score ? player2 : null;
+    return (
+      <div className="champ-between">
+        <div className="champ-between-header">
+          <h2>🏆 Championship — Game {champStep + 1} of {CHAMP_GAMES.length}</h2>
+        </div>
+        <div className="champ-game-result">
+          <h3>{CHAMP_LABELS[justFinished]} Complete!</h3>
+          <p>{justWinner ? `${justWinner.avatar} ${justWinner.name} wins!` : "It's a draw! 🤝"}</p>
+          <div className="battle-scores">
+            <div className={`battle-player ${p1Score >= p2Score ? 'winner' : ''}`}>
+              <span className="bp-avatar">{player1.avatar}</span>
+              <span className="bp-name">{player1.name}</span>
+              <span className="bp-score">{p1Score}</span>
+            </div>
+            <div className="vs-divider">VS</div>
+            <div className={`battle-player ${p2Score >= p1Score ? 'winner' : ''}`}>
+              <span className="bp-avatar">{player2.avatar}</span>
+              <span className="bp-name">{player2.name}</span>
+              <span className="bp-score">{p2Score}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="champ-running-total">
+          <h3>Running Total</h3>
+          <div className="champ-total-row">
+            <span>{player1.avatar} {player1.name}: <strong>{totalP1}</strong></span>
+            <span>{player2.avatar} {player2.name}: <strong>{totalP2}</strong></span>
+          </div>
+        </div>
+
+        <button className="start-btn" onClick={nextChampGame}>
+          Next: {CHAMP_LABELS[nextGame]} →
+        </button>
+      </div>
+    );
+  }
+
+  // --- CHAMPIONSHIP: Final result ---
+  if (phase === 'champ-result') {
+    const allScores = [...champScores, { p1: p1Score, p2: p2Score }];
+    const totalP1 = allScores.reduce((s, g) => s + g.p1, 0);
+    const totalP2 = allScores.reduce((s, g) => s + g.p2, 0);
+    const champWinner = totalP1 > totalP2 ? player1 : totalP2 > totalP1 ? player2 : null;
+    return (
+      <div className="champ-result">
+        <Elementor
+          expression="celebrate"
+          message={champWinner ? `${champWinner.avatar} ${champWinner.name} is the Element Champion!` : "It's a draw! You're both champions! 🤝"}
+        />
+        <h2>🏆 Championship Results</h2>
+
+        <div className="champ-breakdown">
+          <table className="champ-table">
+            <thead>
+              <tr>
+                <th>Game</th>
+                <th>{player1.avatar} {player1.name}</th>
+                <th>{player2.avatar} {player2.name}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {CHAMP_GAMES.map((g, i) => (
+                <tr key={g} className={allScores[i]?.p1 > allScores[i]?.p2 ? 'p1-won' : allScores[i]?.p2 > allScores[i]?.p1 ? 'p2-won' : ''}>
+                  <td>{CHAMP_LABELS[g]}</td>
+                  <td>{allScores[i]?.p1 ?? '-'}</td>
+                  <td>{allScores[i]?.p2 ?? '-'}</td>
+                </tr>
+              ))}
+              <tr className="champ-total-row">
+                <td><strong>Total</strong></td>
+                <td><strong>{totalP1}</strong></td>
+                <td><strong>{totalP2}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="result-actions">
+          <button className="start-btn" onClick={() => { setIsChampionship(false); startChampionship(); }}>Play Again!</button>
+          <button className="back-btn" onClick={() => { setIsChampionship(false); setPhase('mode-select'); }}>Change Game</button>
+          <button className="back-btn" onClick={onComplete}>Home</button>
+        </div>
+      </div>
+    );
+  }
+
   // --- RESULT ---
   if (phase === 'result') {
     const winner = p1Score > p2Score ? player1 : p2Score > p1Score ? player2 : null;
-    const modeLabel = gameMode === 'quiz-battle' ? 'Quiz Battle' : gameMode === 'tf-blitz' ? 'True or False Blitz' : 'Element Match';
+    const modeLabel = gameMode === 'quiz-battle' ? 'Quiz Battle' : gameMode === 'tf-blitz' ? 'True or False Blitz' : gameMode === 'element-snap' ? 'Element Snap' : 'Element Match';
     return (
       <div className="two-player-result">
         <Elementor
