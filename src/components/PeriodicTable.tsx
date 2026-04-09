@@ -117,7 +117,7 @@ export default function PeriodicTable({ collectedElements, onElementClick, onCus
           gap: `${gap}px`,
           minWidth: compact ? '500px' : isNarrow ? '900px' : '700px',
           width: '100%',
-          height: compact ? undefined : isNarrow ? '600px' : 'calc(100vh - 180px)',
+          minHeight: compact ? undefined : isNarrow ? '600px' : 'calc(100vh - 180px)',
         }}
       >
         {LAYOUT.map((row, ri) => {
