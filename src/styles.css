@@ -130,7 +130,51 @@ body {
 .home-menu {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+/* ===== Menu Groups ===== */
+.menu-group {
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.menu-group-header {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+.menu-group-header:hover, .menu-group-header:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.menu-group-icon { font-size: 1.3rem; }
+.menu-group-label { font-weight: 700; flex: 1; text-align: left; }
+
+.menu-group-chevron {
+  font-size: 1.1rem;
+  transition: transform 0.25s ease;
+  color: var(--text-secondary);
+}
+.menu-group-chevron.open {
+  transform: rotate(90deg);
+}
+
+.menu-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
 }
 
 .menu-btn {

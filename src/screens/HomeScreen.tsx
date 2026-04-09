@@ -30,6 +30,22 @@ interface HomeScreenProps {
   onSwitchProfile: () => void;
 }
 
+function MenuGroup({ id, icon, label, open, onToggle, children }: {
+  id: string; icon: string; label: string; open: boolean;
+  onToggle: (id: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <div className="menu-group">
+      <button className="menu-group-header" onClick={() => onToggle(id)}>
+        <span className="menu-group-icon">{icon}</span>
+        <span className="menu-group-label">{label}</span>
+        <span className={`menu-group-chevron ${open ? 'open' : ''}`}>▸</span>
+      </button>
+      {open && <div className="menu-group-items">{children}</div>}
+    </div>
+  );
+}
+
 export default function HomeScreen({ progress, playerName, onNavigate, onSwitchProfile }: HomeScreenProps) {
   const rank = getRank(progress.totalEP);
   const nextRank = getNextRank(progress.totalEP);
@@ -45,6 +61,15 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
   const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
   const [rate, setRate] = useState(getSpeechRate);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(['quizzes']));
+
+  const toggleGroup = (id: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const load = () => {
@@ -126,71 +151,77 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
       </div>
 
       <nav className="home-menu">
-        <button className="menu-btn primary" onClick={() => onNavigate('quick-quiz')}>
-          <span className="menu-icon">⚡</span>
-          <span className="menu-label">Quick Quiz</span>
-          <span className="menu-desc">10 questions, pick your level</span>
-        </button>
+        <MenuGroup id="quizzes" icon="⚡" label="Quizzes" open={openGroups.has('quizzes')} onToggle={toggleGroup}>
+          <button className="menu-btn primary" onClick={() => onNavigate('quick-quiz')}>
+            <span className="menu-icon">⚡</span>
+            <span className="menu-label">Quick Quiz</span>
+            <span className="menu-desc">10 questions, pick your level</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('sprint')}>
-          <span className="menu-icon">⏱️</span>
-          <span className="menu-label">Element Sprint</span>
-          <span className="menu-desc">Race against the clock!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('sprint')}>
+            <span className="menu-icon">⏱️</span>
+            <span className="menu-label">Element Sprint</span>
+            <span className="menu-desc">Race against the clock!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('deep-dive')}>
-          <span className="menu-icon">🔬</span>
-          <span className="menu-label">Element Deep Dive</span>
-          <span className="menu-desc">Master one element at a time</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('deep-dive')}>
+            <span className="menu-icon">🔬</span>
+            <span className="menu-label">Element Deep Dive</span>
+            <span className="menu-desc">Master one element at a time</span>
+          </button>
 
-        <button className="menu-btn two-player" onClick={() => onNavigate('two-player')}>
-          <span className="menu-icon">👥</span>
-          <span className="menu-label">2 Player Mode</span>
-          <span className="menu-desc">Challenge a friend or family!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('atom-quiz')}>
+            <span className="menu-icon">⚛️</span>
+            <span className="menu-label">Atom Quiz</span>
+            <span className="menu-desc">Learn how atoms work — structure, forces & fun facts!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
-          <span className="menu-icon">💥</span>
-          <span className="menu-label">Element Showdown</span>
-          <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('exotic-quiz')}>
+            <span className="menu-icon">☢️</span>
+            <span className="menu-label">Exotic Elements</span>
+            <span className="menu-desc">Explore synthetic, superheavy & unstable elements!</span>
+          </button>
+        </MenuGroup>
 
-        <button className="menu-btn" onClick={() => onNavigate('memory-game')}>
-          <span className="menu-icon">🧠</span>
-          <span className="menu-label">Element Memory</span>
-          <span className="menu-desc">Match symbols to names — test your memory!</span>
-        </button>
+        <MenuGroup id="games" icon="🎮" label="Games" open={openGroups.has('games')} onToggle={toggleGroup}>
+          <button className="menu-btn two-player" onClick={() => onNavigate('two-player')}>
+            <span className="menu-icon">👥</span>
+            <span className="menu-label">2 Player Mode</span>
+            <span className="menu-desc">Challenge a friend or family!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('element-order')}>
-          <span className="menu-icon">📊</span>
-          <span className="menu-label">Element Order</span>
-          <span className="menu-desc">Put elements in order by atomic number!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
+            <span className="menu-icon">💥</span>
+            <span className="menu-label">Element Showdown</span>
+            <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('atom-quiz')}>
-          <span className="menu-icon">⚛️</span>
-          <span className="menu-label">Atom Quiz</span>
-          <span className="menu-desc">Learn how atoms work — structure, forces & fun facts!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('memory-game')}>
+            <span className="menu-icon">🧠</span>
+            <span className="menu-label">Element Memory</span>
+            <span className="menu-desc">Match symbols to names — test your memory!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('exotic-quiz')}>
-          <span className="menu-icon">☢️</span>
-          <span className="menu-label">Exotic Elements</span>
-          <span className="menu-desc">Explore synthetic, superheavy & unstable elements!</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('element-order')}>
+            <span className="menu-icon">📊</span>
+            <span className="menu-label">Element Order</span>
+            <span className="menu-desc">Put elements in order by atomic number!</span>
+          </button>
+        </MenuGroup>
 
-        <button className="menu-btn" onClick={() => onNavigate('element-lab')}>
-          <span className="menu-icon">🧪</span>
-          <span className="menu-label">Element Lab</span>
-          <span className="menu-desc">Create your own elements and add them to the table!</span>
-        </button>
+        <MenuGroup id="explore" icon="🔬" label="Create & Explore" open={openGroups.has('explore')} onToggle={toggleGroup}>
+          <button className="menu-btn" onClick={() => onNavigate('element-lab')}>
+            <span className="menu-icon">🧪</span>
+            <span className="menu-label">Element Lab</span>
+            <span className="menu-desc">Create your own elements and add them to the table!</span>
+          </button>
 
-        <button className="menu-btn" onClick={() => onNavigate('explore')}>
-          <span className="menu-icon">🔍</span>
-          <span className="menu-label">Periodic Table</span>
-          <span className="menu-desc">Explore & learn about elements</span>
-        </button>
+          <button className="menu-btn" onClick={() => onNavigate('explore')}>
+            <span className="menu-icon">🔍</span>
+            <span className="menu-label">Periodic Table</span>
+            <span className="menu-desc">Explore & learn about elements</span>
+          </button>
+        </MenuGroup>
       </nav>
 
       <button className="voice-settings-toggle" onClick={() => setShowVoiceSettings(v => !v)}>
