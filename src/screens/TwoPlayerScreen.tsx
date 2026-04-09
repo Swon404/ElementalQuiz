@@ -139,10 +139,13 @@ function generateSnapRounds(count: number): SnapRound[] {
     const el = pool[i];
     const catLabel = CATEGORY_LABELS[el.category] || el.category;
 
+    // Helper: remove the element name from a string so clues don't give it away
+    const scrub = (s: string) => s.replace(new RegExp(el.name, 'gi'), '???');
+
     // 5 clues: vague → obvious
     const clues: string[] = [
-      // Clue 1 — very vague
-      el.funFact || `This element is ${catLabel}.`,
+      // Clue 1 — very vague (scrub name from fun facts!)
+      scrub(el.funFact || `This element is ${catLabel}.`),
       // Clue 2 — category + state hint
       `I'm a ${el.stateAtRoomTemp} at room temperature and I'm ${catLabel}.`,
       // Clue 3 — discovery / era
@@ -943,19 +946,26 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         )}
 
-        {/* Answer phase — someone buzzed in (or wrong buzzer passed to other) */}
+        {/* Status when someone buzzed in */}
         {guessingPlayer && snapAnswered === null && (
-          <div className="snap-answer-phase">
-            <p className="snap-buzzer-name">
-              {snapWrongBuzzer
-                ? `${guessingPlayer.avatar} ${guessingPlayer.name}, all clues revealed — your turn to guess!`
-                : `${guessingPlayer.avatar} ${guessingPlayer.name} buzzed in!`}
-            </p>
-            <div className="snap-choices">
-              {round.choices.map((ch, i) => (
-                <button key={i} className="snap-choice" onClick={() => handleSnapAnswer(i)}>{ch}</button>
-              ))}
-            </div>
+          <p className="snap-buzzer-name">
+            {snapWrongBuzzer
+              ? `${guessingPlayer.avatar} ${guessingPlayer.name}, all clues revealed — your turn!`
+              : `${guessingPlayer.avatar} ${guessingPlayer.name} buzzed in!`}
+          </p>
+        )}
+
+        {/* 8 choices — always visible, only clickable after buzz-in */}
+        {snapAnswered === null && (
+          <div className="snap-choices">
+            {round.choices.map((ch, i) => (
+              <button
+                key={i}
+                className={`snap-choice ${!guessingPlayer ? 'snap-choice-locked' : ''}`}
+                disabled={!guessingPlayer}
+                onClick={() => handleSnapAnswer(i)}
+              >{ch}</button>
+            ))}
           </div>
         )}
 
