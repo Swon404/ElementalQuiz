@@ -114,7 +114,6 @@ export default function PeriodicTable({ collectedElements, onElementClick, onCus
         style={{
           display: 'grid',
           gridTemplateColumns: `repeat(${cols}, 1fr)`,
-          gridTemplateRows: compact ? undefined : `repeat(7, 1fr) 4px repeat(2, 1fr)`,
           gap: `${gap}px`,
           minWidth: compact ? '500px' : isNarrow ? '900px' : '700px',
           width: '100%',
@@ -156,27 +155,26 @@ export default function PeriodicTable({ collectedElements, onElementClick, onCus
             );
           });
         })}
-      </div>
-      <div className="pt-legend">
-        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
-          <span key={cat} className="pt-legend-item">
-            <span className="pt-legend-swatch" style={{ backgroundColor: color }} />
-            {CATEGORY_LABELS[cat]}
-          </span>
-        ))}
-      </div>
-      <div className="pt-stats">
-        <span>{collectedElements.length} / 118 elements collected</span>
-      </div>
-      {customElements.length > 0 && (
-        <div className="pt-custom-section">
-          <h3 className="pt-custom-heading">Your Elements ⭐</h3>
-          <div className="pt-custom-grid">
-            {customElements.map(cel => (
+
+        {/* Imaginary Elements row — custom elements appended to the table */}
+        {customElements.length > 0 && (
+          <>
+            <div className="pt-spacer" style={{ gridColumn: '1 / -1' }} />
+            <div className="pt-imaginary-label" style={{ gridColumn: '1 / 4' }}>
+              ⭐ Your Elements
+            </div>
+            {Array.from({ length: cols - 3 }).map((_, i) => (
+              <div key={`pad-${i}`} className="pt-cell empty" />
+            ))}
+            {customElements.map((cel, idx) => (
               <button
                 key={cel.id}
-                className="pt-cell element collected"
-                style={{ backgroundColor: cel.color, borderColor: cel.color }}
+                className="pt-cell element collected pt-custom-cell"
+                style={{
+                  backgroundColor: cel.color,
+                  borderColor: cel.color,
+                  gridColumn: (idx % cols) + 1,
+                }}
                 onClick={() => onCustomElementClick?.(cel)}
                 title={`${cel.name} (${cel.symbol})`}
               >
@@ -191,9 +189,25 @@ export default function PeriodicTable({ collectedElements, onElementClick, onCus
                 )}
               </button>
             ))}
-          </div>
-        </div>
-      )}
+            {/* Fill remaining cells in the last row */}
+            {customElements.length % cols !== 0 &&
+              Array.from({ length: cols - (customElements.length % cols) }).map((_, i) => (
+                <div key={`trail-${i}`} className="pt-cell empty" />
+              ))}
+          </>
+        )}
+      </div>
+      <div className="pt-legend">
+        {Object.entries(CATEGORY_COLORS).map(([cat, color]) => (
+          <span key={cat} className="pt-legend-item">
+            <span className="pt-legend-swatch" style={{ backgroundColor: color }} />
+            {CATEGORY_LABELS[cat]}
+          </span>
+        ))}
+      </div>
+      <div className="pt-stats">
+        <span>{collectedElements.length} / 118 elements collected{customElements.length > 0 ? ` + ${customElements.length} custom` : ''}</span>
+      </div>
     </div>
   );
 }
