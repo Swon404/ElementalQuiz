@@ -213,6 +213,18 @@ export type CustomElement = {
   funFact: string;
   discoveredBy: string;
   createdAt: string;
+  // Extended fields (auto-generated)
+  atomicMass?: number;
+  period?: number;
+  group?: number;
+  block?: string;
+  electronConfiguration?: string;
+  radioactive?: boolean;
+  halfLife?: string;
+  compounds?: string[];
+  uses?: string[];
+  obtainedFrom?: string;
+  additionalFacts?: string[];
 };
 
 export function loadCustomElements(): CustomElement[] {
