@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
+import { APP_VERSION } from '../version.ts';
 import Elementor from '../components/Elementor.tsx';
 import CollectionTable from '../components/CollectionTable.tsx';
 import { getRank, getNextRank, getUnlockedMilestones, MILESTONES } from '../engine/scoring.ts';
@@ -227,6 +228,8 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
       <button className="voice-settings-toggle" onClick={() => setShowVoiceSettings(v => !v)}>
         ⚙️ Voice Settings
       </button>
+
+      <span className="app-version">v{APP_VERSION}</span>
 
       {showVoiceSettings && (
         <div className="voice-settings-panel">

@@ -2004,6 +2004,13 @@ body {
   font-size: 0.85rem;
 }
 .voice-settings-toggle:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+
+.app-version {
+  display: block; text-align: center; margin-top: 0.75rem;
+  font-size: 0.7rem; color: var(--text-secondary); opacity: 0.5;
+  letter-spacing: 0.5px;
+}
+
 .voice-settings-panel {
   background: var(--surface);
   border-radius: var(--radius-md);
@@ -2182,6 +2189,36 @@ body {
   border-color: var(--danger);
   background: rgba(239,83,80,0.15);
 }
+/* Hint system */
+.aq-choice.eliminated {
+  opacity: 0.3;
+  text-decoration: line-through;
+  border-color: var(--border);
+  background: transparent;
+}
+.aq-hint-offer {
+  margin-top: 1rem; padding: 1rem;
+  background: rgba(249,202,36,0.1); border: 1px solid rgba(249,202,36,0.3);
+  border-radius: var(--radius-md); text-align: center;
+}
+.aq-hint-text { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.75rem; line-height: 1.4; }
+.aq-hint-actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+.aq-hint-btn {
+  padding: 0.6rem 1.2rem; border-radius: var(--radius-sm); border: 2px solid #f9ca24;
+  background: rgba(249,202,36,0.15); color: #f9ca24; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+}
+.aq-hint-btn:hover { background: rgba(249,202,36,0.25); }
+.aq-skip-btn {
+  padding: 0.6rem 1.2rem; border-radius: var(--radius-sm); border: 2px solid var(--border);
+  background: transparent; color: var(--text-secondary); font-weight: 600; font-size: 0.9rem; cursor: pointer;
+}
+.aq-skip-btn:hover { border-color: var(--text-secondary); }
+.aq-hint-banner {
+  text-align: center; padding: 0.5rem; margin-bottom: 0.75rem;
+  background: rgba(249,202,36,0.1); border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 600; color: #f9ca24;
+}
+
 .aq-explanation {
   margin-top: 1rem;
   padding: 1rem;

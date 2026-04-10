@@ -259,6 +259,9 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
   const [streak, setStreak] = useState(0);
   const [answered, setAnswered] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [hintUsed, setHintUsed] = useState(false);       // hint used on this question
+  const [eliminated, setEliminated] = useState<Set<number>>(new Set()); // indices eliminated by hint
+  const [retrying, setRetrying] = useState(false);        // in retry-after-hint mode
 
   const questionCount = 12;
 
@@ -268,6 +271,9 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     setScore(0);
     setStreak(0);
     setAnswered(null);
+    setHintUsed(false);
+    setEliminated(new Set());
+    setRetrying(false);
     setPhase('playing');
   }, []);
 
@@ -277,12 +283,28 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     const q = questions[currentQ];
     if (idx === q.correctIndex) {
       playCorrect();
-      setScore(s => s + 1);
+      setScore(s => s + (hintUsed ? 0.5 : 1));
       setStreak(s => s + 1);
     } else {
       playWrong();
       setStreak(0);
     }
+  };
+
+  const useHint = () => {
+    if (hintUsed || answered === null) return;
+    const q = questions[currentQ];
+    // Only offer hint when wrong
+    if (answered === q.correctIndex) return;
+    // Eliminate 2 wrong choices (not the correct one, not the one already picked)
+    const wrongIndices = q.choices
+      .map((_, i) => i)
+      .filter(i => i !== q.correctIndex && i !== answered);
+    const toEliminate = wrongIndices.sort(() => Math.random() - 0.5).slice(0, 2);
+    setEliminated(new Set(toEliminate));
+    setHintUsed(true);
+    setAnswered(null);  // let them pick again
+    setRetrying(true);
   };
 
   const nextQuestion = () => {
@@ -292,6 +314,9 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     } else {
       setCurrentQ(q => q + 1);
       setAnswered(null);
+      setHintUsed(false);
+      setEliminated(new Set());
+      setRetrying(false);
     }
   };
 
@@ -339,6 +364,11 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
 
         <div className="aq-choices">
           {q.choices.map((choice, idx) => {
+            if (eliminated.has(idx)) return (
+              <button key={idx} className="aq-choice eliminated" disabled>
+                <s>{choice}</s>
+              </button>
+            );
             let cls = 'aq-choice';
             if (answered !== null) {
               if (idx === q.correctIndex) cls += ' correct';
@@ -352,9 +382,28 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
           })}
         </div>
 
-        {answered !== null && (
+        {/* Wrong answer: offer hint/retry (first wrong only, not after hint used) */}
+        {answered !== null && answered !== q.correctIndex && !hintUsed && (
+          <div className="aq-hint-offer">
+            <p className="aq-hint-text">Not quite! Want a hint? Two wrong answers will be removed and you can try again for half a point.</p>
+            <div className="aq-hint-actions">
+              <button className="aq-hint-btn" onClick={useHint}>💡 Use Hint & Retry</button>
+              <button className="aq-skip-btn" onClick={nextQuestion}>Skip →</button>
+            </div>
+          </div>
+        )}
+
+        {/* Retrying after hint */}
+        {retrying && answered === null && (
+          <div className="aq-hint-banner">💡 Hint active — pick from the remaining answers! (½ point)</div>
+        )}
+
+        {answered !== null && (answered === q.correctIndex || hintUsed) && (
           <div className="aq-explanation">
-            <p>{q.explanation}</p>
+            {answered === q.correctIndex
+              ? <p>{hintUsed ? '½ point — ' : ''}{q.explanation}</p>
+              : <p>The answer was <strong>{q.choices[q.correctIndex]}</strong>. {q.explanation}</p>
+            }
             <button className="start-btn" onClick={nextQuestion}>
               {currentQ + 1 >= questions.length ? 'See Results' : 'Next \u2192'}
             </button>
@@ -366,6 +415,7 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
 
   // Result
   const pct = Math.round((score / questions.length) * 100);
+  const displayScore = score % 1 === 0 ? score : score.toFixed(1);
   const resultMsg = pct >= 80
     ? "Superheavy genius! You really know your exotic elements!"
     : pct >= 50
@@ -378,7 +428,7 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
       <div className="result-card">
         <h2>Exotic Elements Complete!</h2>
         <div className="result-stats">
-          <p className="result-score">{score} / {questions.length}</p>
+          <p className="result-score">{displayScore} / {questions.length}</p>
           <p className="result-pct">{pct}%</p>
         </div>
       </div>
