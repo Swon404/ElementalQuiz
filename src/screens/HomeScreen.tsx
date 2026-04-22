@@ -208,6 +208,12 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
             <span className="menu-label">Element Order</span>
             <span className="menu-desc">Put elements in order by atomic number!</span>
           </button>
+
+          <button className="menu-btn" onClick={() => onNavigate('symbol-pick')}>
+            <span className="menu-icon">🔤</span>
+            <span className="menu-label">Symbol Pick</span>
+            <span className="menu-desc">Pick the correct symbol from similar look-alikes!</span>
+          </button>
         </MenuGroup>
 
         <MenuGroup id="explore" icon="🔬" label="Create & Explore" open={openGroups.has('explore')} onToggle={toggleGroup}>

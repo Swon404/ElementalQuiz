@@ -10,6 +10,7 @@ import ElementOrderScreen from './screens/ElementOrderScreen.tsx';
 import AtomQuizScreen from './screens/AtomQuizScreen.tsx';
 import ExoticQuizScreen from './screens/ExoticQuizScreen.tsx';
 import ElementLabScreen from './screens/ElementLabScreen.tsx';
+import SymbolPickScreen from './screens/SymbolPickScreen.tsx';
 import {
   loadProgress, saveProgress, collectElement, addQuizResult,
   loadProfiles, createProfile, deleteProfile, resetProfile, setActiveProfileId, getActiveProfileId,
@@ -17,7 +18,7 @@ import {
 } from './engine/storage.ts';
 import type { Difficulty } from './engine/scoring.ts';
 
-type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz' | 'exotic-quiz' | 'element-lab';
+type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz' | 'exotic-quiz' | 'element-lab' | 'symbol-pick';
 
 const INTRO_SEEN_KEY = 'elementalquiz_intro_seen';
 
@@ -192,6 +193,9 @@ export default function App() {
       )}
       {screen === 'element-lab' && (
         <ElementLabScreen onBack={() => setScreen('home')} playerName={activeProfileName} />
+      )}
+      {screen === 'symbol-pick' && (
+        <SymbolPickScreen onBack={() => setScreen('home')} />
       )}
     </div>
   );

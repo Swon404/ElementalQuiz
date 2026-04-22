@@ -33,7 +33,7 @@ type Phase = 'setup' | 'playing' | 'result';
 
 export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
-  const [pairCount, setPairCount] = useState(6);
+  const [pairCount, setPairCount] = useState(8);
   const [cards, setCards] = useState<MatchCard[]>([]);
   const [firstCard, setFirstCard] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
@@ -132,10 +132,9 @@ export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
 
         <div className="difficulty-select">
           {[
-            { count: 4, label: 'Easy', desc: '4 pairs (8 cards)' },
-            { count: 6, label: 'Medium', desc: '6 pairs (12 cards)' },
-            { count: 8, label: 'Hard', desc: '8 pairs (16 cards)' },
-            { count: 10, label: 'Expert', desc: '10 pairs (20 cards)' },
+            { count: 8, label: 'Easy', desc: '8 pairs (16 cards)' },
+            { count: 12, label: 'Medium', desc: '12 pairs (24 cards)' },
+            { count: 16, label: 'Hard', desc: '16 pairs (32 cards)' },
           ].map(opt => (
             <button
               key={opt.count}
@@ -154,7 +153,7 @@ export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
   }
 
   if (phase === 'playing') {
-    const cols = pairCount <= 4 ? 4 : pairCount <= 6 ? 4 : pairCount <= 8 ? 4 : 5;
+    const cols = pairCount <= 8 ? 4 : pairCount <= 12 ? 4 : 4;
     return (
       <div className="sp-memory-playing">
         {showExitConfirm && (

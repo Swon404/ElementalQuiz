@@ -12,7 +12,7 @@ interface TwoPlayerScreenProps {
   onBack: () => void;
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'element-snap' | 'championship';
+type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'championship';
 type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
@@ -132,6 +132,48 @@ type SnapRound = {
   choices: string[];       // 8 element names
 };
 
+// --- Symbol Pick types ---
+type SymbolRound = {
+  elementName: string;
+  correctSymbol: string;
+  choices: string[];
+};
+
+/** Pick distractor symbols that look similar to the correct one. */
+function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
+  const allSymbols = elements.map(e => e.symbol).filter(s => s !== correctSymbol);
+  const first = correctSymbol[0]?.toLowerCase() ?? '';
+  const len = correctSymbol.length;
+  // Score: same first letter +3, same length +2, any shared letter +1
+  const scored = allSymbols.map(s => {
+    let score = 0;
+    if (s[0]?.toLowerCase() === first) score += 3;
+    if (s.length === len) score += 2;
+    const lower = s.toLowerCase();
+    const cLower = correctSymbol.toLowerCase();
+    for (const ch of lower) if (cLower.includes(ch)) { score += 1; break; }
+    return { s, score, r: Math.random() };
+  });
+  scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
+  // Take top candidates and then randomize order within the top pool
+  const pool = scored.slice(0, Math.max(count * 3, 8)).map(x => x.s);
+  const picked: string[] = [];
+  const used = new Set<string>();
+  for (const s of shuffleArray(pool)) {
+    if (!used.has(s)) { used.add(s); picked.push(s); if (picked.length >= count) break; }
+  }
+  return picked;
+}
+
+function generateSymbolRounds(count: number): SymbolRound[] {
+  const pool = shuffleArray(elements.slice(0, 60)).slice(0, count);
+  return pool.map(el => {
+    const distractors = pickSimilarSymbols(el.symbol, 4); // 4 distractors + correct = 5 choices
+    const choices = shuffleArray([el.symbol, ...distractors]);
+    return { elementName: el.name, correctSymbol: el.symbol, choices };
+  });
+}
+
 function generateSnapRounds(count: number): SnapRound[] {
   const pool = shuffleArray(elements.slice(0, 60));
   const rounds: SnapRound[] = [];
@@ -170,12 +212,13 @@ function generateSnapRounds(count: number): SnapRound[] {
 }
 
 // --- Championship config ---
-const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'element-snap'];
+const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'clue-duel', 'symbol-pick'];
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
   'element-match': '🃏 Element Match',
-  'element-snap': '⚡ Element Snap',
+  'clue-duel': '🕵️ Clue Duel',
+  'symbol-pick': '🔤 Symbol Pick',
 };
 
 export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenProps) {
@@ -219,16 +262,19 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [matchLocked, setMatchLocked] = useState(false);
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
-  // Element Snap state
+  // Clue Duel state
   const [snapRounds, setSnapRounds] = useState<SnapRound[]>([]);
   const [snapIndex, setSnapIndex] = useState(0);         // which round (element)
-  const [snapClueIdx, setSnapClueIdx] = useState(0);     // which clue visible (0-4)
-  const [snapTimer, setSnapTimer] = useState(10);         // seconds until next clue
-  const snapTimerRef = useRef<ReturnType<typeof setInterval>>(null);
-  const [snapBuzzer, setSnapBuzzer] = useState<1 | 2 | null>(null);
+  const [snapClueIdx, setSnapClueIdx] = useState(0);     // how many clues revealed (0-4)
+  const [snapTurn, setSnapTurn] = useState<1 | 2>(1);    // whose turn to guess/pass
+  const [snapFirstWrongBy, setSnapFirstWrongBy] = useState<1 | 2 | null>(null); // first wrong guesser this round
   const [snapAnswered, setSnapAnswered] = useState<number | null>(null);
-  const [snapWrongBuzzer, setSnapWrongBuzzer] = useState(false); // true = buzzer got it wrong, other player's turn
-  const [snapAllRevealed, setSnapAllRevealed] = useState(false); // all clues shown
+
+  // Symbol Pick state
+  const [symbolRounds, setSymbolRounds] = useState<SymbolRound[]>([]);
+  const [symbolIndex, setSymbolIndex] = useState(0);
+  const [symbolTurn, setSymbolTurn] = useState<1 | 2>(1);
+  const [symbolAnswered, setSymbolAnswered] = useState<number | null>(null);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
@@ -411,89 +457,58 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     }
   };
 
-  // --- Element Snap ---
-  const SNAP_CLUE_SECONDS = 10;
-
-  const stopSnapTimer = useCallback(() => {
-    if (snapTimerRef.current) { clearInterval(snapTimerRef.current); snapTimerRef.current = null; }
-  }, []);
-
-  const startSnapTimer = useCallback(() => {
-    stopSnapTimer();
-    setSnapTimer(SNAP_CLUE_SECONDS);
-    snapTimerRef.current = setInterval(() => {
-      setSnapTimer(t => t - 1);
-    }, 1000);
-  }, [stopSnapTimer]);
-
-  // Auto-advance clue when timer hits 0
-  useEffect(() => {
-    if (snapTimer <= 0 && phase === 'playing' && gameMode === 'element-snap' && snapBuzzer === null) {
-      stopSnapTimer();
-      if (snapClueIdx < 4) {
-        setSnapClueIdx(c => c + 1);
-        startSnapTimer();
-      }
-      // If all 5 clues shown, just wait for buzz (no auto-advance)
-    }
-  }, [snapTimer, phase, gameMode, snapBuzzer, snapClueIdx, stopSnapTimer, startSnapTimer]);
-
-  // Clean up snap timer on unmount / phase change
-  useEffect(() => {
-    if (phase !== 'playing' || gameMode !== 'element-snap') stopSnapTimer();
-  }, [phase, gameMode, stopSnapTimer]);
-
+  // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
     setSnapRounds(generateSnapRounds(rounds));
     setSnapIndex(0);
     setSnapClueIdx(0);
-    setSnapBuzzer(null);
+    setSnapTurn(1);
+    setSnapFirstWrongBy(null);
     setSnapAnswered(null);
-    setSnapWrongBuzzer(false);
-    setSnapAllRevealed(false);
     if (!isChampionship) resetScores();
     setPhase('playing');
-    // Timer will start from JSX render effect below
   }, [rounds, isChampionship]);
 
-  // Start the clue timer when a new snap round begins
-  useEffect(() => {
-    if (phase === 'playing' && gameMode === 'element-snap' && snapBuzzer === null && !snapWrongBuzzer) {
-      startSnapTimer();
+  const handleClueNext = () => {
+    if (snapAnswered !== null) return;
+    if (snapFirstWrongBy !== null) {
+      // Second player declining their bonus chance — move on
+      nextSnapRound();
+      return;
     }
-    return () => stopSnapTimer();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapIndex, phase, gameMode]);
-
-  const handleSnapBuzz = (player: 1 | 2) => {
-    if (snapBuzzer !== null || snapWrongBuzzer) return;
-    stopSnapTimer();
-    setSnapBuzzer(player);
+    if (snapClueIdx < 4) {
+      setSnapClueIdx(c => c + 1);
+      setSnapTurn(t => (t === 1 ? 2 : 1));
+    } else {
+      // All clues visible, passing — end round with no score change
+      nextSnapRound();
+    }
   };
 
   const handleSnapAnswer = (idx: number) => {
     if (snapAnswered !== null) return;
-    setSnapAnswered(idx);
     const round = snapRounds[snapIndex];
-    if (round.choices[idx] === round.correctName) {
+    const correct = round.choices[idx] === round.correctName;
+    const active = snapTurn;
+    if (correct) {
       playCorrect();
-      // Points: 5 for clue 1, 4 for clue 2, ... 1 for clue 5
-      const pts = 5 - snapClueIdx;
-      const scorer = snapWrongBuzzer
-        ? (snapBuzzer === 1 ? 2 : 1)   // other player after wrong buzz
-        : snapBuzzer!;
-      if (scorer === 1) setP1Score(s => s + pts);
-      else setP2Score(s => s + pts);
+      if (active === 1) setP1Score(s => s + 1);
+      else setP2Score(s => s + 1);
+      setSnapAnswered(idx);
     } else {
       playWrong();
-      if (!snapWrongBuzzer) {
-        // First wrong: reveal all clues to the other player
-        setSnapWrongBuzzer(true);
-        setSnapAllRevealed(true);
-        setSnapAnswered(null); // reset so other player can answer
-        return;
+      // -1 point to active player (negative scores allowed)
+      if (active === 1) setP1Score(s => s - 1);
+      else setP2Score(s => s - 1);
+      if (snapFirstWrongBy === null) {
+        // Give opponent one chance with all clues revealed
+        setSnapFirstWrongBy(active);
+        setSnapClueIdx(4);
+        setSnapTurn(active === 1 ? 2 : 1);
+      } else {
+        // Both wrong — end round
+        setSnapAnswered(idx);
       }
-      // Both wrong — no points, move on
     }
   };
 
@@ -504,10 +519,44 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     } else {
       setSnapIndex(nextIdx);
       setSnapClueIdx(0);
-      setSnapBuzzer(null);
+      setSnapTurn(nextIdx % 2 === 0 ? 1 : 2); // alternate starting player
+      setSnapFirstWrongBy(null);
       setSnapAnswered(null);
-      setSnapWrongBuzzer(false);
-      setSnapAllRevealed(false);
+    }
+  };
+
+  // --- Symbol Pick ---
+  const startSymbolPick = useCallback(() => {
+    setSymbolRounds(generateSymbolRounds(rounds * 2));
+    setSymbolIndex(0);
+    setSymbolTurn(1);
+    setSymbolAnswered(null);
+    if (!isChampionship) resetScores();
+    setPhase('playing');
+  }, [rounds, isChampionship]);
+
+  const handleSymbolAnswer = (idx: number) => {
+    if (symbolAnswered !== null) return;
+    const round = symbolRounds[symbolIndex];
+    const correct = round.choices[idx] === round.correctSymbol;
+    setSymbolAnswered(idx);
+    if (correct) {
+      playCorrect();
+      if (symbolTurn === 1) setP1Score(s => s + 1);
+      else setP2Score(s => s + 1);
+    } else {
+      playWrong();
+    }
+  };
+
+  const nextSymbolRound = () => {
+    const nextIdx = symbolIndex + 1;
+    if (nextIdx >= symbolRounds.length) {
+      finishCurrentGame();
+    } else {
+      setSymbolIndex(nextIdx);
+      setSymbolTurn(t => (t === 1 ? 2 : 1));
+      setSymbolAnswered(null);
     }
   };
 
@@ -555,14 +604,20 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setMatchLocked(false);
       setRounds(4);
       setPhase('playing');
-    } else if (mode === 'element-snap') {
+    } else if (mode === 'clue-duel') {
       setSnapRounds(generateSnapRounds(5));
       setSnapIndex(0);
       setSnapClueIdx(0);
-      setSnapBuzzer(null);
+      setSnapTurn(1);
+      setSnapFirstWrongBy(null);
       setSnapAnswered(null);
-      setSnapWrongBuzzer(false);
-      setSnapAllRevealed(false);
+      setRounds(5);
+      setPhase('playing');
+    } else if (mode === 'symbol-pick') {
+      setSymbolRounds(generateSymbolRounds(5));
+      setSymbolIndex(0);
+      setSymbolTurn(1);
+      setSymbolAnswered(null);
       setRounds(5);
       setPhase('playing');
     }
@@ -594,7 +649,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     if (gameMode === 'quiz-battle') startQuizBattle();
     else if (gameMode === 'tf-blitz') startTFBlitz();
     else if (gameMode === 'element-match') startElementMatch();
-    else if (gameMode === 'element-snap') startElementSnap();
+    else if (gameMode === 'clue-duel') startElementSnap();
+    else if (gameMode === 'symbol-pick') startSymbolPick();
     else if (gameMode === 'championship') startChampionship();
   };
 
@@ -645,12 +701,20 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <span className="gm-desc">Memory game — match symbols to names!</span>
           </button>
           <button
-            className={`game-mode-btn ${gameMode === 'element-snap' ? 'selected' : ''}`}
-            onClick={() => setGameMode('element-snap')}
+            className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
+            onClick={() => setGameMode('clue-duel')}
           >
-            <span className="gm-icon">⚡</span>
-            <span className="gm-name">Element Snap</span>
-            <span className="gm-desc">Race to identify the element first!</span>
+            <span className="gm-icon">🕵️</span>
+            <span className="gm-name">Clue Duel</span>
+            <span className="gm-desc">Take turns — guess the element from a clue, or pass!</span>
+          </button>
+          <button
+            className={`game-mode-btn ${gameMode === 'symbol-pick' ? 'selected' : ''}`}
+            onClick={() => setGameMode('symbol-pick')}
+          >
+            <span className="gm-icon">🔤</span>
+            <span className="gm-name">Symbol Pick</span>
+            <span className="gm-desc">Pick the correct symbol from look-alikes!</span>
           </button>
           <button
             className={`game-mode-btn championship ${gameMode === 'championship' ? 'selected' : ''}`}
@@ -676,7 +740,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           {gameMode === 'quiz-battle' && '⚔️ Quiz Battle'}
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
           {gameMode === 'element-match' && '🃏 Element Match'}
-          {gameMode === 'element-snap' && '⚡ Element Snap'}
+          {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
+          {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
           {gameMode === 'championship' && '🏆 Championship'}
         </h2>
         <Elementor expression="greeting" message="Set up your players!" />
@@ -703,7 +768,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
                   </button>
                 ))}
               </div>
-              {gameMode === 'quiz-battle' && (
+              {(gameMode === 'quiz-battle' || gameMode === 'championship') && (
                 <div className="diff-select-mini">
                   {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
                     <button
@@ -723,7 +788,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {gameMode !== 'championship' && (
           <div className="rounds-select">
             <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' ? [4, 6, 8] : gameMode === 'element-snap' ? [3, 5, 8] : [3, 5, 10]).map(r => (
+            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [3, 5, 8] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -735,7 +800,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         )}
         {gameMode === 'championship' && (
-          <p className="champ-info">All 4 games in sequence: Quiz Battle (3), T/F Blitz (3), Element Match (4 pairs), Element Snap (5). Running score decides the champion!</p>
+          <p className="champ-info">All 5 games in sequence: Quiz Battle (3), T/F Blitz (3), Element Match (4 pairs), Clue Duel (5), Symbol Pick (5). Running score decides the champion!</p>
         )}
 
         <button className="start-btn" onClick={startGame}>Start!</button>
@@ -886,14 +951,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     );
   }
 
-  // --- PLAYING: Element Snap ---
-  if (phase === 'playing' && gameMode === 'element-snap' && snapRounds.length > 0) {
+  // --- PLAYING: Clue Duel ---
+  if (phase === 'playing' && gameMode === 'clue-duel' && snapRounds.length > 0) {
     const round = snapRounds[snapIndex];
-    const visibleClues = snapAllRevealed ? round.clues : round.clues.slice(0, snapClueIdx + 1);
-    const pointsAvailable = 5 - snapClueIdx;
-    const buzzerPlayer = snapBuzzer === 1 ? player1 : snapBuzzer === 2 ? player2 : null;
-    const otherPlayer = snapBuzzer === 1 ? player2 : player1;
-    const guessingPlayer = snapWrongBuzzer ? otherPlayer : buzzerPlayer;
+    const visibleClues = round.clues.slice(0, snapClueIdx + 1);
+    const activePlayer = snapTurn === 1 ? player1 : player2;
+    const otherPlayer = snapTurn === 1 ? player2 : player1;
+    const isCorrect = snapAnswered !== null && round.choices[snapAnswered] === round.correctName;
 
     return (
       <div className="snap-playing">
@@ -908,77 +972,112 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         </div>
 
-        {/* Points indicator */}
         {snapAnswered === null && (
-          <div className="snap-points-bar">
-            <span className="snap-points-label">Worth: <strong>{pointsAvailable} pt{pointsAvailable !== 1 ? 's' : ''}</strong></span>
-            {snapBuzzer === null && !snapWrongBuzzer && (
-              <span className="snap-timer-badge">Next clue: {snapTimer}s</span>
-            )}
-          </div>
+          <p className="snap-buzzer-name">
+            {snapFirstWrongBy !== null
+              ? `${activePlayer.avatar} ${activePlayer.name} — bonus chance! All clues revealed.`
+              : `${activePlayer.avatar} ${activePlayer.name}'s turn — guess or pass!`}
+          </p>
         )}
 
-        {/* Progressive clues */}
         <div className="snap-clues-list">
           {visibleClues.map((clue, i) => (
-            <div key={i} className={`snap-clue-item ${i === visibleClues.length - 1 && !snapAllRevealed ? 'snap-clue-new' : ''}`}>
+            <div key={i} className={`snap-clue-item ${i === visibleClues.length - 1 ? 'snap-clue-new' : ''}`}>
               <span className="snap-clue-num">Clue {i + 1}</span>
               <span className="snap-clue-text">{clue}</span>
             </div>
           ))}
-          {!snapAllRevealed && snapClueIdx < 4 && snapBuzzer === null && (
+          {snapClueIdx < 4 && snapAnswered === null && snapFirstWrongBy === null && (
             <div className="snap-clue-item snap-clue-pending">
               <span className="snap-clue-num">Clue {snapClueIdx + 2}</span>
-              <span className="snap-clue-text">???</span>
+              <span className="snap-clue-text">Tap Next to reveal (passes turn)</span>
             </div>
           )}
         </div>
 
-        {/* Buzzer phase — no one has buzzed yet */}
-        {snapBuzzer === null && !snapWrongBuzzer && (
-          <div className="snap-buzzers">
-            <button className="snap-buzz snap-buzz-p1" onClick={() => handleSnapBuzz(1)}>
-              {player1.avatar} {player1.name} — BUZZ!
-            </button>
-            <button className="snap-buzz snap-buzz-p2" onClick={() => handleSnapBuzz(2)}>
-              {player2.avatar} {player2.name} — BUZZ!
-            </button>
-          </div>
-        )}
-
-        {/* Status when someone buzzed in */}
-        {guessingPlayer && snapAnswered === null && (
-          <p className="snap-buzzer-name">
-            {snapWrongBuzzer
-              ? `${guessingPlayer.avatar} ${guessingPlayer.name}, all clues revealed — your turn!`
-              : `${guessingPlayer.avatar} ${guessingPlayer.name} buzzed in!`}
-          </p>
-        )}
-
-        {/* 8 choices — always visible, only clickable after buzz-in */}
         {snapAnswered === null && (
-          <div className="snap-choices">
-            {round.choices.map((ch, i) => (
-              <button
-                key={i}
-                className={`snap-choice ${!guessingPlayer ? 'snap-choice-locked' : ''}`}
-                disabled={!guessingPlayer}
-                onClick={() => handleSnapAnswer(i)}
-              >{ch}</button>
-            ))}
-          </div>
+          <>
+            <div className="snap-choices">
+              {round.choices.map((ch, i) => (
+                <button
+                  key={i}
+                  className="snap-choice"
+                  onClick={() => handleSnapAnswer(i)}
+                >{ch}</button>
+              ))}
+            </div>
+            <button className="start-btn" onClick={handleClueNext}>
+              {snapFirstWrongBy !== null
+                ? 'Skip bonus — next element →'
+                : snapClueIdx < 4
+                  ? `Next clue (pass to ${otherPlayer.avatar} ${otherPlayer.name})`
+                  : 'Skip element →'}
+            </button>
+          </>
         )}
 
-        {/* Result feedback */}
         {snapAnswered !== null && (
           <div className="snap-result-feedback">
-            {round.choices[snapAnswered] === round.correctName ? (
-              <p className="snap-verdict correct">🎉 Correct! +{5 - (snapAllRevealed ? 0 : snapClueIdx)} pts for {guessingPlayer?.avatar} {guessingPlayer?.name}!</p>
+            {isCorrect ? (
+              <p className="snap-verdict correct">🎉 Correct! +1 to {activePlayer.avatar} {activePlayer.name}!</p>
             ) : (
-              <p className="snap-verdict wrong">😬 Wrong! It was <strong>{round.correctName}</strong></p>
+              <p className="snap-verdict wrong">😬 Wrong! It was <strong>{round.correctName}</strong>. −1 from {activePlayer.avatar} {activePlayer.name}.</p>
             )}
             <button className="start-btn" onClick={nextSnapRound}>
               {snapIndex + 1 >= snapRounds.length ? 'See Results' : 'Next Element →'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- PLAYING: Symbol Pick ---
+  if (phase === 'playing' && gameMode === 'symbol-pick' && symbolRounds.length > 0) {
+    const round = symbolRounds[symbolIndex];
+    const cp = symbolTurn === 1 ? player1 : player2;
+    const isCorrect = symbolAnswered !== null && round.choices[symbolAnswered] === round.correctSymbol;
+    return (
+      <div className="snap-playing">
+        {quitOverlay}
+        <div className="snap-header">
+          <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
+          <span className="snap-round">{symbolIndex + 1}/{symbolRounds.length}</span>
+          <div className="snap-scores">
+            <span>{player1.avatar} {p1Score}</span>
+            <span>vs</span>
+            <span>{p2Score} {player2.avatar}</span>
+          </div>
+        </div>
+        <p className="snap-buzzer-name">{cp.avatar} {cp.name} — pick the symbol for:</p>
+        <h2 style={{ textAlign: 'center', margin: '0.5rem 0 1rem', fontSize: '1.8rem' }}>{round.elementName}</h2>
+        <div className="snap-choices">
+          {round.choices.map((ch, i) => {
+            const answered = symbolAnswered !== null;
+            const isChosen = symbolAnswered === i;
+            const isRight = ch === round.correctSymbol;
+            const cls = !answered ? 'snap-choice'
+              : isRight ? 'snap-choice correct'
+              : isChosen ? 'snap-choice wrong'
+              : 'snap-choice snap-choice-locked';
+            return (
+              <button
+                key={i}
+                className={cls}
+                disabled={answered}
+                onClick={() => handleSymbolAnswer(i)}
+                style={{ fontSize: '1.4rem', fontWeight: 700, letterSpacing: '1px' }}
+              >{ch}</button>
+            );
+          })}
+        </div>
+        {symbolAnswered !== null && (
+          <div className="snap-result-feedback">
+            {isCorrect
+              ? <p className="snap-verdict correct">🎉 Correct! +1 to {cp.avatar} {cp.name}!</p>
+              : <p className="snap-verdict wrong">😬 Nope! {round.elementName} = <strong>{round.correctSymbol}</strong></p>}
+            <button className="start-btn" onClick={nextSymbolRound}>
+              {symbolIndex + 1 >= symbolRounds.length ? 'See Results' : 'Next →'}
             </button>
           </div>
         )}
@@ -1084,7 +1183,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   // --- RESULT ---
   if (phase === 'result') {
     const winner = p1Score > p2Score ? player1 : p2Score > p1Score ? player2 : null;
-    const modeLabel = gameMode === 'quiz-battle' ? 'Quiz Battle' : gameMode === 'tf-blitz' ? 'True or False Blitz' : gameMode === 'element-snap' ? 'Element Snap' : 'Element Match';
+    const modeLabel = gameMode === 'quiz-battle' ? 'Quiz Battle' : gameMode === 'tf-blitz' ? 'True or False Blitz' : gameMode === 'clue-duel' ? 'Clue Duel' : gameMode === 'symbol-pick' ? 'Symbol Pick' : 'Element Match';
     return (
       <div className="two-player-result">
         <Elementor
