@@ -25,19 +25,32 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
-  const all = elements.map(e => e.symbol).filter(s => s !== correctSymbol);
-  const first = correctSymbol[0]?.toLowerCase() ?? '';
-  const len = correctSymbol.length;
+  const all = Array.from(new Set(elements.map(e => e.symbol))).filter(s => s !== correctSymbol);
   const cLower = correctSymbol.toLowerCase();
+  const first = cLower[0] ?? '';
+  const last = cLower[cLower.length - 1] ?? '';
+  const correctSet = new Set(cLower.split(''));
+
   const scored = all.map(s => {
+    const sLower = s.toLowerCase();
     let score = 0;
-    if (s[0]?.toLowerCase() === first) score += 3;
-    if (s.length === len) score += 2;
-    for (const ch of s.toLowerCase()) if (cLower.includes(ch)) { score += 1; break; }
+    if (sLower.length === cLower.length) score += 6;
+    if (sLower[0] === first) score += 5;
+    if (sLower[sLower.length - 1] === last) score += 4;
+    let shared = 0;
+    for (const ch of sLower) if (correctSet.has(ch)) shared++;
+    score += shared * 2;
+    if (sLower.length === cLower.length) {
+      let diff = 0;
+      for (let i = 0; i < cLower.length; i++) if (sLower[i] !== cLower[i]) diff++;
+      if (diff === 1) score += 5;
+      if (diff === 2 && cLower.length >= 2 && [...sLower].sort().join('') === [...cLower].sort().join('')) score += 4;
+    }
     return { s, score, r: Math.random() };
   });
   scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-  const pool = scored.slice(0, Math.max(count * 3, 8)).map(x => x.s);
+  const topN = Math.max(count + 2, Math.min(count * 2, scored.length));
+  const pool = scored.slice(0, topN).map(x => x.s);
   const picked: string[] = [];
   const used = new Set<string>();
   for (const s of shuffleArray(pool)) {
@@ -46,11 +59,11 @@ function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
   return picked;
 }
 
-function generateRounds(count: number, pool: number): SymbolRound[] {
+function generateRounds(count: number, pool: number, distractors: number): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, 4);
-    const choices = shuffleArray([el.symbol, ...distractors]);
+    const ds = pickSimilarSymbols(el.symbol, distractors);
+    const choices = shuffleArray([el.symbol, ...ds]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
 }
@@ -68,7 +81,8 @@ export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
 
   const startGame = useCallback(() => {
     const pool = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 50 : 118;
-    setRounds(generateRounds(total, pool));
+    const distractors = difficulty === 'easy' ? 4 : difficulty === 'medium' ? 5 : 6;
+    setRounds(generateRounds(total, pool, distractors));
     setIdx(0);
     setAnswered(null);
     setScore(0);
@@ -103,9 +117,9 @@ export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
         <Elementor expression="greeting" message="I'll show you an element — pick its chemical symbol from look-alikes!" />
         <div className="difficulty-select">
           {[
-            { v: 'easy' as const, label: 'Easy', desc: 'Common elements (1–20)' },
-            { v: 'medium' as const, label: 'Medium', desc: 'Up to element 50' },
-            { v: 'hard' as const, label: 'Hard', desc: 'Any element' },
+            { v: 'easy' as const, label: 'Easy', desc: '1–20, 5 look-alikes' },
+            { v: 'medium' as const, label: 'Medium', desc: 'Up to 50, 6 look-alikes' },
+            { v: 'hard' as const, label: 'Hard', desc: 'All elements, 7 look-alikes' },
           ].map(opt => (
             <button
               key={opt.v}

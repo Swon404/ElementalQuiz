@@ -139,24 +139,37 @@ type SymbolRound = {
   choices: string[];
 };
 
-/** Pick distractor symbols that look similar to the correct one. */
+/** Pick distractor symbols that look very similar to the correct one. */
 function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
-  const allSymbols = elements.map(e => e.symbol).filter(s => s !== correctSymbol);
-  const first = correctSymbol[0]?.toLowerCase() ?? '';
-  const len = correctSymbol.length;
-  // Score: same first letter +3, same length +2, any shared letter +1
+  const allSymbols = Array.from(new Set(elements.map(e => e.symbol))).filter(s => s !== correctSymbol);
+  const cLower = correctSymbol.toLowerCase();
+  const first = cLower[0] ?? '';
+  const last = cLower[cLower.length - 1] ?? '';
+  const correctSet = new Set(cLower.split(''));
+
   const scored = allSymbols.map(s => {
+    const sLower = s.toLowerCase();
     let score = 0;
-    if (s[0]?.toLowerCase() === first) score += 3;
-    if (s.length === len) score += 2;
-    const lower = s.toLowerCase();
-    const cLower = correctSymbol.toLowerCase();
-    for (const ch of lower) if (cLower.includes(ch)) { score += 1; break; }
+    if (sLower.length === cLower.length) score += 6;
+    if (sLower[0] === first) score += 5;
+    if (sLower[sLower.length - 1] === last) score += 4;
+    // Shared letters
+    let shared = 0;
+    for (const ch of sLower) if (correctSet.has(ch)) shared++;
+    score += shared * 2;
+    // Same letters different order / off-by-one distance bonus
+    if (sLower.length === cLower.length) {
+      let diff = 0;
+      for (let i = 0; i < cLower.length; i++) if (sLower[i] !== cLower[i]) diff++;
+      if (diff === 1) score += 5;  // differs by exactly one character
+      if (diff === 2 && cLower.length >= 2 && [...sLower].sort().join('') === [...cLower].sort().join('')) score += 4; // anagram
+    }
     return { s, score, r: Math.random() };
   });
   scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-  // Take top candidates and then randomize order within the top pool
-  const pool = scored.slice(0, Math.max(count * 3, 8)).map(x => x.s);
+  // Tight pool — only the most similar candidates
+  const topN = Math.max(count + 2, Math.min(count * 2, scored.length));
+  const pool = scored.slice(0, topN).map(x => x.s);
   const picked: string[] = [];
   const used = new Set<string>();
   for (const s of shuffleArray(pool)) {
@@ -168,7 +181,7 @@ function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
 function generateSymbolRounds(count: number, pool: number = 60): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, 4); // 4 distractors + correct = 5 choices
+    const distractors = pickSimilarSymbols(el.symbol, 5); // 5 distractors + correct = 6 choices
     const choices = shuffleArray([el.symbol, ...distractors]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
