@@ -51,12 +51,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   'actinide': 'an actinide',
 };
 
-function generateTFStatements(count: number): TFStatement[] {
-  const pool = shuffleArray(elements.slice(0, 36));
+function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
+  const poolElements = shuffleArray(elements.slice(0, pool));
   const statements: TFStatement[] = [];
 
-  for (let i = 0; i < count && i < pool.length; i++) {
-    const el = pool[i];
+  for (let i = 0; i < count && i < poolElements.length; i++) {
+    const el = poolElements[i];
     const type = Math.floor(Math.random() * 6);
     const isTrue = Math.random() > 0.5;
 
@@ -114,11 +114,11 @@ function generateTFStatements(count: number): TFStatement[] {
   return statements;
 }
 
-function generateMatchCards(pairCount: number): MatchCard[] {
-  const pool = shuffleArray(elements.slice(0, 36)).slice(0, pairCount);
+function generateMatchCards(pairCount: number, pool: number = 36): MatchCard[] {
+  const picked = shuffleArray(elements.slice(0, pool)).slice(0, pairCount);
   const cards: MatchCard[] = [];
   let id = 0;
-  for (const el of pool) {
+  for (const el of picked) {
     cards.push({ id: id++, text: el.symbol, elementNum: el.atomicNumber, flipped: false, matched: false });
     cards.push({ id: id++, text: el.name, elementNum: el.atomicNumber, flipped: false, matched: false });
   }
@@ -165,20 +165,20 @@ function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
   return picked;
 }
 
-function generateSymbolRounds(count: number): SymbolRound[] {
-  const pool = shuffleArray(elements.slice(0, 60)).slice(0, count);
-  return pool.map(el => {
+function generateSymbolRounds(count: number, pool: number = 60): SymbolRound[] {
+  const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
+  return picked.map(el => {
     const distractors = pickSimilarSymbols(el.symbol, 4); // 4 distractors + correct = 5 choices
     const choices = shuffleArray([el.symbol, ...distractors]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
 }
 
-function generateSnapRounds(count: number): SnapRound[] {
-  const pool = shuffleArray(elements.slice(0, 60));
+function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
+  const poolElements = shuffleArray(elements.slice(0, pool));
   const rounds: SnapRound[] = [];
-  for (let i = 0; i < count && i < pool.length; i++) {
-    const el = pool[i];
+  for (let i = 0; i < count && i < poolElements.length; i++) {
+    const el = poolElements[i];
     const catLabel = CATEGORY_LABELS[el.category] || el.category;
 
     // Helper: remove the element name from a string so clues don't give it away
@@ -298,6 +298,9 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setPhase('mode-select');
   };
 
+  // Shared pool size for content-neutral games: use the easier player's pool so both can compete
+  const sharedPool = () => Math.min(DIFFICULTY_CONFIG[player1.difficulty].elementPool, DIFFICULTY_CONFIG[player2.difficulty].elementPool);
+
   // --- Quiz Battle ---
   const startQuizBattle = useCallback(() => {
     setP1Questions(generateQuiz(player1.difficulty, rounds));
@@ -357,7 +360,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   }, [stopTfTimer]);
 
   const startTFBlitz = useCallback(() => {
-    setTfStatements(generateTFStatements(rounds * 2));
+    setTfStatements(generateTFStatements(rounds * 2, sharedPool()));
     setTfIndex(0);
     setTfTurn(1);
     setTfAnswered(null);
@@ -406,7 +409,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
   // --- Element Match ---
   const startElementMatch = useCallback(() => {
-    setMatchCards(generateMatchCards(rounds));
+    setMatchCards(generateMatchCards(rounds, sharedPool()));
     setMatchTurn(1);
     setMatchFirst(null);
     setMatchLocked(false);
@@ -459,7 +462,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
-    setSnapRounds(generateSnapRounds(rounds));
+    setSnapRounds(generateSnapRounds(rounds, sharedPool()));
     setSnapIndex(0);
     setSnapClueIdx(0);
     setSnapTurn(1);
@@ -527,7 +530,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
   // --- Symbol Pick ---
   const startSymbolPick = useCallback(() => {
-    setSymbolRounds(generateSymbolRounds(rounds * 2));
+    setSymbolRounds(generateSymbolRounds(rounds * 2, sharedPool()));
     setSymbolIndex(0);
     setSymbolTurn(1);
     setSymbolAnswered(null);
@@ -590,7 +593,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setRounds(3);
       setPhase('playing');
     } else if (mode === 'tf-blitz') {
-      setTfStatements(generateTFStatements(6));
+      setTfStatements(generateTFStatements(6, sharedPool()));
       setTfIndex(0);
       setTfTurn(1);
       setTfAnswered(null);
@@ -598,14 +601,14 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setRounds(3);
       setPhase('playing');
     } else if (mode === 'element-match') {
-      setMatchCards(generateMatchCards(4));
+      setMatchCards(generateMatchCards(4, sharedPool()));
       setMatchTurn(1);
       setMatchFirst(null);
       setMatchLocked(false);
       setRounds(4);
       setPhase('playing');
     } else if (mode === 'clue-duel') {
-      setSnapRounds(generateSnapRounds(5));
+      setSnapRounds(generateSnapRounds(5, sharedPool()));
       setSnapIndex(0);
       setSnapClueIdx(0);
       setSnapTurn(1);
@@ -614,7 +617,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setRounds(5);
       setPhase('playing');
     } else if (mode === 'symbol-pick') {
-      setSymbolRounds(generateSymbolRounds(5));
+      setSymbolRounds(generateSymbolRounds(5, sharedPool()));
       setSymbolIndex(0);
       setSymbolTurn(1);
       setSymbolAnswered(null);
@@ -768,7 +771,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
                   </button>
                 ))}
               </div>
-              {(gameMode === 'quiz-battle' || gameMode === 'championship') && (
+              {(
                 <div className="diff-select-mini">
                   {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
                     <button
