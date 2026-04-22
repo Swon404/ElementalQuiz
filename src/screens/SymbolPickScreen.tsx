@@ -24,45 +24,72 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
-  const all = Array.from(new Set(elements.map(e => e.symbol))).filter(s => s !== correctSymbol);
-  const cLower = correctSymbol.toLowerCase();
-  const first = cLower[0] ?? '';
-  const last = cLower[cLower.length - 1] ?? '';
-  const correctSet = new Set(cLower.split(''));
-
-  const scored = all.map(s => {
-    const sLower = s.toLowerCase();
-    let score = 0;
-    if (sLower.length === cLower.length) score += 6;
-    if (sLower[0] === first) score += 5;
-    if (sLower[sLower.length - 1] === last) score += 4;
-    let shared = 0;
-    for (const ch of sLower) if (correctSet.has(ch)) shared++;
-    score += shared * 2;
-    if (sLower.length === cLower.length) {
-      let diff = 0;
-      for (let i = 0; i < cLower.length; i++) if (sLower[i] !== cLower[i]) diff++;
-      if (diff === 1) score += 5;
-      if (diff === 2 && cLower.length >= 2 && [...sLower].sort().join('') === [...cLower].sort().join('')) score += 4;
+function pickSimilarSymbols(correctSymbol: string, elementName: string, count: number): string[] {
+  const firstU = correctSymbol[0].toUpperCase();
+  const firstL = firstU.toLowerCase();
+  // Letters from the element's name (unique, lowercase, excluding first letter)
+  const nameLetters: string[] = [];
+  const nameSeen = new Set<string>();
+  for (const ch of elementName.toLowerCase()) {
+    if (ch >= 'a' && ch <= 'z' && ch !== firstL && !nameSeen.has(ch)) {
+      nameSeen.add(ch);
+      nameLetters.push(ch);
     }
+  }
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(c => c !== firstL);
+
+  // Build candidates: fabricated 2-letter forms starting with correct first letter
+  const candidates = new Set<string>();
+  for (const l of nameLetters) candidates.add(firstU + l); // name-based
+  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l); // fill
+
+  // Also pull in real same-first-letter symbols (harder when they exist)
+  for (const s of elements.map(e => e.symbol)) {
+    if (s !== correctSymbol && s[0] === firstU) candidates.add(s);
+  }
+
+  // Sprinkle a few completely unrelated real symbols for noise if count is large
+  const unrelated = elements.map(e => e.symbol).filter(s => s[0] !== firstU && s !== correctSymbol);
+  const noise = shuffleArray(unrelated).slice(0, Math.max(0, Math.min(2, count - 3)));
+
+  candidates.delete(correctSymbol);
+
+  // Score: prefer name-letter fakes, then other 2-letter fakes starting same letter, then real same-first, then noise
+  const scored = Array.from(candidates).map(s => {
+    let score = 0;
+    if (s[0] === firstU) score += 5;
+    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 6;
+    if (s.length === correctSymbol.length) score += 2;
+    // shared letters with correct
+    const cSet = new Set(correctSymbol.toLowerCase());
+    for (const ch of s.toLowerCase()) if (cSet.has(ch)) score += 1;
     return { s, score, r: Math.random() };
   });
   scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-  const topN = Math.max(count + 2, Math.min(count * 2, scored.length));
-  const pool = scored.slice(0, topN).map(x => x.s);
+
+  const top = scored.slice(0, Math.max(count + 1, count * 2)).map(x => x.s);
   const picked: string[] = [];
   const used = new Set<string>();
-  for (const s of shuffleArray(pool)) {
-    if (!used.has(s)) { used.add(s); picked.push(s); if (picked.length >= count) break; }
+  // Guarantee at least half come from top-scored look-alikes
+  for (const s of shuffleArray(top)) {
+    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); if (picked.length >= count - noise.length) break; }
   }
-  return picked;
+  // Add noise at the end
+  for (const s of noise) {
+    if (!used.has(s) && s !== correctSymbol && picked.length < count) { used.add(s); picked.push(s); }
+  }
+  // Top-up if short
+  for (const s of shuffleArray(top)) {
+    if (picked.length >= count) break;
+    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); }
+  }
+  return picked.slice(0, count);
 }
 
 function generateRounds(count: number, pool: number, distractors: number): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const ds = pickSimilarSymbols(el.symbol, distractors);
+    const ds = pickSimilarSymbols(el.symbol, el.name, distractors);
     const choices = shuffleArray([el.symbol, ...ds]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });

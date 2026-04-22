@@ -139,49 +139,65 @@ type SymbolRound = {
   choices: string[];
 };
 
-/** Pick distractor symbols that look very similar to the correct one. */
-function pickSimilarSymbols(correctSymbol: string, count: number): string[] {
-  const allSymbols = Array.from(new Set(elements.map(e => e.symbol))).filter(s => s !== correctSymbol);
-  const cLower = correctSymbol.toLowerCase();
-  const first = cLower[0] ?? '';
-  const last = cLower[cLower.length - 1] ?? '';
-  const correctSet = new Set(cLower.split(''));
-
-  const scored = allSymbols.map(s => {
-    const sLower = s.toLowerCase();
-    let score = 0;
-    if (sLower.length === cLower.length) score += 6;
-    if (sLower[0] === first) score += 5;
-    if (sLower[sLower.length - 1] === last) score += 4;
-    // Shared letters
-    let shared = 0;
-    for (const ch of sLower) if (correctSet.has(ch)) shared++;
-    score += shared * 2;
-    // Same letters different order / off-by-one distance bonus
-    if (sLower.length === cLower.length) {
-      let diff = 0;
-      for (let i = 0; i < cLower.length; i++) if (sLower[i] !== cLower[i]) diff++;
-      if (diff === 1) score += 5;  // differs by exactly one character
-      if (diff === 2 && cLower.length >= 2 && [...sLower].sort().join('') === [...cLower].sort().join('')) score += 4; // anagram
+/** Pick distractor symbols that look very similar to the correct one.
+ *  Generates plausible fake 2-letter symbols using letters from the element's name,
+ *  plus real same-first-letter symbols and a splash of unrelated noise.
+ */
+function pickSimilarSymbols(correctSymbol: string, elementName: string, count: number): string[] {
+  const firstU = correctSymbol[0].toUpperCase();
+  const firstL = firstU.toLowerCase();
+  const nameLetters: string[] = [];
+  const nameSeen = new Set<string>();
+  for (const ch of elementName.toLowerCase()) {
+    if (ch >= 'a' && ch <= 'z' && ch !== firstL && !nameSeen.has(ch)) {
+      nameSeen.add(ch);
+      nameLetters.push(ch);
     }
+  }
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(c => c !== firstL);
+
+  const candidates = new Set<string>();
+  for (const l of nameLetters) candidates.add(firstU + l);
+  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l);
+  for (const s of elements.map(e => e.symbol)) {
+    if (s !== correctSymbol && s[0] === firstU) candidates.add(s);
+  }
+  candidates.delete(correctSymbol);
+
+  const unrelated = elements.map(e => e.symbol).filter(s => s[0] !== firstU && s !== correctSymbol);
+  const noise = shuffleArray(unrelated).slice(0, Math.max(0, Math.min(2, count - 3)));
+
+  const scored = Array.from(candidates).map(s => {
+    let score = 0;
+    if (s[0] === firstU) score += 5;
+    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 6;
+    if (s.length === correctSymbol.length) score += 2;
+    const cSet = new Set(correctSymbol.toLowerCase());
+    for (const ch of s.toLowerCase()) if (cSet.has(ch)) score += 1;
     return { s, score, r: Math.random() };
   });
   scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-  // Tight pool — only the most similar candidates
-  const topN = Math.max(count + 2, Math.min(count * 2, scored.length));
-  const pool = scored.slice(0, topN).map(x => x.s);
+
+  const top = scored.slice(0, Math.max(count + 1, count * 2)).map(x => x.s);
   const picked: string[] = [];
   const used = new Set<string>();
-  for (const s of shuffleArray(pool)) {
-    if (!used.has(s)) { used.add(s); picked.push(s); if (picked.length >= count) break; }
+  for (const s of shuffleArray(top)) {
+    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); if (picked.length >= count - noise.length) break; }
   }
-  return picked;
+  for (const s of noise) {
+    if (!used.has(s) && s !== correctSymbol && picked.length < count) { used.add(s); picked.push(s); }
+  }
+  for (const s of shuffleArray(top)) {
+    if (picked.length >= count) break;
+    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); }
+  }
+  return picked.slice(0, count);
 }
 
 function generateSymbolRounds(count: number, pool: number = 60): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, 5); // 5 distractors + correct = 6 choices
+    const distractors = pickSimilarSymbols(el.symbol, el.name, 5); // 5 distractors + correct = 6 choices
     const choices = shuffleArray([el.symbol, ...distractors]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
