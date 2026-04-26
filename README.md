@@ -6,14 +6,28 @@ A fun, interactive periodic table quiz game built for kids! Learn about all 118 
 
 ## Features
 
-### 🎮 Quiz Modes
-- **Quick Quiz** — Test your knowledge with randomised questions across all categories
+### 🎮 Single-Player Modes
+- **Quick Quiz** — Randomised mixed-category questions
 - **Deep Dive** — Pick any of the 118 elements and get quizzed specifically on that element
-- **2-Player** — Take turns on the same device and see who knows more elements
-- **Explorer** — Browse the full interactive periodic table and tap any element for details
+- **Atom Quiz** — Identify elements from a live atom model (protons/neutrons/electrons)
+- **Exotic Quiz** — Hard-mode questions on rare and synthetic elements
+- **Symbol Pick** — Pick the correct chemical symbol from look-alike distractors
+- **Element Order** — Drag elements into atomic-number order against the clock
+- **Memory Game** — Match element-name and symbol pairs (8/12/16 pairs)
+- **Element Lab** — Invent your own custom element and add it to your collection
+- **Explore** — Browse the full interactive periodic table and tap any element for details
+
+### 👥 Two-Player Modes
+Take turns on the same device with per-player names, avatars, and difficulty:
+- **Quiz Battle** — Alternating questions, highest score wins
+- **True/False Blitz** — Rapid-fire statement judging
+- **Element Match** — Pairs memory game (8/12/16 pairs)
+- **Clue Duel** — Turn-based elimination clues with ±1 scoring and opponent steal
+- **Symbol Pick** — Pick the correct symbol from name-letter-fabricated look-alikes
+- **Championship** — 5-game tournament across all of the above
 
 ### 🧠 Question Variety
-12 question categories with multiple generators each:
+12+ question categories with multiple generators each:
 - Symbol & name recognition
 - Atomic numbers & periodic table position
 - Element classification & groups
@@ -39,15 +53,16 @@ A kawaii-style atom character that guides you through the app:
 
 ### 📊 Progress System
 - **Element Points (EP)** earned from correct answers
-- **Rank progression** from Atom Apprentice to Element Emperor
+- **Rank progression** through Atom Explorer → Super Scientist → Element Emperor
 - **Element collection** — collect elements as you learn about them
 - **Player profiles** with stats tracking via localStorage
-- 3 difficulty levels: Easy, Medium, Hard
+- **3 difficulty levels** — `Explorer` (36 most-famous elements, simpler questions, second chance), `Scientist` (86 elements), `Professor` (all 118)
 
 ### 📱 PWA Support
 - Install as an app on any device
 - Works offline after first load
 - Responsive design for mobile and desktop
+- Hardened mobile touch handling (no red tap-highlight, focus-visible-only outlines)
 
 ## Getting Started
 
@@ -83,22 +98,33 @@ npm run preview
 ```
 src/
 ├── components/       # Reusable UI components
-│   ├── Elementor.tsx      # Mascot character (SVG)
-│   ├── ElementInfo.tsx    # Element detail panel
-│   ├── PeriodicTable.tsx  # Interactive periodic table
-│   └── QuizCard.tsx       # Question display & answers
+│   ├── AtomModel.tsx       # Animated atom (protons/neutrons/electrons)
+│   ├── CollectionTable.tsx # Periodic table view of collected elements
+│   ├── Elementor.tsx       # Mascot character (SVG)
+│   ├── ElementInfo.tsx     # Element detail panel
+│   ├── PeriodicTable.tsx   # Interactive periodic table
+│   └── QuizCard.tsx        # Question display & answers
 ├── data/
-│   └── elements.ts        # All 118 elements with facts
+│   ├── elements.ts         # All 118 elements with facts
+│   └── comparisonData.ts   # Real-world size/mass comparisons
 ├── engine/
 │   ├── questionGenerator.ts  # Question generation logic
 │   ├── scoring.ts            # EP, ranks & difficulty config
-│   └── storage.ts            # Profile & progress persistence
+│   ├── sounds.ts             # SFX
+│   ├── storage.ts            # Profile, progress & custom-element persistence
+│   └── tts.ts                # Optional text-to-speech
 ├── screens/
 │   ├── HomeScreen.tsx
 │   ├── IntroScreen.tsx
 │   ├── ProfileScreen.tsx
-│   ├── QuizScreen.tsx
-│   ├── TwoPlayerScreen.tsx
+│   ├── QuizScreen.tsx          # Quick + Deep Dive
+│   ├── AtomQuizScreen.tsx
+│   ├── ExoticQuizScreen.tsx
+│   ├── SymbolPickScreen.tsx
+│   ├── ElementOrderScreen.tsx
+│   ├── MemoryGameScreen.tsx
+│   ├── ElementLabScreen.tsx
+│   ├── TwoPlayerScreen.tsx     # All 2-player modes + Championship
 │   └── ExploreScreen.tsx
 ├── App.tsx
 ├── main.tsx
