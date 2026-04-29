@@ -1049,9 +1049,20 @@ body {
 .game-mode-btn.championship.selected { border-color: #f9ca24; box-shadow: 0 0 20px rgba(249,202,36,0.3); }
 .champ-info {
   text-align: center; font-size: 0.9rem; color: var(--text-secondary);
-  background: var(--card-bg); padding: 1rem; border-radius: var(--radius-sm);
+  background: var(--card-bg); padding: 0.75rem 1rem; border-radius: var(--radius-sm);
   border-left: 3px solid #f9ca24; margin: 0.5rem 0;
 }
+.champ-config {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  margin: 0.5rem 0; width: 100%;
+}
+.champ-game-row {
+  display: flex; align-items: center; gap: 10px;
+}
+.champ-game-label {
+  min-width: 155px; font-size: 0.85rem; color: var(--text-secondary); text-align: right;
+}
+.champ-game-btns { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .champ-between { padding: 1rem; animation: fadeIn 0.3s ease; }
 .champ-between-header { text-align: center; margin-bottom: 1.5rem; }

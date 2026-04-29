@@ -250,14 +250,14 @@ const CHAMP_LABELS: Record<string, string> = {
   'symbol-pick': '🔤 Symbol Pick',
 };
 
-type ChampSize = 'quick' | 'standard' | 'epic';
-// Per-game round/pair counts for each championship size.
-// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick.
-const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: 'Short bouts (2/2/6/3/3)',   counts: [2, 2, 6, 3, 3] },
-  standard: { label: 'Standard', desc: 'Balanced (3/3/8/5/5)',      counts: [3, 3, 8, 5, 5] },
-  epic:     { label: 'Epic',     desc: 'Marathon (5/5/12/8/8)',     counts: [5, 5, 12, 8, 8] },
-};
+// Per-game count options — order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick
+const CHAMP_GAME_OPTIONS: [number[], number[], number[], number[], number[]] = [
+  [2, 3, 5],      // quiz-battle rounds
+  [2, 3, 5],      // tf-blitz rounds
+  [4, 6, 8, 12],  // element-match pairs
+  [3, 5, 8],      // clue-duel rounds
+  [3, 5, 8],      // symbol-pick rounds
+];
 
 export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenProps) {
   const [phase, setPhase] = useState<Phase>('mode-select');
@@ -318,7 +318,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
   const [champScores, setChampScores] = useState<{ p1: number; p2: number }[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
-  const [champSize, setChampSize] = useState<ChampSize>('standard');
+  const [champCounts, setChampCounts] = useState<[number, number, number, number, number]>([3, 3, 8, 5, 5]);
 
   // Save names whenever they change
   useEffect(() => {
@@ -620,7 +620,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setGameMode(mode);
     setP1Score(0);
     setP2Score(0);
-    const counts = CHAMP_SIZE_CONFIG[champSize].counts;
+    const counts = champCounts;
     if (mode === 'quiz-battle') {
       const n = counts[0];
       setP1Questions(generateQuiz(player1.difficulty, n));
@@ -670,7 +670,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setPhase('playing');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player1.difficulty, player2.difficulty, champSize]);
+  }, [player1.difficulty, player2.difficulty, champCounts]);
 
   const finishCurrentGame = () => {
     if (isChampionship) {
@@ -848,27 +848,25 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         )}
         {gameMode === 'championship' && (
-          <>
-            <div className="rounds-select">
-              <label>Size: </label>
-              {(Object.keys(CHAMP_SIZE_CONFIG) as ChampSize[]).map(s => (
-                <button
-                  key={s}
-                  className={`round-btn ${champSize === s ? 'selected' : ''}`}
-                  onClick={() => setChampSize(s)}
-                  title={CHAMP_SIZE_CONFIG[s].desc}
-                >
-                  {CHAMP_SIZE_CONFIG[s].label}
-                </button>
-              ))}
-            </div>
-            <p className="champ-info">
-              All 5 games in sequence — {CHAMP_SIZE_CONFIG[champSize].desc.toLowerCase()}.
-              Quiz Battle ({CHAMP_SIZE_CONFIG[champSize].counts[0]}), T/F Blitz ({CHAMP_SIZE_CONFIG[champSize].counts[1]}),
-              Element Match ({CHAMP_SIZE_CONFIG[champSize].counts[2]} pairs), Clue Duel ({CHAMP_SIZE_CONFIG[champSize].counts[3]}),
-              Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[4]}). Running score decides the champion!
-            </p>
-          </>
+          <div className="champ-config">
+            {CHAMP_GAMES.map((gm, i) => (
+              <div key={gm} className="champ-game-row">
+                <span className="champ-game-label">{CHAMP_LABELS[gm]}</span>
+                <div className="champ-game-btns">
+                  {CHAMP_GAME_OPTIONS[i].map(n => (
+                    <button
+                      key={n}
+                      className={`round-btn ${champCounts[i] === n ? 'selected' : ''}`}
+                      onClick={() => setChampCounts(prev => { const c = [...prev] as [number, number, number, number, number]; c[i] = n; return c; })}
+                    >
+                      {n}{i === 2 ? 'p' : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <p className="champ-info">All 5 games in sequence · running score decides the champion!</p>
+          </div>
         )}
 
         <button className="start-btn" onClick={startGame}>Start!</button>
