@@ -282,7 +282,6 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [qIndex, setQIndex] = useState(0);
   const [p1Streak, setP1Streak] = useState(0);
   const [p2Streak, setP2Streak] = useState(0);
-  const [showPassDevice, setShowPassDevice] = useState(false);
 
   // True or False Blitz state
   const [tfStatements, setTfStatements] = useState<TFStatement[]>([]);
@@ -348,25 +347,27 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setCurrentRound(1);
     setQIndex(0);
     resetScores();
-    setShowPassDevice(false);
     setPhase('playing');
   }, [player1.difficulty, player2.difficulty, rounds]);
 
   const handleQuizAnswer = useCallback((correct: boolean, _points: number) => {
     if (currentPlayer === 1) {
       if (correct) { setP1Score(c => c + 1); setP1Streak(s => s + 1); } else { setP1Streak(0); }
-      setShowPassDevice(true);
+      // Switch directly to player 2 — no pass-device screen
+      setCurrentPlayer(2);
     } else {
+      const newP2 = correct ? p2Score + 1 : p2Score;
       if (correct) { setP2Score(c => c + 1); setP2Streak(s => s + 1); } else { setP2Streak(0); }
       if (currentRound >= rounds) {
-        finishCurrentGame();
+        // Pass computed scores so championship captures the correct final values
+        finishCurrentGame(p1Score, newP2);
       } else {
         setCurrentRound(r => r + 1);
         setCurrentPlayer(1);
         setQIndex(i => i + 1);
       }
     }
-  }, [currentPlayer, currentRound, rounds]);
+  }, [currentPlayer, currentRound, rounds, p1Score, p2Score]);
 
   // --- True or False Blitz ---
   const TF_SECONDS = 20;
@@ -477,13 +478,16 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           c.elementNum === first.elementNum ? { ...c, matched: true, matchedBy: matchTurn as 1 | 2 } : c
         );
         setMatchCards(matched);
+        // Capture final scores before state update so the setTimeout closure isn't stale
+        const newMatchP1 = matchTurn === 1 ? p1Score + 1 : p1Score;
+        const newMatchP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
         if (matchTurn === 1) setP1Score(s => s + 1);
         else setP2Score(s => s + 1);
         setMatchFirst(null);
         setMatchLocked(false);
 
         if (matched.every(c => c.matched)) {
-          setTimeout(() => finishCurrentGame(), 600);
+          setTimeout(() => finishCurrentGame(newMatchP1, newMatchP2), 600);
         }
       } else {
         playWrong();
@@ -630,7 +634,6 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setQIndex(0);
       setP1Streak(0);
       setP2Streak(0);
-      setShowPassDevice(false);
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'tf-blitz') {
@@ -672,10 +675,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player1.difficulty, player2.difficulty, champSize]);
 
-  const finishCurrentGame = () => {
+  const finishCurrentGame = (finalP1: number = p1Score, finalP2: number = p2Score) => {
     if (isChampionship) {
       // Save this game's scores and show interstitial
-      setChampScores(prev => [...prev, { p1: p1Score, p2: p2Score }]);
+      setChampScores(prev => [...prev, { p1: finalP1, p2: finalP2 }]);
       if (champStep + 1 >= CHAMP_GAMES.length) {
         setPhase('champ-result');
       } else {
@@ -878,18 +881,6 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
   // --- PLAYING: Quiz Battle ---
   if (phase === 'playing' && gameMode === 'quiz-battle') {
-    if (showPassDevice) {
-      return (
-        <div className="pass-device">
-          <Elementor expression="thinking" message={`Great job! Now pass the device to ${player2.name}!`} />
-          <div className="pass-info">
-            <p>{player2.avatar} {player2.name}'s turn — Round {currentRound} of {rounds}</p>
-          </div>
-          <button className="start-btn" onClick={() => { setShowPassDevice(false); setCurrentPlayer(2); }}>I'm ready!</button>
-        </div>
-      );
-    }
-
     const cp = currentPlayer === 1 ? player1 : player2;
     const questions = currentPlayer === 1 ? p1Questions : p2Questions;
     const streak = currentPlayer === 1 ? p1Streak : p2Streak;
@@ -903,8 +894,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="player-indicator">
             <span className="player-avatar">{cp.avatar}</span>
-            <span className="player-name">{cp.name}</span>
-            <span className="player-diff">({DIFFICULTY_CONFIG[cp.difficulty].label})</span>
+            <span className="player-name">{cp.name}'s Turn</span>
+            <span className="player-diff">Round {currentRound}/{rounds}</span>
           </div>
           <div className="two-player-scores">
             <span>{player1.avatar} {p1Score}✓</span>
