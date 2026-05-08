@@ -60,6 +60,72 @@ function pickRandom<T>(arr: T[], count: number, exclude?: T[]): T[] {
   return pool.slice(0, count);
 }
 
+function normalizeForComparison(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function allFacts(el: Element): string[] {
+  const facts = [
+    ...(el.additionalFacts ?? []),
+    el.funFact,
+  ]
+    .map(f => f.trim())
+    .filter(f => f.length > 0);
+  return Array.from(new Set(facts));
+}
+
+function pickExtraFacts(el: Element, count: number, avoidText: string): string[] {
+  const avoid = normalizeForComparison(avoidText);
+  const candidates = allFacts(el).filter(f => {
+    const normalized = normalizeForComparison(f);
+    return normalized.length > 0 && !avoid.includes(normalized);
+  });
+  return shuffleArray(candidates).slice(0, count);
+}
+
+function explanationContext(question: Question): string | null {
+  switch (question.category) {
+    case 'uses':
+      return 'This question asks you to match a real-world job or task to the element whose properties make that use possible.';
+    case 'compounds':
+      return 'This type of question checks whether you can spot an element inside a chemical formula by its symbol.';
+    case 'obtained-from':
+      return 'This asks you to link an extraction method or natural source to the correct element.';
+    case 'which-is-bigger':
+      return 'For comparison questions, focus on the exact property named in the prompt and compare only that property.';
+    case 'fun-fact':
+      return 'This is a clue-style question, so the fact should uniquely point to one element.';
+    default:
+      return null;
+  }
+}
+
+function enrichQuestion(question: Question): Question {
+  const baseExplanation = question.explanation.trim();
+  const context = explanationContext(question);
+  const extraFacts = pickExtraFacts(question.element, 2, baseExplanation);
+  const parts = [baseExplanation];
+
+  if (context && !normalizeForComparison(baseExplanation).includes(normalizeForComparison(context))) {
+    parts.push(context);
+  }
+  parts.push(...extraFacts);
+
+  return {
+    ...question,
+    explanation: parts.join(' '),
+  };
+}
+
+function questionContainsAnswerText(question: Question): boolean {
+  const answer = question.choices[question.correctIndex];
+  if (!answer) return false;
+  const normalizedAnswer = normalizeForComparison(answer);
+  if (normalizedAnswer.length < 3) return false;
+  const normalizedQuestion = normalizeForComparison(question.questionText);
+  return normalizedQuestion.includes(normalizedAnswer);
+}
+
 /** Pick N unique distractor *values* from a pool, excluding ones matching correctValue */
 function pickUniqueDistractors(pool: Element[], count: number, mapper: (e: Element) => string, correctValue: string, excludeElement?: Element): string[] {
   const used = new Set<string>([correctValue]);
@@ -146,7 +212,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `an-1-${el.atomicNumber}`,
         category: 'atomic-number',
-        questionText: `What is the atomic number of ${el.name} (${el.symbol})?`,
+        questionText: `What is the atomic number of ${el.name}?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
@@ -179,7 +245,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `gc-1-${el.atomicNumber}`,
         category: 'group-classification',
-        questionText: `What type of element is ${el.name} (${el.symbol})?`,
+        questionText: `What type of element is ${el.name}?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
@@ -227,7 +293,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `di-1-${el.atomicNumber}`,
         category: 'discovery',
-        questionText: `Who discovered ${el.name} (${el.symbol})?`,
+        questionText: `Who discovered ${el.name}?`,
         choices,
         correctIndex: choices.indexOf(el.discoveredBy),
         element: el,
@@ -250,7 +316,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `di-2-${el.atomicNumber}`,
         category: 'discovery',
-        questionText: `In what year was ${el.name} (${el.symbol}) discovered?`,
+        questionText: `In what year was ${el.name} discovered?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
@@ -267,7 +333,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `st-1-${el.atomicNumber}`,
         category: 'state',
-        questionText: `What state is ${el.name} (${el.symbol}) at room temperature?`,
+        questionText: `What state is ${el.name} at room temperature?`,
         choices: choices.map(s => s.charAt(0).toUpperCase() + s.slice(1)),
         correctIndex: choices.indexOf(el.stateAtRoomTemp),
         element: el,
@@ -284,7 +350,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `ra-1-${el.atomicNumber}`,
         category: 'radioactivity',
-        questionText: `Is ${el.name} (${el.symbol}) stable or radioactive?`,
+        questionText: `Is ${el.name} stable or radioactive?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
@@ -310,7 +376,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `ra-2-${el.atomicNumber}`,
         category: 'radioactivity',
-        questionText: `What is the half-life of ${el.name} (${el.symbol})?`,
+        questionText: `What is the half-life of ${el.name}?`,
         choices,
         correctIndex: choices.indexOf(el.halfLife),
         element: el,
@@ -334,7 +400,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `is-1-${el.atomicNumber}`,
         category: 'isotopes',
-        questionText: `How many stable isotopes does ${el.name} (${el.symbol}) have?`,
+        questionText: `How many stable isotopes does ${el.name} have?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
@@ -561,7 +627,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `us-2-${el.atomicNumber}`,
         category: 'uses',
-        questionText: `What is ${el.name} (${el.symbol}) used for?`,
+        questionText: `What is ${el.name} used for?`,
         choices,
         correctIndex: choices.indexOf(correctUse),
         element: el,
@@ -835,7 +901,9 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
     const element = pool[Math.floor(Math.random() * pool.length)];
     const question = gen(element, pool, config.choiceCount);
     if (question && (!usedIds || !usedIds.has(question.id))) {
-      return question;
+      const enriched = enrichQuestion(question);
+      if (questionContainsAnswerText(enriched)) continue;
+      return enriched;
     }
   }
 
@@ -843,7 +911,7 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
   const el = pool[Math.floor(Math.random() * pool.length)];
   const distractors = pickRandom(pool, config.choiceCount - 1, [el]).map(e => e.symbol);
   const choices = shuffleArray([el.symbol, ...distractors]);
-  return {
+  return enrichQuestion({
     id: `fallback-${Date.now()}`,
     category: 'symbol-name',
     questionText: `What is the chemical symbol for ${el.name}?`,
@@ -852,7 +920,7 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
     element: el,
     explanation: `The symbol for ${el.name} is ${el.symbol}. ${randomFact(el)}`,
     hint: `It starts with "${el.symbol[0]}".`,
-  };
+  });
 }
 
 export function generateQuiz(difficulty: Difficulty, count: number): Question[] {
@@ -925,8 +993,10 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     if (!gen) continue;
     const question = gen(element, pool, config.choiceCount);
     if (question && !usedIds.has(question.id)) {
-      usedIds.add(question.id);
-      questions.push(question);
+      const enriched = enrichQuestion(question);
+      if (questionContainsAnswerText(enriched)) continue;
+      usedIds.add(enriched.id);
+      questions.push(enriched);
     }
   }
 
@@ -939,8 +1009,10 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     if (!gen) continue;
     const question = gen(element, pool, config.choiceCount);
     if (question && !usedIds.has(question.id)) {
-      usedIds.add(question.id);
-      questions.push(question);
+      const enriched = enrichQuestion(question);
+      if (questionContainsAnswerText(enriched)) continue;
+      usedIds.add(enriched.id);
+      questions.push(enriched);
     }
   }
 
@@ -962,8 +1034,10 @@ export function generateComparisonQuiz(difficulty: Difficulty, count: number): Q
     const element = pool[Math.floor(Math.random() * pool.length)];
     const question = gen(element, pool, config.choiceCount);
     if (question && !usedIds.has(question.id)) {
-      usedIds.add(question.id);
-      questions.push(question);
+      const enriched = enrichQuestion(question);
+      if (questionContainsAnswerText(enriched)) continue;
+      usedIds.add(enriched.id);
+      questions.push(enriched);
     }
   }
 
