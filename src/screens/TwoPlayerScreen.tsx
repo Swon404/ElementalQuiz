@@ -6,13 +6,14 @@ import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
 import { loadTwoPlayerNames, saveTwoPlayerNames } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
+import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
 
 interface TwoPlayerScreenProps {
   onComplete: () => void;
   onBack: () => void;
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'championship';
+type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'championship';
 type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
@@ -241,22 +242,23 @@ function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
 }
 
 // --- Championship config ---
-const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'clue-duel', 'symbol-pick'];
+const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'clue-duel', 'symbol-pick', 'atom-quiz'];
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
   'element-match': '🃏 Element Match',
   'clue-duel': '🕵️ Clue Duel',
   'symbol-pick': '🔤 Symbol Pick',
+  'atom-quiz': '⚛️ Atom Quiz',
 };
 
 type ChampSize = 'quick' | 'standard' | 'epic';
-// Per-game round/pair counts for each championship size.
-// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick.
-const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: 'Even rounds (3 each game)',  counts: [3, 3, 3, 3, 3] },
-  standard: { label: 'Standard', desc: 'Even rounds (5 each game)',  counts: [5, 5, 5, 5, 5] },
-  epic:     { label: 'Epic',     desc: 'Even rounds (8 each game)',  counts: [8, 8, 8, 8, 8] },
+// Per-game round counts for each championship size.
+// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick, atom-quiz.
+const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
+  quick:    { label: 'Quick',    desc: '3 rounds each, 8 pairs',   counts: [3, 3, 8, 3, 3, 5] },
+  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 5, 5, 8] },
+  epic:     { label: 'Epic',     desc: '8 rounds each, 16 pairs',  counts: [8, 8, 16, 8, 8, 12] },
 };
 
 type ChampGameScore = {
@@ -266,14 +268,7 @@ type ChampGameScore = {
   p2Champ: number;
 };
 
-const CHAMP_WIN_POINTS = 3;
-const CHAMP_DRAW_POINTS = 1;
 
-function calculateChampionshipPoints(p1: number, p2: number): { p1: number; p2: number } {
-  if (p1 > p2) return { p1: CHAMP_WIN_POINTS, p2: 0 };
-  if (p2 > p1) return { p1: 0, p2: CHAMP_WIN_POINTS };
-  return { p1: CHAMP_DRAW_POINTS, p2: CHAMP_DRAW_POINTS };
-}
 
 export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenProps) {
   const [phase, setPhase] = useState<Phase>('mode-select');
@@ -328,6 +323,12 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [symbolIndex, setSymbolIndex] = useState(0);
   const [symbolTurn, setSymbolTurn] = useState<1 | 2>(1);
   const [symbolAnswered, setSymbolAnswered] = useState<number | null>(null);
+
+  // Atom Quiz state
+  const [atomQuestions, setAtomQuestions] = useState<AtomQuestion[]>([]);
+  const [atomIndex, setAtomIndex] = useState(0);
+  const [atomTurn, setAtomTurn] = useState<1 | 2>(1);
+  const [atomAnswered, setAtomAnswered] = useState<number | null>(null);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
@@ -628,6 +629,32 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     }
   };
 
+  // --- Atom Quiz ---
+  const handleAtomAnswer = (idx: number) => {
+    if (atomAnswered !== null) return;
+    const q = atomQuestions[atomIndex];
+    const correct = idx === q.correctIndex;
+    setAtomAnswered(idx);
+    if (correct) {
+      playCorrect();
+      if (atomTurn === 1) setP1Score(s => s + 1);
+      else setP2Score(s => s + 1);
+    } else {
+      playWrong();
+    }
+  };
+
+  const nextAtomRound = () => {
+    const nextIdx = atomIndex + 1;
+    if (nextIdx >= atomQuestions.length) {
+      finishCurrentGame();
+    } else {
+      setAtomIndex(nextIdx);
+      setAtomTurn(t => (t === 1 ? 2 : 1));
+      setAtomAnswered(null);
+    }
+  };
+
   // --- Championship orchestration ---
   const startChampionship = useCallback(() => {
     setIsChampionship(true);
@@ -693,6 +720,14 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setSymbolAnswered(null);
       setRounds(n);
       setPhase('playing');
+    } else if (mode === 'atom-quiz') {
+      const n = counts[5];
+      setAtomQuestions(generateAtomQuestions(n));
+      setAtomIndex(0);
+      setAtomTurn(1);
+      setAtomAnswered(null);
+      setRounds(n);
+      setPhase('playing');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player1.difficulty, player2.difficulty, champSize]);
@@ -702,13 +737,12 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setP2Score(finalP2);
 
     if (isChampionship) {
-      const champPts = calculateChampionshipPoints(finalP1, finalP2);
-      // Save this game's scores and show interstitial
+      // Save this game's raw scores — they carry over directly as championship points
       setChampScores(prev => [...prev, {
         p1Raw: finalP1,
         p2Raw: finalP2,
-        p1Champ: champPts.p1,
-        p2Champ: champPts.p2,
+        p1Champ: finalP1,
+        p2Champ: finalP2,
       }]);
       if (champStep + 1 >= CHAMP_GAMES.length) {
         setPhase('champ-result');
@@ -764,7 +798,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           >
             <span className="gm-icon">🏆</span>
             <span className="gm-name">Championship</span>
-            <span className="gm-desc">Play all 5 games - each game has equal championship weight!</span>
+            <span className="gm-desc">Play all 6 games — highest combined score wins!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
@@ -897,10 +931,11 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
               ))}
             </div>
             <p className="champ-info">
-              All 5 games in sequence — {CHAMP_SIZE_CONFIG[champSize].desc.toLowerCase()}.
+              All 6 games in sequence — {CHAMP_SIZE_CONFIG[champSize].desc.toLowerCase()}.
               Quiz Battle ({CHAMP_SIZE_CONFIG[champSize].counts[0]}), T/F Blitz ({CHAMP_SIZE_CONFIG[champSize].counts[1]}),
               Element Match ({CHAMP_SIZE_CONFIG[champSize].counts[2]} pairs), Clue Duel ({CHAMP_SIZE_CONFIG[champSize].counts[3]}),
-              Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[4]}). Win = {CHAMP_WIN_POINTS} points, draw = {CHAMP_DRAW_POINTS} each.
+              Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[4]}), Atom Quiz ({CHAMP_SIZE_CONFIG[champSize].counts[5]}).
+              Scores from all games add up — highest total wins!
             </p>
           </>
         )}
@@ -1175,6 +1210,56 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     );
   }
 
+  // --- PLAYING: Atom Quiz ---
+  if (phase === 'playing' && gameMode === 'atom-quiz' && atomQuestions.length > 0) {
+    const q = atomQuestions[atomIndex];
+    const cp = atomTurn === 1 ? player1 : player2;
+    return (
+      <div className="snap-playing">
+        {quitOverlay}
+        <div className="snap-header">
+          <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
+          <span className="snap-round">⚛️ {atomIndex + 1}/{atomQuestions.length}</span>
+          <div className="snap-scores">
+            <span>{player1.avatar} {p1Score}</span>
+            <span>vs</span>
+            <span>{p2Score} {player2.avatar}</span>
+          </div>
+        </div>
+        <p className="snap-buzzer-name">{cp.avatar} {cp.name}'s turn</p>
+        {q.illustration && <div style={{ textAlign: 'center', fontSize: '2.5rem', margin: '0.25rem 0' }}>{q.illustration}</div>}
+        <h2 style={{ textAlign: 'center', margin: '0.5rem 1rem 1rem', fontSize: '1.25rem', fontWeight: 600 }}>{q.questionText}</h2>
+        <div className="snap-choices">
+          {q.choices.map((ch, i) => {
+            const answered = atomAnswered !== null;
+            const isChosen = atomAnswered === i;
+            const isRight = i === q.correctIndex;
+            const cls = !answered ? 'snap-choice'
+              : isRight ? 'snap-choice correct'
+              : isChosen ? 'snap-choice wrong'
+              : 'snap-choice snap-choice-locked';
+            return (
+              <button key={i} className={cls} disabled={answered} onClick={() => handleAtomAnswer(i)}>
+                {ch}
+              </button>
+            );
+          })}
+        </div>
+        {atomAnswered !== null && (
+          <div className="snap-result-feedback">
+            {atomAnswered === q.correctIndex
+              ? <p className="snap-verdict correct">🎉 Correct! +1 to {cp.avatar} {cp.name}!</p>
+              : <p className="snap-verdict wrong">😬 Nope! {q.explanation}</p>}
+            {atomAnswered === q.correctIndex && <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 1rem 0.5rem' }}>{q.explanation}</p>}
+            <button className="start-btn" onClick={nextAtomRound}>
+              {atomIndex + 1 >= atomQuestions.length ? 'See Results' : 'Next →'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // --- CHAMPIONSHIP: Between-games interstitial ---
   if (phase === 'champ-between') {
     const justFinished = CHAMP_GAMES[champStep];
@@ -1212,7 +1297,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <span>{player1.avatar} {player1.name}: <strong>{totalP1}</strong></span>
             <span>{player2.avatar} {player2.name}: <strong>{totalP2}</strong></span>
           </div>
-          <p>Scoring: win = {CHAMP_WIN_POINTS} points, draw = {CHAMP_DRAW_POINTS} each.</p>
+          <p>Total points are the sum of all scores across all games.</p>
         </div>
 
         <button className="start-btn" onClick={nextChampGame}>
@@ -1252,27 +1337,27 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <thead>
               <tr>
                 <th>Game</th>
-                <th>{player1.avatar} {player1.name} (raw/champ)</th>
-                <th>{player2.avatar} {player2.name} (raw/champ)</th>
+                <th>{player1.avatar} {player1.name}</th>
+                <th>{player2.avatar} {player2.name}</th>
               </tr>
             </thead>
             <tbody>
               {CHAMP_GAMES.map((g, i) => (
                 <tr key={g} className={allScores[i]?.p1Raw > allScores[i]?.p2Raw ? 'p1-won' : allScores[i]?.p2Raw > allScores[i]?.p1Raw ? 'p2-won' : ''}>
                   <td>{CHAMP_LABELS[g]}</td>
-                  <td>{allScores[i] ? `${allScores[i].p1Raw}/${allScores[i].p1Champ}` : '-'}</td>
-                  <td>{allScores[i] ? `${allScores[i].p2Raw}/${allScores[i].p2Champ}` : '-'}</td>
+                  <td>{allScores[i] ? allScores[i].p1Raw : '-'}</td>
+                  <td>{allScores[i] ? allScores[i].p2Raw : '-'}</td>
                 </tr>
               ))}
               <tr className="champ-total-row">
                 <td><strong>Total</strong></td>
-                <td><strong>{rawTotalP1}/{totalP1}</strong></td>
-                <td><strong>{rawTotalP2}/{totalP2}</strong></td>
+                <td><strong>{rawTotalP1}</strong></td>
+                <td><strong>{rawTotalP2}</strong></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p>Champion is decided by championship points first (win = {CHAMP_WIN_POINTS}, draw = {CHAMP_DRAW_POINTS}); raw score breaks ties.</p>
+        <p>The champion has the highest combined score across all 5 games.</p>
 
         <div className="result-actions">
           <button className="start-btn" onClick={() => { setIsChampionship(false); startChampionship(); }}>Play Again!</button>

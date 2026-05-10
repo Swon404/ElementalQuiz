@@ -9,7 +9,7 @@ interface AtomQuizScreenProps {
 
 type Phase = 'setup' | 'playing' | 'result';
 
-type AtomQuestion = {
+export type AtomQuestion = {
   questionText: string;
   choices: string[];
   correctIndex: number;
@@ -266,7 +266,7 @@ const GENERAL_QUESTIONS: QFactory[] = [
   },
 ];
 
-function generateAtomQuestions(count: number): AtomQuestion[] {
+export function generateAtomQuestions(count: number): AtomQuestion[] {
   const pool = shuffleArray(GENERAL_QUESTIONS);
   return pool.slice(0, Math.min(count, pool.length)).map(fn => fn());
 }

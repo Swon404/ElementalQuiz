@@ -83,33 +83,10 @@ function pickExtraFacts(el: Element, count: number, avoidText: string): string[]
   return shuffleArray(candidates).slice(0, count);
 }
 
-function explanationContext(question: Question): string | null {
-  switch (question.category) {
-    case 'uses':
-      return 'This question asks you to match a real-world job or task to the element whose properties make that use possible.';
-    case 'compounds':
-      return 'This type of question checks whether you can spot an element inside a chemical formula by its symbol.';
-    case 'obtained-from':
-      return 'This asks you to link an extraction method or natural source to the correct element.';
-    case 'which-is-bigger':
-      return 'For comparison questions, focus on the exact property named in the prompt and compare only that property.';
-    case 'fun-fact':
-      return 'This is a clue-style question, so the fact should uniquely point to one element.';
-    default:
-      return null;
-  }
-}
-
 function enrichQuestion(question: Question): Question {
   const baseExplanation = question.explanation.trim();
-  const context = explanationContext(question);
   const extraFacts = pickExtraFacts(question.element, 2, baseExplanation);
-  const parts = [baseExplanation];
-
-  if (context && !normalizeForComparison(baseExplanation).includes(normalizeForComparison(context))) {
-    parts.push(context);
-  }
-  parts.push(...extraFacts);
+  const parts = [baseExplanation, ...extraFacts];
 
   return {
     ...question,
@@ -303,11 +280,16 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     },
     (el, pool, n) => {
       if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
-      const correct = String(el.discoveryYear);
+      const centuryNum = Math.ceil(el.discoveryYear / 100);
+      const ordinal = (c: number) => {
+        const s = c === 1 ? 'st' : c === 2 ? 'nd' : c === 3 ? 'rd' : 'th';
+        return `${c}${s} century`;
+      };
+      const correct = ordinal(centuryNum);
       const distractors = pickUniqueDistractors(
         pool.filter(e => e.discoveryYear !== null),
         n - 1,
-        e => String(e.discoveryYear),
+        e => ordinal(Math.ceil(e.discoveryYear! / 100)),
         correct,
         el
       );
@@ -316,11 +298,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `di-2-${el.atomicNumber}`,
         category: 'discovery',
-        questionText: `In what year was ${el.name} discovered?`,
+        questionText: `In which century was ${el.name} discovered?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} was discovered in ${el.discoveryYear} by ${el.discoveredBy} in ${el.discoveryCountry}. ${randomFact(el)}`,
+        explanation: `${el.name} was discovered in the ${correct} (${el.discoveryYear}) by ${el.discoveredBy} in ${el.discoveryCountry}. ${randomFact(el)}`,
         hint: `It was discovered by ${el.discoveredBy}.`,
       };
     },
