@@ -6,6 +6,7 @@ import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
 import { loadTwoPlayerNames, saveTwoPlayerNames } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
+import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
 
 interface TwoPlayerScreenProps {
@@ -279,7 +280,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   // Load saved names
   const saved = loadTwoPlayerNames();
   const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: 'explorer', avatar: saved.avatar1 });
-  const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: 'scientist', avatar: saved.avatar2 });
+  const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: 'explorer', avatar: saved.avatar2 });
 
   // Shared scores
   const [p1Score, setP1Score] = useState(0);
@@ -767,6 +768,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     else if (gameMode === 'element-match') startElementMatch();
     else if (gameMode === 'clue-duel') startElementSnap();
     else if (gameMode === 'symbol-pick') startSymbolPick();
+    else if (gameMode === 'atom-quiz') {
+      setAtomQuestions(generateAtomQuestions(rounds));
+      setAtomIndex(0);
+      setAtomTurn(1);
+      setAtomAnswered(null);
+      setPhase('playing');
+    }
     else if (gameMode === 'championship') startChampionship();
   };
 
@@ -794,7 +802,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         <div className="game-mode-grid">
           <button
             className={`game-mode-btn championship ${gameMode === 'championship' ? 'selected' : ''}`}
-            onClick={() => setGameMode('championship')}
+            onClick={() => { setGameMode('championship'); setPhase('setup'); }}
           >
             <span className="gm-icon">🏆</span>
             <span className="gm-name">Championship</span>
@@ -802,7 +810,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
-            onClick={() => setGameMode('quiz-battle')}
+            onClick={() => { setGameMode('quiz-battle'); setPhase('setup'); }}
           >
             <span className="gm-icon">⚔️</span>
             <span className="gm-name">Quiz Battle</span>
@@ -810,7 +818,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'tf-blitz' ? 'selected' : ''}`}
-            onClick={() => setGameMode('tf-blitz')}
+            onClick={() => { setGameMode('tf-blitz'); setPhase('setup'); }}
           >
             <span className="gm-icon">✅</span>
             <span className="gm-name">True or False Blitz</span>
@@ -818,7 +826,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'element-match' ? 'selected' : ''}`}
-            onClick={() => setGameMode('element-match')}
+            onClick={() => { setGameMode('element-match'); setPhase('setup'); }}
           >
             <span className="gm-icon">🃏</span>
             <span className="gm-name">Element Match</span>
@@ -826,7 +834,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
-            onClick={() => setGameMode('clue-duel')}
+            onClick={() => { setGameMode('clue-duel'); setPhase('setup'); }}
           >
             <span className="gm-icon">🕵️</span>
             <span className="gm-name">Clue Duel</span>
@@ -834,15 +842,21 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'symbol-pick' ? 'selected' : ''}`}
-            onClick={() => setGameMode('symbol-pick')}
+            onClick={() => { setGameMode('symbol-pick'); setPhase('setup'); }}
           >
             <span className="gm-icon">🔤</span>
             <span className="gm-name">Symbol Pick</span>
             <span className="gm-desc">Pick the correct symbol from look-alikes!</span>
           </button>
+          <button
+            className={`game-mode-btn ${gameMode === 'atom-quiz' ? 'selected' : ''}`}
+            onClick={() => { setGameMode('atom-quiz'); setPhase('setup'); }}
+          >
+            <span className="gm-icon">⚛️</span>
+            <span className="gm-name">Atom Quiz</span>
+            <span className="gm-desc">Take turns answering atomic structure questions!</span>
+          </button>
         </div>
-
-        <button className="start-btn" onClick={() => setPhase('setup')}>Next →</button>
       </div>
     );
   }
@@ -858,6 +872,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           {gameMode === 'element-match' && '🃏 Element Match'}
           {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
           {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
+          {gameMode === 'atom-quiz' && '⚛️ Atom Quiz'}
           {gameMode === 'championship' && '🏆 Championship'}
         </h2>
         <Elementor expression="greeting" message="Set up your players!" />
@@ -884,19 +899,17 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
                   </button>
                 ))}
               </div>
-              {(
-                <div className="diff-select-mini">
-                  {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
-                    <button
-                      key={d}
-                      className={`diff-mini-btn ${p.difficulty === d ? 'selected' : ''}`}
-                      onClick={() => setP({ ...p, difficulty: d })}
-                    >
-                      {DIFFICULTY_CONFIG[d].label}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="diff-select-mini">
+                {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
+                  <button
+                    key={d}
+                    className={`diff-mini-btn ${p.difficulty === d ? 'selected' : ''}`}
+                    onClick={() => setP({ ...p, difficulty: d })}
+                  >
+                    {DIFFICULTY_CONFIG[d].label}
+                  </button>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -904,7 +917,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {gameMode !== 'championship' && (
           <div className="rounds-select">
             <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [3, 5, 8] : [3, 5, 10]).map(r => (
+            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [3, 5, 8] : gameMode === 'atom-quiz' ? [5, 8, 12] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -1007,7 +1020,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         </div>
 
         <div className="tf-statement-card">
-          <p className="tf-statement">{stmt.text}</p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
+            <p className="tf-statement" style={{ flex: 1, margin: 0 }}>{stmt.text}</p>
+            <button className="tts-btn tts-btn-small" onClick={() => speakText(stmt.text)} title="Read aloud">🔊</button>
+          </div>
           {!tfShowResult && (
             <div className="tf-timer-bar">
               <div className={`tf-timer-fill ${tfTimer <= 3 ? 'urgent' : ''}`} style={{ width: `${(tfTimer / TF_SECONDS) * 100}%` }} />
@@ -1026,7 +1042,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <p className={`tf-verdict ${tfAnswered !== null && tfAnswered === stmt.answer ? 'correct' : 'wrong'}`}>
               {tfAnswered === null ? '⏰ Time\'s up!' : tfAnswered === stmt.answer ? '🎉 Correct!' : '😬 Wrong!'}
             </p>
-            <p className="tf-explanation">{stmt.explanation}</p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', margin: '0 0 0.75rem' }}>
+              <p className="tf-explanation" style={{ flex: 1, margin: 0 }}>{stmt.explanation}</p>
+              <button className="tts-btn tts-btn-small" onClick={() => speakText(stmt.explanation)} title="Read aloud">🔊</button>
+            </div>
             <button className="start-btn" onClick={nextTFRound}>
               {tfIndex + 1 >= tfStatements.length ? 'See Results' : 'Next →'}
             </button>
@@ -1110,6 +1129,9 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <div key={i} className={`snap-clue-item ${i === visibleClues.length - 1 ? 'snap-clue-new' : ''}`}>
               <span className="snap-clue-num">Clue {i + 1}</span>
               <span className="snap-clue-text">{clue}</span>
+              {i === visibleClues.length - 1 && (
+                <button className="tts-btn tts-btn-small" onClick={() => speakText(clue)} title="Read clue aloud">🔊</button>
+              )}
             </div>
           ))}
           {snapClueIdx < 4 && snapAnswered === null && snapFirstWrongBy === null && (
@@ -1146,7 +1168,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             {isCorrect ? (
               <p className="snap-verdict correct">🎉 Correct! +1 to {activePlayer.avatar} {activePlayer.name}!</p>
             ) : (
-              <p className="snap-verdict wrong">😬 Wrong! It was <strong>{round.correctName}</strong>. No points this round.</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                <p className="snap-verdict wrong" style={{ margin: 0 }}>😬 Wrong! It was <strong>{round.correctName}</strong>. No points this round.</p>
+                <button className="tts-btn tts-btn-small" onClick={() => speakText(`The answer was ${round.correctName}`)} title="Read aloud">🔊</button>
+              </div>
             )}
             <button className="start-btn" onClick={nextSnapRound}>
               {snapIndex + 1 >= snapRounds.length ? 'See Results' : 'Next Element →'}
@@ -1175,7 +1200,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           </div>
         </div>
         <p className="snap-buzzer-name">{cp.avatar} {cp.name} — pick the symbol for:</p>
-        <h2 style={{ textAlign: 'center', margin: '0.5rem 0 1rem', fontSize: '1.8rem' }}>{round.elementName}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 0 1rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1.8rem' }}>{round.elementName}</h2>
+          <button className="tts-btn tts-btn-small" onClick={() => speakText(round.elementName)} title="Read aloud">🔊</button>
+        </div>
         <div className="snap-choices">
           {round.choices.map((ch, i) => {
             const answered = symbolAnswered !== null;
@@ -1200,7 +1228,10 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
           <div className="snap-result-feedback">
             {isCorrect
               ? <p className="snap-verdict correct">🎉 Correct! +1 to {cp.avatar} {cp.name}!</p>
-              : <p className="snap-verdict wrong">😬 Nope! {round.elementName} = <strong>{round.correctSymbol}</strong></p>}
+              : <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  <p className="snap-verdict wrong" style={{ margin: 0 }}>😬 Nope! {round.elementName} = <strong>{round.correctSymbol}</strong></p>
+                  <button className="tts-btn tts-btn-small" onClick={() => speakText(`${round.elementName} is ${round.correctSymbol}`)} title="Read aloud">🔊</button>
+                </div>}
             <button className="start-btn" onClick={nextSymbolRound}>
               {symbolIndex + 1 >= symbolRounds.length ? 'See Results' : 'Next →'}
             </button>
@@ -1228,16 +1259,19 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         </div>
         <p className="snap-buzzer-name">{cp.avatar} {cp.name}'s turn</p>
         {q.illustration && <div style={{ textAlign: 'center', fontSize: '2.5rem', margin: '0.25rem 0' }}>{q.illustration}</div>}
-        <h2 style={{ textAlign: 'center', margin: '0.5rem 1rem 1rem', fontSize: '1.25rem', fontWeight: 600 }}>{q.questionText}</h2>
-        <div className="snap-choices">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 1rem 1rem' }}>
+          <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, textAlign: 'center' }}>{q.questionText}</h2>
+          <button className="tts-btn tts-btn-small" onClick={() => speakText(q.questionText)} title="Read aloud">🔊</button>
+        </div>
+        <div className="aq-choices">
           {q.choices.map((ch, i) => {
             const answered = atomAnswered !== null;
             const isChosen = atomAnswered === i;
             const isRight = i === q.correctIndex;
-            const cls = !answered ? 'snap-choice'
-              : isRight ? 'snap-choice correct'
-              : isChosen ? 'snap-choice wrong'
-              : 'snap-choice snap-choice-locked';
+            const cls = !answered ? 'aq-choice'
+              : isRight ? 'aq-choice correct'
+              : isChosen ? 'aq-choice wrong'
+              : 'aq-choice';
             return (
               <button key={i} className={cls} disabled={answered} onClick={() => handleAtomAnswer(i)}>
                 {ch}
@@ -1251,6 +1285,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
               ? <p className="snap-verdict correct">🎉 Correct! +1 to {cp.avatar} {cp.name}!</p>
               : <p className="snap-verdict wrong">😬 Nope! {q.explanation}</p>}
             {atomAnswered === q.correctIndex && <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 1rem 0.5rem' }}>{q.explanation}</p>}
+            <button className="tts-btn tts-btn-small" onClick={() => speakText(q.explanation)} title="Read explanation aloud" style={{ display: 'block', margin: '0 auto 0.75rem' }}>🔊</button>
             <button className="start-btn" onClick={nextAtomRound}>
               {atomIndex + 1 >= atomQuestions.length ? 'See Results' : 'Next →'}
             </button>
