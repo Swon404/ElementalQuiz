@@ -257,8 +257,8 @@ type ChampSize = 'quick' | 'standard' | 'epic';
 // Per-game round counts for each championship size.
 // Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick, atom-quiz.
 const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: '3 rounds each, 8 pairs',   counts: [3, 3, 8, 3, 3, 5] },
-  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 5, 5, 8] },
+  quick:    { label: 'Quick',    desc: '3 rounds each, 8 pairs',   counts: [3, 3, 8, 4, 4, 4] },
+  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 6, 6, 8] },
   epic:     { label: 'Epic',     desc: '8 rounds each, 16 pairs',  counts: [8, 8, 16, 8, 8, 12] },
 };
 
@@ -917,7 +917,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {gameMode !== 'championship' && (
           <div className="rounds-select">
             <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [3, 5, 8] : gameMode === 'atom-quiz' ? [5, 8, 12] : [3, 5, 10]).map(r => (
+            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -1108,7 +1108,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {quitOverlay}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
-          <span className="snap-round">Element {snapIndex + 1}/{snapRounds.length}</span>
+          <span className="snap-round">Element {Math.floor(snapIndex / 2) + 1}/{Math.floor(snapRounds.length / 2)} each</span>
           <div className="snap-scores">
             <span>{player1.avatar} {p1Score}</span>
             <span>vs</span>
@@ -1192,7 +1192,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {quitOverlay}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
-          <span className="snap-round">{symbolIndex + 1}/{symbolRounds.length}</span>
+          <span className="snap-round">{Math.floor(symbolIndex / 2) + 1}/{Math.floor(symbolRounds.length / 2)}</span>
           <div className="snap-scores">
             <span>{player1.avatar} {p1Score}</span>
             <span>vs</span>
@@ -1250,7 +1250,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         {quitOverlay}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
-          <span className="snap-round">⚛️ {atomIndex + 1}/{atomQuestions.length}</span>
+          <span className="snap-round">⚛️ {Math.floor(atomIndex / 2) + 1}/{Math.floor(atomQuestions.length / 2)}</span>
           <div className="snap-scores">
             <span>{player1.avatar} {p1Score}</span>
             <span>vs</span>

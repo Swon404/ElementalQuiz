@@ -160,7 +160,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.symbol),
         element: el,
-        explanation: `The symbol for ${el.name} is ${el.symbol}. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `It starts with the letter "${el.symbol[0]}".`,
       };
     },
@@ -175,7 +175,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.symbol} is the symbol for ${el.name}! ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -193,7 +193,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} has atomic number ${el.atomicNumber}, meaning it has ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in its nucleus! ${randomFact(el)}`,
+        explanation: `It has ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in its nucleus — that's what makes it ${el.name}! ${randomFact(el)}`,
         hint: `It's in period ${el.period}.`,
       };
     },
@@ -207,7 +207,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `Element number ${el.atomicNumber} is ${el.name} (${el.symbol})! ${randomFact(el)}`,
+        explanation: `Atomic number ${el.atomicNumber} means ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in the nucleus! ${randomFact(el)}`,
         hint: `Its symbol is ${el.symbol}.`,
       };
     },
@@ -226,7 +226,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} is a ${correct}! ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `Think about where it is on the periodic table.`,
       };
     },
@@ -249,7 +249,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices: choices.map(c => `Group ${c}`),
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} is in Group ${el.group}. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -274,7 +274,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.discoveredBy),
         element: el,
-        explanation: `${el.name} was discovered by ${el.discoveredBy} in ${el.discoveryYear} in ${el.discoveryCountry}. ${randomFact(el)}`,
+        explanation: `Discovered in ${el.discoveryCountry} in ${el.discoveryYear}. ${randomFact(el)}`,
         hint: `It was discovered in ${el.discoveryCountry}.`,
       };
     },
@@ -302,7 +302,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} was discovered in the ${correct} (${el.discoveryYear}) by ${el.discoveredBy} in ${el.discoveryCountry}. ${randomFact(el)}`,
+        explanation: `Discovered by ${el.discoveredBy} in ${el.discoveryCountry} (${el.discoveryYear}). ${randomFact(el)}`,
         hint: `It was discovered by ${el.discoveredBy}.`,
       };
     },
@@ -319,7 +319,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices: choices.map(s => s.charAt(0).toUpperCase() + s.slice(1)),
         correctIndex: choices.indexOf(el.stateAtRoomTemp),
         element: el,
-        explanation: `${el.name} is a ${el.stateAtRoomTemp} at room temperature. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `Think about what ${categoryLabel(el.category)}s are usually like.`,
       };
     },
@@ -337,8 +337,9 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         correctIndex: choices.indexOf(correct),
         element: el,
         explanation: el.radioactive
-          ? `${el.name} is radioactive with a half-life of ${el.halfLife}! ${randomFact(el)}`
-          : `${el.name} is stable with ${el.stableIsotopes} stable isotope${el.stableIsotopes !== 1 ? 's' : ''}! ${randomFact(el)}`,
+          ? `Its most stable isotope has a half-life of ${el.halfLife}! ${randomFact(el)}`
+          : `It has ${el.stableIsotopes} stable isotope${el.stableIsotopes !== 1 ? 's' : ''}! ${randomFact(el)}`,
+
         hint: el.radioactive
           ? `Elements with atomic number above 82 are usually radioactive.`
           : `Most common elements are stable.`,
@@ -362,7 +363,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.halfLife),
         element: el,
-        explanation: `${el.name}'s most stable isotope has a half-life of ${el.halfLife}. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `${el.name} is an ${categoryLabel(el.category)}.`,
       };
     },
@@ -386,7 +387,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes !== 1 ? 's' : ''}! ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -423,7 +424,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(compound),
         element: el,
-        explanation: `${compound} contains ${el.name}! ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `${el.name}'s symbol is ${el.symbol} — look for it in the formulas.`,
       };
     },
@@ -441,7 +442,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} (${el.symbol}) is at Period ${el.period}, Group ${el.group}. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -593,7 +594,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} is used for ${use.toLowerCase()}. ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -613,7 +614,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correctUse),
         element: el,
-        explanation: `${el.name} is used for ${correctUse.toLowerCase()}! ${randomFact(el)}`,
+        explanation: randomFact(el),
         hint: `${el.name} is ${el.stateAtRoomTemp} at room temperature.`,
       };
     },
@@ -637,7 +638,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} is ${el.obtainedFrom.charAt(0).toLowerCase()}${el.obtainedFrom.slice(1)}. ${randomFact(el)}`,
+        explanation: `It is ${el.obtainedFrom.charAt(0).toLowerCase()}${el.obtainedFrom.slice(1)}. ${randomFact(el)}`,
         hint: `Its symbol is ${el.symbol}.`,
       };
     },
