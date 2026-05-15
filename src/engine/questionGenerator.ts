@@ -258,28 +258,6 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
   'discovery': [
     (el, pool, n) => {
       if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
-      const distractors = pickUniqueDistractors(
-        pool.filter(e => e.discoveredBy !== 'Ancient' && e.discoveredBy),
-        n - 1,
-        e => e.discoveredBy,
-        el.discoveredBy,
-        el
-      );
-      if (distractors.length < n - 1) return null;
-      const choices = shuffleArray([el.discoveredBy, ...distractors]);
-      return {
-        id: `di-1-${el.atomicNumber}`,
-        category: 'discovery',
-        questionText: `Who discovered ${el.name}?`,
-        choices,
-        correctIndex: choices.indexOf(el.discoveredBy),
-        element: el,
-        explanation: `Discovered in ${el.discoveryCountry} in ${el.discoveryYear}. ${randomFact(el)}`,
-        hint: `It was discovered in ${el.discoveryCountry}.`,
-      };
-    },
-    (el, pool, n) => {
-      if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
       const centuryNum = Math.ceil(el.discoveryYear / 100);
       const ordinal = (c: number) => {
         const s = c === 1 ? 'st' : c === 2 ? 'nd' : c === 3 ? 'rd' : 'th';
@@ -616,6 +594,75 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: randomFact(el),
         hint: `${el.name} is ${el.stateAtRoomTemp} at room temperature.`,
+      };
+    },
+    // us-3: Hardcoded "famous use/fact" questions for key teaching elements
+    // Multiple entries per element are picked at random each time.
+    (el, pool, n) => {
+      type FQ = { question: string; explanation: string };
+      const FAMOUS_USES: Record<number, FQ[]> = {
+        // ── Original 8 ──
+        56: [{ question: 'Which element gives fireworks a brilliant GREEN colour?', explanation: 'Barium salts burn with a vivid green flame! Different elements make different colours — lithium = red, sodium = yellow, copper = blue.' }],
+        92: [{ question: 'Which element is used as fuel in nuclear power stations?', explanation: 'Uranium-235 is split by nuclear fission to release enormous heat, which makes steam to drive turbines. About 10% of the world\'s electricity comes from uranium!' }],
+        78: [{ question: 'Which element is used in car catalytic converters to clean exhaust fumes?', explanation: 'Platinum acts as a catalyst — it speeds up reactions that turn toxic exhaust gases into harmless ones, without being used up itself!' }],
+        20: [{ question: 'Which element makes your bones and teeth hard?', explanation: 'Calcium makes up the mineral in bones and teeth. Dairy foods, leafy greens, and nuts are all packed with it!' }],
+        14: [{ question: 'Which element is found in almost every computer chip and solar panel?', explanation: 'Silicon is a semiconductor — it conducts electricity only under certain conditions, making it perfect for controlling circuits. Silicon Valley is named after it!' }],
+        2:  [{ question: 'Which element is used as a super-cold liquid to keep MRI scanners working?', explanation: 'Liquid helium keeps MRI magnets at −269°C — close to absolute zero! Without it, hospitals couldn\'t run MRI machines.' }],
+        30: [{ question: 'Which element is used in sunscreen to physically block harmful UV rays?', explanation: 'Zinc oxide sits on skin and reflects UV rays. It\'s safe, effective, and that\'s why lifeguards often have white noses!' }],
+        9:  [{ question: 'Which element is added to drinking water and toothpaste to protect teeth from decay?', explanation: 'Fluoride (a form of fluorine) strengthens tooth enamel, making it harder for acids to cause cavities. It\'s one of public health\'s greatest successes!' }],
+        // ── Body & biology ──
+        26: [
+          { question: 'Which element gives blood its red colour?', explanation: 'Iron sits at the heart of haemoglobin — the protein in red blood cells. It grabs oxygen in the lungs and carries it to every cell in your body!' },
+          { question: 'Which element do you need in your diet to avoid feeling tired and anaemic?', explanation: 'Iron deficiency is the most common nutritional deficiency in the world! Without enough iron, your blood can\'t carry oxygen properly, making you feel exhausted.' },
+        ],
+        7:  [
+          { question: 'Which element makes up about 78% of the air around us?', explanation: 'Most of the air is nitrogen — but we can\'t use it directly like oxygen. Plants and bacteria can "fix" it into a form living things can eat!' },
+          { question: 'Which element is found in every protein and in DNA?', explanation: 'Nitrogen is in every amino acid, and therefore every protein — muscles, enzymes, antibodies. It\'s also a key part of the DNA that carries your genes!' },
+        ],
+        8:  [
+          { question: 'Which element do we need to breathe to stay alive?', explanation: 'Your cells burn glucose with oxygen to release energy — that\'s called cellular respiration. Without oxygen, cells die in minutes!' },
+          { question: 'Which element is the most abundant in Earth\'s crust by mass?', explanation: 'Oxygen makes up 46% of Earth\'s crust — mostly locked up in rocks and minerals like quartz and feldspar rather than as a gas!' },
+        ],
+        53: [{ question: 'Which element does your body need to make thyroid hormones?', explanation: 'The thyroid gland uses iodine to make hormones that control your metabolism — how fast your body burns energy. That\'s why iodine is added to table salt in many countries!' }],
+        19: [{ question: 'Which element makes bananas very slightly radioactive?', explanation: 'Bananas contain potassium, and about 0.01% of natural potassium is radioactive potassium-40. Don\'t worry — the dose is tiny and your body controls its potassium levels carefully!' }],
+        // ── Technology & devices ──
+        3:  [{ question: 'Which element is used in rechargeable phone and laptop batteries?', explanation: 'Lithium-ion batteries are lightweight and rechargeable. Lithium is the lightest metal and can store a lot of electrical energy — perfect for phones, laptops, and electric cars!' }],
+        74: [{ question: 'Which element was used to make light bulb filaments glow?', explanation: 'Tungsten has the highest melting point of all metals (3,422°C), so it glows white-hot without melting. LED bulbs have mostly replaced it now, but tungsten is still used in specialist lighting.' }],
+        24: [{ question: 'Which element is added to iron to make it stainless and rust-proof?', explanation: 'Adding chromium to steel creates stainless steel! Chromium forms a thin invisible layer of chromium oxide on the surface that stops rust from ever forming.' }],
+        10: [{ question: 'Which element glows with a bright red-orange colour in neon signs?', explanation: 'Neon gas glows vivid red-orange when electricity passes through it. Other "neon sign" colours actually use different gases — argon glows blue, mercury gives green!' }],
+        11: [
+          { question: 'Which element makes street lamps glow yellow-orange?', explanation: 'Sodium vapour lamps fire electricity through sodium gas to produce a very efficient bright yellow-orange light. You\'ve seen them on motorways and older streets!' },
+          { question: 'Which element, combined with chlorine, makes ordinary table salt?', explanation: 'Sodium (Na) + Chlorine (Cl) = Sodium Chloride (NaCl) — table salt! Pure sodium is a soft silvery metal that reacts explosively with water, yet in salt it\'s completely safe to eat.' },
+        ],
+        // ── Earth & environment ──
+        13: [{ question: 'Which element is the most abundant metal in Earth\'s crust?', explanation: 'Aluminium makes up about 8% of Earth\'s crust — it\'s everywhere in rocks and clay. We use it for cans, foil, aeroplanes, and bikes because it\'s light and doesn\'t rust!' }],
+        6:  [
+          { question: 'Which element do plants absorb from the air to make food through photosynthesis?', explanation: 'Plants absorb carbon dioxide (CO₂) and use sunlight to turn it into sugar (glucose) and oxygen. Every apple, tree, and blade of grass is mostly carbon! ' },
+          { question: 'Which element can form both the hardest natural substance AND the softest?', explanation: 'Carbon forms diamond (hardest natural material) and graphite (pencil lead — one of the softest)! The difference is just how the atoms are arranged.' },
+          { question: 'Which element makes fizzy drinks fizzy?', explanation: 'Carbon dioxide (CO₂) is dissolved in drinks under pressure. When you open the bottle, the pressure drops and the gas escapes as bubbles — that\'s the fizz!' },
+        ],
+        16: [{ question: 'Which element is released as a choking yellow gas from volcanoes?', explanation: 'Volcanoes release sulfur dioxide (SO₂) — a sharp-smelling toxic gas. It can cause acid rain when it reacts with water in the atmosphere!' }],
+        1:  [{ question: 'Which element makes up most of the Sun?', explanation: 'The Sun is about 73% hydrogen by mass. Its gravity squeezes hydrogen atoms together in nuclear fusion, releasing the light and heat that makes life on Earth possible!' }],
+        // ── Cool science ──
+        12: [{ question: 'Which element burns with such a dazzling white flame it\'s used in fireworks and emergency flares?', explanation: 'Magnesium burns at over 3,000°C with an incredibly bright white light — so bright you should never look directly at it! It\'s also used in flares and old-fashioned camera flash bulbs.' }],
+        15: [{ question: 'Which element is on the heads of safety matches?', explanation: 'Match heads contain red phosphorus or a mixture including phosphorus compounds. When struck, the friction ignites the phosphorus, which lights the rest of the match!' }],
+        17: [{ question: 'Which element, combined with sodium, makes ordinary table salt?', explanation: 'Chlorine (Cl) + Sodium (Na) = Sodium Chloride (NaCl) — table salt! Pure chlorine is a toxic yellow-green gas, but bonded with sodium it becomes perfectly safe to eat.' }],
+        80: [{ question: 'Which element is a liquid metal so dense that a steel ball-bearing floats on its surface?', explanation: 'Mercury is the only metal that\'s liquid at room temperature, and it\'s extraordinarily dense — a steel ball really does float on it! It\'s very toxic though, so scientists handle it carefully.' }],
+      };
+      const entries = FAMOUS_USES[el.atomicNumber];
+      if (!entries || entries.length === 0) return null;
+      const famous = entries[Math.floor(Math.random() * entries.length)];
+      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
+      const choices = shuffleArray([el.name, ...distractors]);
+      return {
+        id: `us-3-${el.atomicNumber}`,
+        category: 'uses',
+        questionText: famous.question,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: famous.explanation,
+        hint: `Its symbol is ${el.symbol}.`,
       };
     },
   ],

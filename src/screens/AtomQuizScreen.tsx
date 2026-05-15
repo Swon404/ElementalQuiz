@@ -186,26 +186,109 @@ const GENERAL_QUESTIONS: QFactory[] = [
     return { questionText: 'The mass number (atomic mass) of an atom is roughly equal to the number of...?', choices, correctIndex: choices.indexOf(correct), explanation: 'Mass number = protons + neutrons. Electrons are so light they barely count!', illustration: '⚖️' };
   },
 
-  // ── History & discovery ──
+  // ── Quarks & subatomic ──
   () => {
-    const correct = 'J.J. Thomson';
-    const choices = shuffleArray([correct, 'Albert Einstein', 'Isaac Newton', 'Marie Curie']);
-    return { questionText: 'Who discovered the electron?', choices, correctIndex: choices.indexOf(correct), explanation: 'J.J. Thomson discovered the electron in 1897 using cathode ray tubes!', illustration: '🔬' };
+    const correct = 'Quarks';
+    const choices = shuffleArray([correct, 'Leptons', 'Gluons', 'Photons', 'Bosons']);
+    return { questionText: 'Protons and neutrons are themselves made of even tinier particles — what are they called?', choices, correctIndex: choices.indexOf(correct), explanation: 'Protons and neutrons are built from quarks! Atoms aren\'t the smallest things — the Standard Model goes even deeper.', illustration: '🔬' };
   },
   () => {
-    const correct = 'Ernest Rutherford';
-    const choices = shuffleArray([correct, 'Niels Bohr', 'J.J. Thomson', 'Albert Einstein']);
-    return { questionText: 'Who discovered that atoms have a nucleus?', choices, correctIndex: choices.indexOf(correct), explanation: 'Ernest Rutherford discovered the nucleus in 1911 with his famous gold foil experiment!', illustration: '🥇' };
+    const correct = '2 up quarks and 1 down quark';
+    const choices = shuffleArray([correct, '1 up quark and 2 down quarks', '3 up quarks', '3 down quarks', '2 down quarks and 1 up quark']);
+    return { questionText: 'A proton is made of which combination of quarks?', choices, correctIndex: choices.indexOf(correct), explanation: 'A proton = 2 up quarks + 1 down quark. Their charges add to exactly +1!', illustration: '🔴' };
   },
   () => {
-    const correct = 'Niels Bohr';
-    const choices = shuffleArray([correct, 'Ernest Rutherford', 'J.J. Thomson', 'Democritus']);
-    return { questionText: 'Who proposed the model of electrons orbiting in shells?', choices, correctIndex: choices.indexOf(correct), explanation: 'Niels Bohr proposed his model in 1913 — electrons orbit in fixed shells, like planets around the sun!', illustration: '🪐' };
+    const correct = '1 up quark and 2 down quarks';
+    const choices = shuffleArray([correct, '2 up quarks and 1 down quark', '3 down quarks', '3 up quarks', '2 down quarks and 1 up quark']);
+    return { questionText: 'A neutron is made of which combination of quarks?', choices, correctIndex: choices.indexOf(correct), explanation: 'A neutron = 1 up quark + 2 down quarks. Their charges cancel to zero — neutral!', illustration: '⚪' };
   },
   () => {
-    const correct = 'Democritus (ancient Greece)';
-    const choices = shuffleArray([correct, 'Isaac Newton', 'Albert Einstein', 'Galileo']);
-    return { questionText: 'Who first suggested that all matter is made of tiny particles called "atoms"?', choices, correctIndex: choices.indexOf(correct), explanation: 'The ancient Greek thinker Democritus coined the word "atomos" meaning "uncuttable" around 400 BC!', illustration: '🏛️' };
+    const correct = 'Gluons';
+    const choices = shuffleArray([correct, 'Photons', 'Quarks', 'Bosons', 'Leptons']);
+    return { questionText: 'What is the name of the particle that "glues" quarks together inside a proton or neutron?', choices, correctIndex: choices.indexOf(correct), explanation: 'Gluons carry the strong nuclear force between quarks — they literally glue them together!', illustration: '🫧' };
+  },
+
+  // ── Radioactivity & decay ──
+  () => {
+    const correct = 'Alpha, Beta, and Gamma';
+    const choices = shuffleArray([correct, 'X-ray, UV, and Infrared', 'Proton, Neutron, and Electron', 'Sound, Light, and Heat', 'Cosmic, Solar, and Ground']);
+    return { questionText: 'What are the three main types of nuclear radiation?', choices, correctIndex: choices.indexOf(correct), explanation: 'Alpha (α), Beta (β), and Gamma (γ) radiation! They differ in mass, charge, and penetrating power.', illustration: '☢️' };
+  },
+  () => {
+    const correct = 'A helium nucleus (2 protons + 2 neutrons)';
+    const choices = shuffleArray([correct, 'A fast-moving electron', 'A high-energy photon', 'A single proton', 'A single neutron']);
+    return { questionText: 'What is an alpha particle made of?', choices, correctIndex: choices.indexOf(correct), explanation: 'An alpha particle is identical to a helium-4 nucleus — 2 protons and 2 neutrons. It\'s the heaviest type of radiation.', illustration: '🟡' };
+  },
+  () => {
+    const correct = 'A fast-moving electron (or positron)';
+    const choices = shuffleArray([correct, 'A helium nucleus', 'A burst of light energy', 'Two neutrons', 'A single proton']);
+    return { questionText: 'What is a beta particle?', choices, correctIndex: choices.indexOf(correct), explanation: 'In beta-minus decay, a neutron turns into a proton and fires out a fast electron — that electron is the beta particle!', illustration: '⚡' };
+  },
+  () => {
+    const correct = 'A very high-energy photon (like super-powerful light)';
+    const choices = shuffleArray([correct, 'A helium nucleus', 'A fast electron', 'A proton beam', 'A neutron beam']);
+    return { questionText: 'What is gamma radiation?', choices, correctIndex: choices.indexOf(correct), explanation: 'Gamma rays are pure electromagnetic energy — like X-rays but far more powerful! They have no mass and travel at the speed of light.', illustration: '💜' };
+  },
+  () => {
+    const correct = 'The time it takes for half of the radioactive atoms in a sample to decay';
+    const choices = shuffleArray([correct, 'How long an atom lives before it explodes', 'How fast radiation travels', 'The age of a radioactive element', 'How long a reactor takes to start up']);
+    return { questionText: 'What is "half-life" in nuclear physics?', choices, correctIndex: choices.indexOf(correct), explanation: 'Half-life is the time for half the atoms to decay. After 2 half-lives, only ¼ remain. It\'s how we date ancient materials!', illustration: '⏳' };
+  },
+  () => {
+    const correct = 'About 5,730 years';
+    const choices = shuffleArray([correct, 'About 100 years', 'About 1 million years', 'About 50 years', 'About 14 days']);
+    return { questionText: 'What is the half-life of Carbon-14, used for dating ancient objects?', choices, correctIndex: choices.indexOf(correct), explanation: 'Carbon-14 has a half-life of ~5,730 years. Scientists use it to date ancient bones, wood, and fabric up to about 50,000 years old!', illustration: '🦴' };
+  },
+  () => {
+    const correct = 'Alpha radiation';
+    const choices = shuffleArray([correct, 'Beta radiation', 'Gamma radiation', 'All three equally']);
+    return { questionText: 'Which type of radiation can be stopped by a sheet of paper?', choices, correctIndex: choices.indexOf(correct), explanation: 'Alpha particles are the biggest and slowest — a sheet of paper (or even skin) stops them. But they\'re very dangerous if swallowed!', illustration: '📄' };
+  },
+  () => {
+    const correct = 'Gamma radiation';
+    const choices = shuffleArray([correct, 'Alpha radiation', 'Beta radiation', 'Sound waves', 'Ultraviolet light']);
+    return { questionText: 'Which type of radiation requires thick lead or concrete to stop it?', choices, correctIndex: choices.indexOf(correct), explanation: 'Gamma rays are pure energy and incredibly penetrating — it takes many centimetres of lead or thick concrete to block them!', illustration: '🧱' };
+  },
+  () => {
+    const correct = 'It becomes a different element';
+    const choices = shuffleArray([correct, 'It becomes a gas', 'It gains more neutrons', 'It gets bigger', 'Nothing changes']);
+    return { questionText: 'When a radioactive nucleus emits an alpha or beta particle, what happens to the element?', choices, correctIndex: choices.indexOf(correct), explanation: 'Losing protons changes the atomic number — so the atom literally transforms into a different element! Uranium slowly becomes lead over billions of years.', illustration: '🔄' };
+  },
+
+  // ── Fission & fusion ──
+  () => {
+    const correct = 'Nuclear fission';
+    const choices = shuffleArray([correct, 'Nuclear fusion', 'Beta decay', 'Gamma emission', 'Alpha decay']);
+    return { questionText: 'What is the process of splitting a large atomic nucleus into smaller ones called?', choices, correctIndex: choices.indexOf(correct), explanation: 'Nuclear fission releases enormous energy! It\'s how nuclear power stations generate electricity and how atomic bombs work.', illustration: '💥' };
+  },
+  () => {
+    const correct = 'Nuclear fusion';
+    const choices = shuffleArray([correct, 'Nuclear fission', 'Beta decay', 'Nuclear combustion', 'Gamma emission']);
+    return { questionText: 'What is the process of joining two small nuclei together to make a bigger one?', choices, correctIndex: choices.indexOf(correct), explanation: 'Nuclear fusion powers the Sun and all stars! Hydrogen atoms fuse into helium, releasing massive amounts of energy.', illustration: '☀️' };
+  },
+  () => {
+    const correct = 'In the cores of stars (nuclear fusion)';
+    const choices = shuffleArray([correct, 'By chemical reactions on Earth', 'In the upper atmosphere', 'By scientists in labs', 'Deep underground']);
+    return { questionText: 'Where are most of the heavy elements (like gold, iron, and oxygen) created in the universe?', choices, correctIndex: choices.indexOf(correct), explanation: 'Most elements heavier than hydrogen were forged in stars through nuclear fusion! When stars explode, those atoms scatter across the universe — including into you! ⭐', illustration: '🌟' };
+  },
+
+  // ── Antimatter ──
+  () => {
+    const correct = 'A particle with the same mass but opposite charge to its normal partner';
+    const choices = shuffleArray([correct, 'A particle that moves backwards in time', 'An extremely heavy particle', 'A particle made of dark matter', 'A particle with no charge at all']);
+    return { questionText: 'What is antimatter?', choices, correctIndex: choices.indexOf(correct), explanation: 'Every particle has an antiparticle twin! The antielectron (positron) has the same mass as an electron but positive charge. When matter meets antimatter — they annihilate in a flash of energy!', illustration: '💫' };
+  },
+
+  // ── Periodic table structure ──
+  () => {
+    const correct = 'The number of electron shells';
+    const choices = shuffleArray([correct, 'The number of protons', 'The atomic mass', 'The number of neutrons', 'The number of valence electrons']);
+    return { questionText: 'What does the PERIOD (row) number on the periodic table tell you about an element?', choices, correctIndex: choices.indexOf(correct), explanation: 'Period 1 elements have 1 electron shell, Period 2 have 2 shells, etc. That\'s why elements in the same period have similar energy levels!', illustration: '📊' };
+  },
+  () => {
+    const correct = 'The number of valence electrons (outer shell electrons)';
+    const choices = shuffleArray([correct, 'The number of protons', 'The number of neutrons', 'The total number of electrons', 'The atomic mass']);
+    return { questionText: 'What does the GROUP (column) number on the periodic table tell you about an element?', choices, correctIndex: choices.indexOf(correct), explanation: 'Elements in the same group have the same number of valence electrons — so they behave very similarly! That\'s why noble gases (Group 18) all act alike.', illustration: '🗂️' };
   },
 
   // ── Fun facts ──

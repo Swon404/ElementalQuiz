@@ -243,7 +243,7 @@ function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
 }
 
 // --- Championship config ---
-const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'clue-duel', 'symbol-pick', 'atom-quiz'];
+const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'atom-quiz', 'clue-duel', 'symbol-pick'];
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
@@ -255,11 +255,11 @@ const CHAMP_LABELS: Record<string, string> = {
 
 type ChampSize = 'quick' | 'standard' | 'epic';
 // Per-game round counts for each championship size.
-// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), clue-duel, symbol-pick, atom-quiz.
+// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), atom-quiz, clue-duel, symbol-pick.
 const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
   quick:    { label: 'Quick',    desc: '3 rounds each, 8 pairs',   counts: [3, 3, 8, 4, 4, 4] },
-  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 6, 6, 8] },
-  epic:     { label: 'Epic',     desc: '8 rounds each, 16 pairs',  counts: [8, 8, 16, 8, 8, 12] },
+  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 8, 6, 6] },
+  epic:     { label: 'Epic',     desc: '8 rounds each, 16 pairs',  counts: [8, 8, 16, 12, 8, 8] },
 };
 
 type ChampGameScore = {
@@ -330,11 +330,14 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [atomIndex, setAtomIndex] = useState(0);
   const [atomTurn, setAtomTurn] = useState<1 | 2>(1);
   const [atomAnswered, setAtomAnswered] = useState<number | null>(null);
+  const [atomSecondChance, setAtomSecondChance] = useState(false);
+  const [atomFirstWrong, setAtomFirstWrong] = useState<number | null>(null);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
   const [champScores, setChampScores] = useState<ChampGameScore[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
+  const [isChampTiebreaker, setIsChampTiebreaker] = useState(false);
   const [champSize, setChampSize] = useState<ChampSize>('standard');
   const prevPhaseRef = useRef<Phase>('mode-select');
 
@@ -634,13 +637,19 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const handleAtomAnswer = (idx: number) => {
     if (atomAnswered !== null) return;
     const q = atomQuestions[atomIndex];
-    const correct = idx === q.correctIndex;
-    setAtomAnswered(idx);
-    if (correct) {
+    const cp = atomTurn === 1 ? player1 : player2;
+    const hasSecondChance = DIFFICULTY_CONFIG[cp.difficulty].secondChance;
+    if (idx === q.correctIndex) {
+      setAtomAnswered(idx);
       playCorrect();
       if (atomTurn === 1) setP1Score(s => s + 1);
       else setP2Score(s => s + 1);
+    } else if (hasSecondChance && !atomSecondChance) {
+      playWrong();
+      setAtomSecondChance(true);
+      setAtomFirstWrong(idx);
     } else {
+      setAtomAnswered(idx);
       playWrong();
     }
   };
@@ -653,6 +662,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setAtomIndex(nextIdx);
       setAtomTurn(t => (t === 1 ? 2 : 1));
       setAtomAnswered(null);
+      setAtomSecondChance(false);
+      setAtomFirstWrong(null);
     }
   };
 
@@ -703,8 +714,18 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setMatchLocked(false);
       setRounds(n);
       setPhase('playing');
-    } else if (mode === 'clue-duel') {
+    } else if (mode === 'atom-quiz') {
       const n = counts[3];
+      setAtomQuestions(generateAtomQuestions(n));
+      setAtomIndex(0);
+      setAtomTurn(1);
+      setAtomAnswered(null);
+      setAtomSecondChance(false);
+      setAtomFirstWrong(null);
+      setRounds(n);
+      setPhase('playing');
+    } else if (mode === 'clue-duel') {
+      const n = counts[4];
       setSnapRounds(generateSnapRounds(n, sharedPool()));
       setSnapIndex(0);
       setSnapClueIdx(0);
@@ -714,19 +735,11 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'symbol-pick') {
-      const n = counts[4];
+      const n = counts[5];
       setSymbolRounds(generateSymbolRounds(n, sharedPool()));
       setSymbolIndex(0);
       setSymbolTurn(1);
       setSymbolAnswered(null);
-      setRounds(n);
-      setPhase('playing');
-    } else if (mode === 'atom-quiz') {
-      const n = counts[5];
-      setAtomQuestions(generateAtomQuestions(n));
-      setAtomIndex(0);
-      setAtomTurn(1);
-      setAtomAnswered(null);
       setRounds(n);
       setPhase('playing');
     }
@@ -761,6 +774,21 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     launchSubGame(CHAMP_GAMES[next]);
   };
 
+  const startChampTiebreaker = useCallback(() => {
+    setIsChampTiebreaker(true);
+    setIsChampionship(false);
+    setGameMode('element-match');
+    setMatchCards(generateMatchCards(12, sharedPool()));
+    setMatchTurn(1);
+    setMatchFirst(null);
+    setMatchLocked(false);
+    setP1Score(0);
+    setP2Score(0);
+    setRounds(12);
+    setPhase('playing');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player1.difficulty, player2.difficulty]);
+
   const startGame = () => {
     setIsChampionship(false);
     if (gameMode === 'quiz-battle') startQuizBattle();
@@ -773,6 +801,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       setAtomIndex(0);
       setAtomTurn(1);
       setAtomAnswered(null);
+      setAtomSecondChance(false);
+      setAtomFirstWrong(null);
       setPhase('playing');
     }
     else if (gameMode === 'championship') startChampionship();
@@ -946,8 +976,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             <p className="champ-info">
               All 6 games in sequence — {CHAMP_SIZE_CONFIG[champSize].desc.toLowerCase()}.
               Quiz Battle ({CHAMP_SIZE_CONFIG[champSize].counts[0]}), T/F Blitz ({CHAMP_SIZE_CONFIG[champSize].counts[1]}),
-              Element Match ({CHAMP_SIZE_CONFIG[champSize].counts[2]} pairs), Clue Duel ({CHAMP_SIZE_CONFIG[champSize].counts[3]}),
-              Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[4]}), Atom Quiz ({CHAMP_SIZE_CONFIG[champSize].counts[5]}).
+              Element Match ({CHAMP_SIZE_CONFIG[champSize].counts[2]} pairs), Atom Quiz ({CHAMP_SIZE_CONFIG[champSize].counts[3]}),
+              Clue Duel ({CHAMP_SIZE_CONFIG[champSize].counts[4]}), Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[5]}).
               Scores from all games add up — highest total wins!
             </p>
           </>
@@ -1265,27 +1295,38 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         </div>
         <div className="aq-choices">
           {q.choices.map((ch, i) => {
-            const answered = atomAnswered !== null;
+            const finalAnswered = atomAnswered !== null;
+            const isFirstWrong = atomFirstWrong === i;
             const isChosen = atomAnswered === i;
             const isRight = i === q.correctIndex;
-            const cls = !answered ? 'aq-choice'
-              : isRight ? 'aq-choice correct'
-              : isChosen ? 'aq-choice wrong'
+            const cls = finalAnswered
+              ? isRight ? 'aq-choice correct' : isChosen ? 'aq-choice wrong' : 'aq-choice'
+              : atomSecondChance && isFirstWrong ? 'aq-choice wrong'
               : 'aq-choice';
             return (
-              <button key={i} className={cls} disabled={answered} onClick={() => handleAtomAnswer(i)}>
+              <button
+                key={i}
+                className={cls}
+                disabled={finalAnswered || (atomSecondChance && isFirstWrong)}
+                onClick={() => handleAtomAnswer(i)}
+              >
                 {ch}
               </button>
             );
           })}
         </div>
+        {atomSecondChance && atomAnswered === null && (
+          <p style={{ textAlign: 'center', color: '#ffaa44', margin: '0.5rem 1rem' }}>Not quite — try again! 🤔</p>
+        )}
         {atomAnswered !== null && (
           <div className="snap-result-feedback">
             {atomAnswered === q.correctIndex
               ? <p className="snap-verdict correct">🎉 Correct! +1 to {cp.avatar} {cp.name}!</p>
-              : <p className="snap-verdict wrong">😬 Nope! {q.explanation}</p>}
-            {atomAnswered === q.correctIndex && <p style={{ textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)', margin: '0 1rem 0.5rem' }}>{q.explanation}</p>}
-            <button className="tts-btn tts-btn-small" onClick={() => speakText(q.explanation)} title="Read explanation aloud" style={{ display: 'block', margin: '0 auto 0.75rem' }}>🔊</button>
+              : <p className="snap-verdict wrong">😬 Nope! The answer was: <strong>{q.choices[q.correctIndex]}</strong></p>}
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', margin: '0 1rem 0.75rem' }}>
+              <p style={{ flex: 1, margin: 0, textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{q.explanation}</p>
+              <button className="tts-btn tts-btn-small" onClick={() => speakText(q.explanation)} title="Read explanation aloud">🔊</button>
+            </div>
             <button className="start-btn" onClick={nextAtomRound}>
               {atomIndex + 1 >= atomQuestions.length ? 'See Results' : 'Next →'}
             </button>
@@ -1392,8 +1433,12 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             </tbody>
           </table>
         </div>
-        <p>The champion has the highest combined score across all 5 games.</p>
-
+        <p>The champion has the highest combined score across all 6 games.</p>
+        {!champWinner && (
+          <button className="start-btn" style={{ marginBottom: '0.75rem' }} onClick={startChampTiebreaker}>
+            🃏 Tiebreaker — 12-Card Memory Match!
+          </button>
+        )}
         <div className="result-actions">
           <button className="start-btn" onClick={() => { setIsChampionship(false); startChampionship(); }}>Play Again!</button>
           <button className="back-btn" onClick={() => { setIsChampionship(false); setPhase('mode-select'); }}>Change Game</button>
@@ -1406,12 +1451,25 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   // --- RESULT ---
   if (phase === 'result') {
     const winner = p1Score > p2Score ? player1 : p2Score > p1Score ? player2 : null;
-    const modeLabel = gameMode === 'quiz-battle' ? 'Quiz Battle' : gameMode === 'tf-blitz' ? 'True or False Blitz' : gameMode === 'clue-duel' ? 'Clue Duel' : gameMode === 'symbol-pick' ? 'Symbol Pick' : 'Element Match';
+    const modeLabel = isChampTiebreaker ? 'Championship Tiebreaker'
+      : gameMode === 'quiz-battle' ? 'Quiz Battle'
+      : gameMode === 'tf-blitz' ? 'True or False Blitz'
+      : gameMode === 'clue-duel' ? 'Clue Duel'
+      : gameMode === 'symbol-pick' ? 'Symbol Pick'
+      : gameMode === 'atom-quiz' ? 'Atom Quiz'
+      : 'Element Match';
+    const tiebreakerDraw = isChampTiebreaker && !winner;
     return (
       <div className="two-player-result">
         <Elementor
           expression="celebrate"
-          message={winner ? `${winner.avatar} ${winner.name} wins the ${modeLabel}!` : "It's a draw! You're both element champions! 🤝"}
+          message={
+            tiebreakerDraw
+              ? "Incredible — still a draw! You’re co-champions! 🤝❤️"
+              : winner
+              ? `${winner.avatar} ${winner.name} wins the ${modeLabel}!`
+              : "It's a draw! You're both element champions! 🤝"
+          }
         />
 
         <div className="result-card">
@@ -1432,9 +1490,19 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         </div>
 
         <div className="result-actions">
-          <button className="start-btn" onClick={startGame}>Rematch!</button>
-          <button className="back-btn" onClick={() => setPhase('mode-select')}>Change Game</button>
-          <button className="back-btn" onClick={onComplete}>Home</button>
+          {isChampTiebreaker ? (
+            <>
+              {!tiebreakerDraw && <button className="start-btn" onClick={() => { setIsChampTiebreaker(false); startChampTiebreaker(); }}>Play Again!</button>}
+              {tiebreakerDraw && <button className="start-btn" onClick={() => { setIsChampTiebreaker(false); startChampTiebreaker(); }}>Another Tiebreaker!</button>}
+              <button className="back-btn" onClick={() => { setIsChampTiebreaker(false); onComplete(); }}>Home</button>
+            </>
+          ) : (
+            <>
+              <button className="start-btn" onClick={startGame}>Rematch!</button>
+              <button className="back-btn" onClick={() => setPhase('mode-select')}>Change Game</button>
+              <button className="back-btn" onClick={onComplete}>Home</button>
+            </>
+          )}
         </div>
       </div>
     );
