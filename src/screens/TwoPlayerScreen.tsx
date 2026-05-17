@@ -217,16 +217,16 @@ function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
 
     // 5 clues: vague → obvious
     const clues: string[] = [
-      // Clue 1 — very vague (scrub name from fun facts!)
+      // Clue 1 — fun fact (scrubbed so name doesn't appear)
       scrub(el.funFact || `This element is ${catLabel}.`),
-      // Clue 2 — category + state hint
-      `I'm a ${el.stateAtRoomTemp} at room temperature and I'm ${catLabel}.`,
-      // Clue 3 — discovery / era
-      el.discoveryYear
-        ? `I was discovered in ${el.discoveryCountry} around ${el.discoveryYear}.`
-        : `I've been known since ancient times from ${el.discoveryCountry || 'many places'}.`,
-      // Clue 4 — narrowing down
-      `I'm in period ${el.period}${el.group ? `, group ${el.group}` : ''} and I have ${el.atomicNumber} protons.`,
+      // Clue 2 — a real-world use (relatable!)
+      el.uses && el.uses.length > 0
+        ? `One of my real-world uses is: ${el.uses[0]}.`
+        : `I'm ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
+      // Clue 3 — what type + state
+      `I'm classified as ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
+      // Clue 4 — atomic number (can count on the periodic table!)
+      `I have ${el.atomicNumber} protons — that's my atomic number on the periodic table.`,
       // Clue 5 — almost a giveaway
       `My symbol is "${el.symbol}" and my atomic mass is ${el.atomicMass}.`,
     ];
@@ -318,6 +318,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [snapTurn, setSnapTurn] = useState<1 | 2>(1);    // whose turn to guess/pass
   const [snapFirstWrongBy, setSnapFirstWrongBy] = useState<1 | 2 | null>(null); // first wrong guesser this round
   const [snapAnswered, setSnapAnswered] = useState<number | null>(null);
+  const [snapLastWinner, setSnapLastWinner] = useState<1 | 2 | null>(null); // who won the last round
 
   // Symbol Pick state
   const [symbolRounds, setSymbolRounds] = useState<SymbolRound[]>([]);
@@ -540,6 +541,7 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     setSnapTurn(1);
     setSnapFirstWrongBy(null);
     setSnapAnswered(null);
+    setSnapLastWinner(null);
     if (!isChampionship) resetScores();
     setPhase('playing');
   }, [rounds, isChampionship]);
@@ -569,14 +571,15 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
       playCorrect();
       if (active === 1) setP1Score(s => s + 1);
       else setP2Score(s => s + 1);
+      setSnapLastWinner(active as 1 | 2);
       setSnapAnswered(idx);
     } else {
       playWrong();
       // No score penalty on wrong answers; only correct guesses earn points.
       if (snapFirstWrongBy === null) {
-        // Give opponent one chance with all clues revealed
-        setSnapFirstWrongBy(active);
-        setSnapClueIdx(4);
+        // Give opponent a chance — reveal next 2 clues
+        setSnapFirstWrongBy(active as 1 | 2);
+        setSnapClueIdx(c => Math.min(c + 2, 4));
         setSnapTurn(active === 1 ? 2 : 1);
       } else {
         // Both wrong — end round
@@ -592,9 +595,11 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
     } else {
       setSnapIndex(nextIdx);
       setSnapClueIdx(0);
-      setSnapTurn(nextIdx % 2 === 0 ? 1 : 2); // alternate starting player
+      // Winner's opponent starts next round; if no winner, alternate by index
+      setSnapTurn(snapLastWinner !== null ? (snapLastWinner === 1 ? 2 : 1) : (nextIdx % 2 === 0 ? 1 : 2));
       setSnapFirstWrongBy(null);
       setSnapAnswered(null);
+      setSnapLastWinner(null);
     }
   };
 
@@ -1147,11 +1152,18 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
         </div>
 
         {snapAnswered === null && (
-          <p className="snap-buzzer-name">
-            {snapFirstWrongBy !== null
-              ? `${activePlayer.avatar} ${activePlayer.name} — bonus chance! All clues revealed.`
-              : `${activePlayer.avatar} ${activePlayer.name}'s turn — guess or pass!`}
-          </p>
+          <>
+            {snapFirstWrongBy !== null && (
+              <div className="snap-wrong-banner">
+                ❌ {snapFirstWrongBy === 1 ? player1.avatar + ' ' + player1.name : player2.avatar + ' ' + player2.name} got it wrong! {activePlayer.avatar} {activePlayer.name} — bonus chance!
+              </div>
+            )}
+            <p className="snap-buzzer-name">
+              {snapFirstWrongBy !== null
+                ? `Guess now — ${Math.min(snapClueIdx + 1, 5)} clues visible!`
+                : `${activePlayer.avatar} ${activePlayer.name}'s turn — guess or pass!`}
+            </p>
+          </>
         )}
 
         <div className="snap-clues-list">
@@ -1198,9 +1210,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             {isCorrect ? (
               <p className="snap-verdict correct">🎉 Correct! +1 to {activePlayer.avatar} {activePlayer.name}!</p>
             ) : (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                <p className="snap-verdict wrong" style={{ margin: 0 }}>😬 Wrong! It was <strong>{round.correctName}</strong>. No points this round.</p>
-                <button className="tts-btn tts-btn-small" onClick={() => speakText(`The answer was ${round.correctName}`)} title="Read aloud">🔊</button>
+              <div style={{ background: '#ff3b3b22', border: '2px solid var(--danger)', borderRadius: 14, padding: '0.8rem 1.2rem', marginBottom: '0.8rem' }}>
+                <p className="snap-verdict wrong" style={{ margin: 0, fontSize: '1.6rem' }}>❌ Both wrong!</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.4rem' }}>
+                  <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>It was <strong style={{ fontSize: '1.3rem' }}>{round.correctName}</strong></p>
+                  <button className="tts-btn tts-btn-small" onClick={() => speakText(`The answer was ${round.correctName}`)} title="Read aloud">🔊</button>
+                </div>
+                <p style={{ margin: '0.3rem 0 0', color: 'var(--text-muted, #888)', fontSize: '0.9rem' }}>No points this round.</p>
               </div>
             )}
             <button className="start-btn" onClick={nextSnapRound}>

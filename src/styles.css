@@ -1038,9 +1038,21 @@ body {
 .snap-choice:hover:not(:disabled) { border-color: var(--accent-primary); background: rgba(79,172,254,0.1); }
 .snap-choice-locked { opacity: 0.45; cursor: default; }
 .snap-result-feedback { text-align: center; animation: fadeIn 0.2s ease; }
-.snap-verdict { font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; }
+.snap-verdict { font-size: 1.4rem; font-weight: 800; margin-bottom: 1rem; }
 .snap-verdict.correct { color: var(--success); }
 .snap-verdict.wrong { color: var(--danger); }
+.snap-wrong-banner {
+  background: #ff3b3b22;
+  border: 2px solid var(--danger);
+  border-radius: 12px;
+  padding: 0.6rem 1.2rem;
+  margin-bottom: 0.8rem;
+  text-align: center;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--danger);
+  animation: fadeIn 0.2s ease;
+}
 
 /* ===== Championship ===== */
 .game-mode-btn.championship {
