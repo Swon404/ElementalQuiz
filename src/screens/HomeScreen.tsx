@@ -152,7 +152,19 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
       </div>
 
       <nav className="home-menu">
-        <MenuGroup id="quizzes" icon="⚡" label="Quizzes" open={openGroups.has('quizzes')} onToggle={toggleGroup}>
+        <button className="menu-btn primary" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player-champ')}>
+          <span className="menu-icon">🏆</span>
+          <span className="menu-label">2 Player Championship</span>
+          <span className="menu-desc">All 6 games — straight to the championship!</span>
+        </button>
+
+        <button className="menu-btn two-player" style={{ marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player')}>
+          <span className="menu-icon">👥</span>
+          <span className="menu-label">2 Player Mode</span>
+          <span className="menu-desc">Pick any game — Quiz Battle, Clue Duel & more!</span>
+        </button>
+
+        <MenuGroup id="quizzes" icon="⚡" label="Solo Quizzes" open={openGroups.has('quizzes')} onToggle={toggleGroup}>
           <button className="menu-btn primary" onClick={() => onNavigate('quick-quiz')}>
             <span className="menu-icon">⚡</span>
             <span className="menu-label">Quick Quiz</span>
@@ -184,23 +196,17 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
           </button>
         </MenuGroup>
 
-        <MenuGroup id="games" icon="🎮" label="Games" open={openGroups.has('games')} onToggle={toggleGroup}>
-          <button className="menu-btn two-player" onClick={() => onNavigate('two-player')}>
-            <span className="menu-icon">👥</span>
-            <span className="menu-label">2 Player Mode</span>
-            <span className="menu-desc">Challenge a friend or family!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
-            <span className="menu-icon">💥</span>
-            <span className="menu-label">Element Showdown</span>
-            <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
-          </button>
-
+        <MenuGroup id="brain-games" icon="🧠" label="Brain Games" open={openGroups.has('brain-games')} onToggle={toggleGroup}>
           <button className="menu-btn" onClick={() => onNavigate('memory-game')}>
-            <span className="menu-icon">🧠</span>
+            <span className="menu-icon">🃏</span>
             <span className="menu-label">Element Memory</span>
             <span className="menu-desc">Match symbols to names — test your memory!</span>
+          </button>
+
+          <button className="menu-btn" onClick={() => onNavigate('symbol-pick')}>
+            <span className="menu-icon">🔤</span>
+            <span className="menu-label">Symbol Pick</span>
+            <span className="menu-desc">Pick the correct symbol from similar look-alikes!</span>
           </button>
 
           <button className="menu-btn" onClick={() => onNavigate('element-order')}>
@@ -209,24 +215,24 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
             <span className="menu-desc">Put elements in order by atomic number!</span>
           </button>
 
-          <button className="menu-btn" onClick={() => onNavigate('symbol-pick')}>
-            <span className="menu-icon">🔤</span>
-            <span className="menu-label">Symbol Pick</span>
-            <span className="menu-desc">Pick the correct symbol from similar look-alikes!</span>
+          <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
+            <span className="menu-icon">💥</span>
+            <span className="menu-label">Element Showdown</span>
+            <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
           </button>
         </MenuGroup>
 
-        <MenuGroup id="explore" icon="🔬" label="Create & Explore" open={openGroups.has('explore')} onToggle={toggleGroup}>
+        <MenuGroup id="explore" icon="🔍" label="Explore & Create" open={openGroups.has('explore')} onToggle={toggleGroup}>
+          <button className="menu-btn" onClick={() => onNavigate('explore')}>
+            <span className="menu-icon">🗂️</span>
+            <span className="menu-label">Periodic Table</span>
+            <span className="menu-desc">Explore & learn about every element</span>
+          </button>
+
           <button className="menu-btn" onClick={() => onNavigate('element-lab')}>
             <span className="menu-icon">🧪</span>
             <span className="menu-label">Element Lab</span>
             <span className="menu-desc">Create your own elements and add them to the table!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('explore')}>
-            <span className="menu-icon">🔍</span>
-            <span className="menu-label">Periodic Table</span>
-            <span className="menu-desc">Explore & learn about elements</span>
           </button>
         </MenuGroup>
       </nav>

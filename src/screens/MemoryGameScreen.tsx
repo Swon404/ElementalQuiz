@@ -18,11 +18,14 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-function generateCards(pairCount: number): MatchCard[] {
-  const pool = shuffleArray(elements.slice(0, 36)).slice(0, pairCount);
+function generateCards(pairCount: number, exotic: boolean): MatchCard[] {
+  const pool = exotic
+    ? elements.filter(e => e.atomicNumber >= 84)
+    : elements;
+  const picked = shuffleArray(pool).slice(0, pairCount);
   const cards: MatchCard[] = [];
   let id = 0;
-  for (const el of pool) {
+  for (const el of picked) {
     cards.push({ id: id++, text: el.symbol, elementNum: el.atomicNumber, flipped: false, matched: false });
     cards.push({ id: id++, text: el.name, elementNum: el.atomicNumber, flipped: false, matched: false });
   }
@@ -34,6 +37,7 @@ type Phase = 'setup' | 'playing' | 'result';
 export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [pairCount, setPairCount] = useState(8);
+  const [exotic, setExotic] = useState(false);
   const [cards, setCards] = useState<MatchCard[]>([]);
   const [firstCard, setFirstCard] = useState<number | null>(null);
   const [locked, setLocked] = useState(false);
@@ -46,7 +50,7 @@ export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
   const tickTimer = useRef<ReturnType<typeof setInterval>>(null);
 
   const startGame = useCallback(() => {
-    setCards(generateCards(pairCount));
+    setCards(generateCards(pairCount, exotic));
     setFirstCard(null);
     setLocked(false);
     setMoves(0);
@@ -54,7 +58,7 @@ export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
     setStartTime(Date.now());
     setElapsed(0);
     setPhase('playing');
-  }, [pairCount]);
+  }, [pairCount, exotic]);
 
   // Timer tick
   useEffect(() => {
@@ -128,7 +132,24 @@ export default function MemoryGameScreen({ onBack }: MemoryGameScreenProps) {
       <div className="quiz-setup">
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">🧠 Element Memory</h2>
-        <Elementor expression="greeting" message="Match element symbols with their names! How fast can you find all the pairs?" />
+        <Elementor expression="greeting" message={exotic ? "Exotic mode! Match the radioactive and superheavy elements — if you dare! ☢️" : "Match element symbols with their names! How fast can you find all the pairs?"} />
+
+        <div className="difficulty-select" style={{ marginBottom: '0.5rem' }}>
+          <button
+            className={`diff-btn ${!exotic ? 'selected' : ''}`}
+            onClick={() => setExotic(false)}
+          >
+            <span className="diff-label">⚗️ Standard</span>
+            <span className="diff-desc">All 118 elements</span>
+          </button>
+          <button
+            className={`diff-btn ${exotic ? 'selected' : ''}`}
+            onClick={() => setExotic(true)}
+          >
+            <span className="diff-label">☢️ Exotic</span>
+            <span className="diff-desc">Radioactive &amp; superheavy (84–118)</span>
+          </button>
+        </div>
 
         <div className="difficulty-select">
           {[

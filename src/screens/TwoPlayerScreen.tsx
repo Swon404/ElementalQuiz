@@ -12,6 +12,7 @@ import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
 interface TwoPlayerScreenProps {
   onComplete: () => void;
   onBack: () => void;
+  initialMode?: 'championship';
 }
 
 type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'championship';
@@ -59,7 +60,7 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
 
   for (let i = 0; i < count && i < poolElements.length; i++) {
     const el = poolElements[i];
-    const type = Math.floor(Math.random() * 6);
+    const type = Math.floor(Math.random() * 10);
     const isTrue = Math.random() > 0.5;
 
     if (type === 0) {
@@ -103,7 +104,7 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
       } else {
         statements.push({ text: `${el.name} is ${el.radioactive ? 'not ' : ''}radioactive.`, answer: false, explanation: `Actually, ${el.name} is ${el.radioactive ? '' : 'not '}radioactive.` });
       }
-    } else {
+    } else if (type === 5) {
       // Discovery
       if (isTrue && el.discoveredBy) {
         statements.push({ text: `${el.name} was discovered by ${el.discoveredBy}.`, answer: true, explanation: `Yes! ${el.discoveredBy} discovered ${el.name}.` });
@@ -111,13 +112,66 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
         const wrongDiscoverer = shuffleArray(elements.filter(e => e.discoveredBy && e.discoveredBy !== el.discoveredBy))[0];
         statements.push({ text: `${el.name} was discovered by ${wrongDiscoverer?.discoveredBy || 'Unknown'}.`, answer: false, explanation: `No, ${el.name} was discovered by ${el.discoveredBy || 'ancient peoples'}.` });
       }
+    } else if (type === 6) {
+      // Period number
+      if (isTrue) {
+        statements.push({ text: `${el.name} is in period ${el.period} of the periodic table.`, answer: true, explanation: `Yes! ${el.name} is in period ${el.period}.` });
+      } else {
+        const wrongPeriod = el.period <= 4 ? el.period + 2 : el.period - 2;
+        statements.push({ text: `${el.name} is in period ${wrongPeriod} of the periodic table.`, answer: false, explanation: `No — ${el.name} is in period ${el.period}, not period ${wrongPeriod}.` });
+      }
+    } else if (type === 7) {
+      // Same group as another element
+      if (el.group !== null) {
+        const sameGroup = elements.filter(e => e.group === el.group && e.name !== el.name);
+        const diffGroup = elements.filter(e => e.group !== null && e.group !== el.group && e.name !== el.name);
+        if (sameGroup.length > 0 && diffGroup.length > 0) {
+          if (isTrue) {
+            const other = shuffleArray(sameGroup)[0];
+            statements.push({ text: `${el.name} and ${other.name} are in the same group.`, answer: true, explanation: `Yes! Both are in group ${el.group}.` });
+          } else {
+            const other = shuffleArray(diffGroup)[0];
+            statements.push({ text: `${el.name} and ${other.name} are in the same group.`, answer: false, explanation: `No — ${el.name} is in group ${el.group}, but ${other.name} is in group ${other.group}.` });
+          }
+        } else {
+          statements.push({ text: `The symbol for ${el.name} is ${el.symbol}.`, answer: true, explanation: `Yes! ${el.name}'s symbol is ${el.symbol}.` });
+        }
+      } else {
+        statements.push({ text: `${el.name} is a ${el.stateAtRoomTemp} at room temperature.`, answer: true, explanation: `Correct — ${el.name} is a ${el.stateAtRoomTemp}.` });
+      }
+    } else if (type === 8) {
+      // Uses fact
+      if (el.uses && el.uses.length > 0) {
+        const use = el.uses[Math.floor(Math.random() * el.uses.length)];
+        if (isTrue) {
+          statements.push({ text: `${el.name} is used for: ${use}.`, answer: true, explanation: `Correct! ${el.name} really is used for ${use}.` });
+        } else {
+          const otherEl = shuffleArray(elements.filter(e => e.uses && e.uses.length > 0 && e.name !== el.name))[0];
+          const wrongUse = otherEl.uses[Math.floor(Math.random() * otherEl.uses.length)];
+          statements.push({ text: `${el.name} is used for: ${wrongUse}.`, answer: false, explanation: `No — that's a use for ${otherEl.name}. ${el.name} is used for ${use}.` });
+        }
+      } else {
+        // fallback to symbol
+        statements.push({ text: `The symbol for ${el.name} is ${el.symbol}.`, answer: true, explanation: `Yes! ${el.name}'s symbol is ${el.symbol}.` });
+      }
+    } else {
+      // Atomic mass comparison
+      const other = shuffleArray(elements.filter(e => Math.abs(e.atomicMass - el.atomicMass) > 2 && e.name !== el.name))[0] ||
+                    shuffleArray(elements.filter(e => e.name !== el.name))[0];
+      const heavier = el.atomicMass > other.atomicMass;
+      if (isTrue === heavier) {
+        statements.push({ text: `${el.name} has a higher atomic mass than ${other.name}.`, answer: heavier, explanation: `${el.name}'s atomic mass is ${el.atomicMass} and ${other.name}'s is ${other.atomicMass}.` });
+      } else {
+        statements.push({ text: `${el.name} has a lower atomic mass than ${other.name}.`, answer: !heavier, explanation: `${el.name}'s atomic mass is ${el.atomicMass} and ${other.name}'s is ${other.atomicMass}.` });
+      }
     }
   }
   return statements;
 }
 
-function generateMatchCards(pairCount: number, pool: number = 36): MatchCard[] {
-  const picked = shuffleArray(elements.slice(0, pool)).slice(0, pairCount);
+function generateMatchCards(pairCount: number, pool: number = 118, exotic: boolean = false): MatchCard[] {
+  const source = exotic ? elements.filter(e => e.atomicNumber >= 84) : elements.slice(0, pool);
+  const picked = shuffleArray(source).slice(0, pairCount);
   const cards: MatchCard[] = [];
   let id = 0;
   for (const el of picked) {
@@ -196,16 +250,16 @@ function pickSimilarSymbols(correctSymbol: string, elementName: string, count: n
   return picked.slice(0, count);
 }
 
-function generateSymbolRounds(count: number, pool: number = 60): SymbolRound[] {
+function generateSymbolRounds(count: number, pool: number = 118): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, el.name, 5); // 5 distractors + correct = 6 choices
+    const distractors = pickSimilarSymbols(el.symbol, el.name, 7); // 7 distractors + correct = 8 choices
     const choices = shuffleArray([el.symbol, ...distractors]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
 }
 
-function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
+function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
   const poolElements = shuffleArray(elements.slice(0, pool));
   const rounds: SnapRound[] = [];
   for (let i = 0; i < count && i < poolElements.length; i++) {
@@ -213,7 +267,18 @@ function generateSnapRounds(count: number, pool: number = 60): SnapRound[] {
     const catLabel = CATEGORY_LABELS[el.category] || el.category;
 
     // Helper: remove the element name from a string so clues don't give it away
-    const scrub = (s: string) => s.replace(new RegExp(el.name, 'gi'), '???');
+    const scrub = (s: string) => {
+      const esc = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Remove exact element name
+      let result = s.replace(new RegExp(esc(el.name), 'gi'), '???');
+      // Also scrub words derived from the element name (e.g. "California" for "Californium")
+      if (el.name.length >= 7) {
+        const prefixLen = Math.max(5, Math.floor(el.name.length * 0.65));
+        const prefix = esc(el.name.slice(0, prefixLen));
+        result = result.replace(new RegExp(`\\b${prefix}\\w*`, 'gi'), '???');
+      }
+      return result;
+    };
 
     // 5 clues: vague → obvious
     const clues: string[] = [
@@ -271,9 +336,9 @@ type ChampGameScore = {
 
 
 
-export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenProps) {
-  const [phase, setPhase] = useState<Phase>('mode-select');
-  const [gameMode, setGameMode] = useState<GameMode>('championship');
+export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: TwoPlayerScreenProps) {
+  const [phase, setPhase] = useState<Phase>(initialMode ? 'setup' : 'mode-select');
+  const [gameMode, setGameMode] = useState<GameMode>(initialMode ?? 'championship');
   const [rounds, setRounds] = useState(5);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
@@ -309,6 +374,8 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
   const [matchTurn, setMatchTurn] = useState(1);
   const [matchFirst, setMatchFirst] = useState<number | null>(null);
   const [matchLocked, setMatchLocked] = useState(false);
+  const [matchExotic, setMatchExotic] = useState(false);
+
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Clue Duel state
@@ -479,13 +546,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
 
   // --- Element Match ---
   const startElementMatch = useCallback(() => {
-    setMatchCards(generateMatchCards(rounds, sharedPool()));
+    setMatchCards(generateMatchCards(rounds, sharedPool(), matchExotic));
     setMatchTurn(1);
     setMatchFirst(null);
     setMatchLocked(false);
     resetScores();
     setPhase('playing');
-  }, [rounds]);
+  }, [rounds, matchExotic]);
 
   const handleMatchFlip = (cardId: number) => {
     if (matchLocked) return;
@@ -963,6 +1030,13 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
             ))}
           </div>
         )}
+        {gameMode === 'element-match' && (
+          <div className="rounds-select">
+            <label>Pool: </label>
+            <button className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
+            <button className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
+          </div>
+        )}
         {gameMode === 'championship' && (
           <>
             <div className="rounds-select">
@@ -978,13 +1052,23 @@ export default function TwoPlayerScreen({ onComplete, onBack }: TwoPlayerScreenP
                 </button>
               ))}
             </div>
-            <p className="champ-info">
-              All 6 games in sequence — {CHAMP_SIZE_CONFIG[champSize].desc.toLowerCase()}.
-              Quiz Battle ({CHAMP_SIZE_CONFIG[champSize].counts[0]}), T/F Blitz ({CHAMP_SIZE_CONFIG[champSize].counts[1]}),
-              Element Match ({CHAMP_SIZE_CONFIG[champSize].counts[2]} pairs), Atom Quiz ({CHAMP_SIZE_CONFIG[champSize].counts[3]}),
-              Clue Duel ({CHAMP_SIZE_CONFIG[champSize].counts[4]}), Symbol Pick ({CHAMP_SIZE_CONFIG[champSize].counts[5]}).
-              Scores from all games add up — highest total wins!
-            </p>
+            <div className="champ-info">
+              <div className="champ-games-list">
+                {([
+                  ['⚡', 'Quiz Battle',    CHAMP_SIZE_CONFIG[champSize].counts[0], 'qs'],
+                  ['✅', 'T/F Blitz',      CHAMP_SIZE_CONFIG[champSize].counts[1], 'qs'],
+                  ['🃏', 'Element Match',  CHAMP_SIZE_CONFIG[champSize].counts[2], 'pairs'],
+                  ['⚛️', 'Atom Quiz',      CHAMP_SIZE_CONFIG[champSize].counts[3], 'qs'],
+                  ['🔍', 'Clue Duel',      CHAMP_SIZE_CONFIG[champSize].counts[4], 'qs'],
+                  ['🔤', 'Symbol Pick',    CHAMP_SIZE_CONFIG[champSize].counts[5], 'qs'],
+                ] as [string, string, number, string][]).map(([icon, name, count, unit]) => (
+                  <span key={name} className="champ-game-chip">
+                    {icon} {name} <strong>{count}</strong> {unit}
+                  </span>
+                ))}
+              </div>
+              <p className="champ-info-footer">Scores add up across all games — highest total wins!</p>
+            </div>
           </>
         )}
 

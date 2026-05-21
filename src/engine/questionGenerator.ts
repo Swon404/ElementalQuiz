@@ -179,6 +179,36 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
+    // sn-3: Tricky symbols that come from Latin/German names
+    (el, pool, n) => {
+      const TRICKY: Record<string, string> = {
+        'Fe': 'ferrum (Latin for iron)',
+        'Au': 'aurum (Latin for gold)',
+        'Pb': 'plumbum (Latin for lead)',
+        'Ag': 'argentum (Latin for silver)',
+        'Hg': 'hydrargyrum (Greek, meaning liquid silver)',
+        'Na': 'natrium (Latin/Arabic)',
+        'K': 'kalium (Latin)',
+        'Cu': 'cuprum (Latin for copper)',
+        'Sn': 'stannum (Latin for tin)',
+        'W': 'wolfram (German)',
+        'Sb': 'stibium (Latin for antimony)',
+        'Bi': 'bismuthum (Medieval Latin)',
+      };
+      if (!TRICKY[el.symbol]) return null;
+      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
+      const choices = shuffleArray([el.name, ...distractors]);
+      return {
+        id: `sn-3-${el.atomicNumber}`,
+        category: 'symbol-name',
+        questionText: `The symbol "${el.symbol}" comes from "${TRICKY[el.symbol]}". Which element is it?`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: `${el.name}'s symbol ${el.symbol} comes from its old Latin/German name — ${TRICKY[el.symbol]}! ${randomFact(el)}`,
+        hint: `This element is a ${categoryLabel(el.category)}.`,
+      };
+    },
   ],
 
   'atomic-number': [
@@ -253,6 +283,30 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
+    // gc-3: Which of these is in the same GROUP as X?
+    (el, pool, n) => {
+      if (el.group === null) return null;
+      const sameGroup = pool.filter(e => e.group === el.group && e.atomicNumber !== el.atomicNumber);
+      if (sameGroup.length === 0) return null;
+      const correct = sameGroup[Math.floor(Math.random() * sameGroup.length)];
+      const distractors = pickRandom(
+        pool.filter(e => e.group !== el.group && e.atomicNumber !== el.atomicNumber && e.atomicNumber !== correct.atomicNumber),
+        n - 1, [el, correct]
+      );
+      if (distractors.length < n - 1) return null;
+      const all = shuffleArray([correct, ...distractors]);
+      const choices = all.map(e => e.name);
+      return {
+        id: `gc-3-${el.atomicNumber}-${correct.atomicNumber}`,
+        category: 'group-classification',
+        questionText: `Which of these elements is in the same GROUP (column) as ${el.name}?`,
+        choices,
+        correctIndex: choices.indexOf(correct.name),
+        element: correct,
+        explanation: `${correct.name} and ${el.name} are both in group ${el.group}! ${randomFact(correct)}`,
+        hint: `${el.name} is a ${categoryLabel(el.category)}.`,
+      };
+    },
   ],
 
   'discovery': [
@@ -284,6 +338,30 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `It was discovered by ${el.discoveredBy}.`,
       };
     },
+    // di-3: Which country was X discovered in?
+    (el, pool, n) => {
+      if (!el.discoveryCountry || el.discoveredBy === 'Ancient') return null;
+      const correct = el.discoveryCountry;
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.discoveryCountry && e.discoveryCountry !== correct && e.discoveredBy !== 'Ancient'),
+        n - 1,
+        e => e.discoveryCountry!,
+        correct,
+        el
+      );
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([correct, ...distractors]);
+      return {
+        id: `di-3-${el.atomicNumber}`,
+        category: 'discovery',
+        questionText: `In which country was ${el.name} first discovered?`,
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: `${el.name} was discovered in ${el.discoveryCountry} in ${el.discoveryYear} by ${el.discoveredBy}. ${randomFact(el)}`,
+        hint: `It was discovered by ${el.discoveredBy}.`,
+      };
+    },
   ],
 
   'state': [
@@ -299,6 +377,28 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: randomFact(el),
         hint: `Think about what ${categoryLabel(el.category)}s are usually like.`,
+      };
+    },
+    // st-2: Which of these elements is a GAS/LIQUID at room temperature?
+    (el, pool, n) => {
+      const targetState = el.stateAtRoomTemp;
+      if (targetState === 'solid') return null; // too many solids, not interesting
+      const others = pickRandom(
+        pool.filter(e => e.stateAtRoomTemp !== targetState && e.atomicNumber !== el.atomicNumber),
+        n - 1, [el]
+      );
+      if (others.length < n - 1) return null;
+      const all = shuffleArray([el, ...others]);
+      const choices = all.map(e => e.name);
+      return {
+        id: `st-2-${el.atomicNumber}`,
+        category: 'state',
+        questionText: `Which of these elements is a ${targetState.toUpperCase()} at room temperature?`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: `${el.name} is a ${targetState} at room temperature! ${randomFact(el)}`,
+        hint: `Noble gases and some nonmetals are gases; mercury and bromine are the only liquid elements.`,
       };
     },
   ],
@@ -422,6 +522,29 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: randomFact(el),
         hint: `This element is a ${categoryLabel(el.category)}.`,
+      };
+    },
+    // po-2: Which element is in the same PERIOD (row) as X?
+    (el, pool, n) => {
+      const samePeriod = pool.filter(e => e.period === el.period && e.atomicNumber !== el.atomicNumber);
+      if (samePeriod.length === 0) return null;
+      const correct = samePeriod[Math.floor(Math.random() * samePeriod.length)];
+      const distractors = pickRandom(
+        pool.filter(e => e.period !== el.period && e.atomicNumber !== el.atomicNumber && e.atomicNumber !== correct.atomicNumber),
+        n - 1, [el, correct]
+      );
+      if (distractors.length < n - 1) return null;
+      const all = shuffleArray([correct, ...distractors]);
+      const choices = all.map(e => e.name);
+      return {
+        id: `po-2-${el.atomicNumber}-${correct.atomicNumber}`,
+        category: 'position',
+        questionText: `Which of these elements is in the same PERIOD (row) as ${el.name}?`,
+        choices,
+        correctIndex: choices.indexOf(correct.name),
+        element: correct,
+        explanation: `${correct.name} and ${el.name} are both in period ${el.period}! ${randomFact(correct)}`,
+        hint: `${el.name} is in period ${el.period}.`,
       };
     },
   ],

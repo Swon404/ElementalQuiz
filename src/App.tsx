@@ -18,7 +18,7 @@ import {
 } from './engine/storage.ts';
 import type { Difficulty } from './engine/scoring.ts';
 
-type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz' | 'exotic-quiz' | 'element-lab' | 'symbol-pick';
+type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'two-player-champ' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz' | 'exotic-quiz' | 'element-lab' | 'symbol-pick';
 
 const INTRO_SEEN_KEY = 'elementalquiz_intro_seen';
 
@@ -169,6 +169,13 @@ export default function App() {
       )}
       {screen === 'two-player' && (
         <TwoPlayerScreen
+          onComplete={() => setScreen('home')}
+          onBack={() => setScreen('home')}
+        />
+      )}
+      {screen === 'two-player-champ' && (
+        <TwoPlayerScreen
+          initialMode="championship"
           onComplete={() => setScreen('home')}
           onBack={() => setScreen('home')}
         />
