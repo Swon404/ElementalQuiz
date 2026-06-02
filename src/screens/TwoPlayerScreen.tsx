@@ -271,6 +271,8 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
       const esc = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // Remove exact element name
       let result = s.replace(new RegExp(esc(el.name), 'gi'), '???');
+      // Remove exact symbol as a standalone token
+      result = result.replace(new RegExp(`\\b${esc(el.symbol)}\\b`, 'g'), '??');
       // Also scrub words derived from the element name (e.g. "California" for "Californium")
       if (el.name.length >= 7) {
         const prefixLen = Math.max(5, Math.floor(el.name.length * 0.65));
@@ -286,7 +288,7 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
       scrub(el.funFact || `This element is ${catLabel}.`),
       // Clue 2 — a real-world use (relatable!)
       el.uses && el.uses.length > 0
-        ? `One of my real-world uses is: ${el.uses[0]}.`
+        ? `One of my real-world uses is: ${scrub(el.uses[0])}.`
         : `I'm ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
       // Clue 3 — what type + state
       `I'm classified as ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
@@ -1160,6 +1162,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <div className="tf-result-feedback">
             <p className={`tf-verdict ${tfAnswered !== null && tfAnswered === stmt.answer ? 'correct' : 'wrong'}`}>
               {tfAnswered === null ? '⏰ Time\'s up!' : tfAnswered === stmt.answer ? '🎉 Correct!' : '😬 Wrong!'}
+            </p>
+            <p className="tf-explanation" style={{ margin: '0 0 0.5rem', opacity: 0.9 }}>
+              Correct answer: <strong>{stmt.answer ? 'True' : 'False'}</strong>
             </p>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', margin: '0 0 0.75rem' }}>
               <p className="tf-explanation" style={{ flex: 1, margin: 0 }}>{stmt.explanation}</p>

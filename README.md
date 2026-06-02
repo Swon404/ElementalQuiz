@@ -44,6 +44,16 @@ Every element has **10 curated fun facts** focused on:
 - Strange and amazing science
 - Real-world "wow" moments and history
 
+## Content Safety Guidelines
+
+This app is designed for kids, so fact and question wording should stay educational and age-appropriate.
+
+- Keep safety and health information factual, calm, and non-graphic.
+- Avoid death-centered, violent, or sensational phrasing in prompts, hints, and explanations.
+- Prefer wording that teaches safe behavior (for example: testing, protection, careful handling).
+- If a historical event is relevant, describe it briefly without graphic detail.
+- Preserve scientific accuracy while using child-friendly language.
+
 ### 🤖 Elementor Mascot
 A kawaii-style atom character that guides you through the app:
 - Big expressive eyes with sparkles and animations

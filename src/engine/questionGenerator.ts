@@ -36,12 +36,23 @@ function randomFact(el: Element): string {
   return el.funFact;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /** Replace element name/symbol in text with blanks (global, case-insensitive) */
 function blankOutElement(text: string, el: Element): string {
   // Replace full name first (case-insensitive, global)
-  let result = text.replace(new RegExp(el.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '______');
+  let result = text.replace(new RegExp(escapeRegExp(el.name), 'gi'), '______');
   // Replace symbol (word-boundary to avoid matching partial words)
-  result = result.replace(new RegExp(`\\b${el.symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'), '__');
+  result = result.replace(new RegExp(`\\b${escapeRegExp(el.symbol)}\\b`, 'g'), '__');
+  // Replace words that start with a long-enough prefix of the element name
+  // to catch variants like "California" for "Californium".
+  if (el.name.length >= 7) {
+    const prefixLen = Math.max(5, Math.floor(el.name.length * 0.65));
+    const prefix = escapeRegExp(el.name.slice(0, prefixLen));
+    result = result.replace(new RegExp(`\\b${prefix}\\w*`, 'gi'), '______');
+  }
   return result;
 }
 
@@ -686,12 +697,13 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     (el, pool, n) => {
       if (!el.uses || el.uses.length === 0) return null;
       const use = el.uses[Math.floor(Math.random() * el.uses.length)];
+      const scrubbedUse = blankOutElement(use, el);
       const distractors = pickRandom(pool.filter(e => e.atomicNumber !== el.atomicNumber), n - 1, [el]).map(e => e.name);
       const choices = shuffleArray([el.name, ...distractors]);
       return {
         id: `us-1-${el.atomicNumber}`,
         category: 'uses',
-        questionText: `Which element is used for: "${use}"?`,
+        questionText: `Which element is used for: "${scrubbedUse}"?`,
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
