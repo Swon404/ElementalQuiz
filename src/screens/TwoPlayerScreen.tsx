@@ -29,16 +29,16 @@ type Player2Mode = 'human' | 'bot';
 const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈'];
 
 const BOT_DELAY_MS = 800;
-const BOT_RESULT_DELAY_MS = 1100;
+const BOT_RESULT_DELAY_MS = 1800;
 const BOT_ACCURACY: Record<Difficulty, number> = {
   explorer: 0.6,
   scientist: 0.75,
   professor: 0.88,
 };
 const BOT_MATCH_ACCURACY: Record<Difficulty, number> = {
-  explorer: 0.72,
-  scientist: 0.88,
-  professor: 0.97,
+  explorer: 0.45,
+  scientist: 0.72,
+  professor: 0.93,
 };
 
 // --- True or False types ---
@@ -356,7 +356,7 @@ type ChampGameScore = {
 export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: TwoPlayerScreenProps) {
   const [phase, setPhase] = useState<Phase>(initialMode ? 'setup' : 'mode-select');
   const [gameMode, setGameMode] = useState<GameMode>(initialMode ?? 'championship');
-  const [rounds, setRounds] = useState(5);
+  const [rounds, setRounds] = useState(12);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
   // Load saved names
@@ -396,6 +396,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const matchFinishTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const botKnownCardsRef = useRef<Map<number, number>>(new Map());
 
   // Clue Duel state
   const [snapRounds, setSnapRounds] = useState<SnapRound[]>([]);
@@ -521,6 +523,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         clearTimeout(botTimerRef.current);
         botTimerRef.current = null;
       }
+      if (lockTimer.current) {
+        clearTimeout(lockTimer.current);
+        lockTimer.current = null;
+      }
+      if (matchFinishTimerRef.current) {
+        clearTimeout(matchFinishTimerRef.current);
+        matchFinishTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -545,11 +555,23 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const available = cards.filter(c => !c.matched && !c.flipped);
     if (available.length === 0) return null;
 
+    // Prefer known pairs from memory first.
+    const knownByElement = new Map<number, number[]>();
+    for (const card of cards) {
+      if (card.matched) continue;
+      const knownElement = botKnownCardsRef.current.get(card.id);
+      if (knownElement === undefined) continue;
+      const list = knownByElement.get(knownElement) ?? [];
+      list.push(card.id);
+      knownByElement.set(knownElement, list);
+    }
+
     if (firstId !== null) {
-      const first = cards.find(c => c.id === firstId);
-      if (first) {
-        const partner = available.find(c => c.elementNum === first.elementNum && c.id !== first.id);
-        if (partner) return partner.id;
+      const rememberedFirst = botKnownCardsRef.current.get(firstId);
+      if (rememberedFirst !== undefined) {
+        const partnerIds = (knownByElement.get(rememberedFirst) ?? []).filter(id => id !== firstId);
+        const partnerId = partnerIds.find(id => available.some(c => c.id === id));
+        if (partnerId !== undefined && botGetsMatchRight(difficulty)) return partnerId;
       }
     }
 
@@ -566,8 +588,50 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return chosenGroup[Math.floor(Math.random() * chosenGroup.length)].id;
     }
 
+    if (firstId !== null) {
+      const first = cards.find(c => c.id === firstId);
+      if (first) {
+        const wrongChoices = available.filter(c => c.elementNum !== first.elementNum);
+        if (wrongChoices.length > 0) {
+          return wrongChoices[Math.floor(Math.random() * wrongChoices.length)].id;
+        }
+      }
+    }
+
     return available[Math.floor(Math.random() * available.length)]?.id ?? null;
   }, [botGetsMatchRight]);
+
+  const pickBotSnapChoice = useCallback((round: SnapRound, visibleClueCount: number, difficulty: Difficulty) => {
+    const visibleClues = round.clues.slice(0, Math.max(1, visibleClueCount)).map(c => c.toLowerCase());
+    const choiceElements = round.choices.map(name => elements.find(e => e.name === name));
+
+    const scores = round.choices.map((choiceName, idx) => {
+      const el = choiceElements[idx];
+      if (!el) return { idx, score: 0 };
+      let score = 0;
+      for (const clue of visibleClues) {
+        if (clue.includes(choiceName.toLowerCase())) score += 8;
+        if (clue.includes(`symbol is "${el.symbol.toLowerCase()}"`) || clue.includes(`symbol is ${el.symbol.toLowerCase()}`)) score += 9;
+        if (clue.includes(`${el.atomicNumber} protons`)) score += 8;
+        if (clue.includes(`i'm a ${el.stateAtRoomTemp}`)) score += 3;
+        const categoryPhrase = (CATEGORY_LABELS[el.category] || el.category).toLowerCase();
+        if (clue.includes(categoryPhrase)) score += 3;
+      }
+      return { idx, score };
+    });
+
+    const best = [...scores].sort((a, b) => b.score - a.score);
+    const bestScore = best[0]?.score ?? 0;
+    const top = best.filter(s => s.score === bestScore).map(s => s.idx);
+    const revealBoost = Math.min(0.25, visibleClueCount * 0.04);
+    const shouldTrustTop = Math.random() < (BOT_ACCURACY[difficulty] + revealBoost);
+
+    if (bestScore > 0 && shouldTrustTop) {
+      return top[Math.floor(Math.random() * top.length)] ?? 0;
+    }
+
+    return Math.floor(Math.random() * round.choices.length);
+  }, []);
 
   const startTFBlitz = useCallback(() => {
     setTfStatements(generateTFStatements(rounds * 2, sharedPool()));
@@ -619,13 +683,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   // --- Element Match ---
   const startElementMatch = useCallback(() => {
-    setMatchCards(generateMatchCards(rounds, sharedPool(), matchExotic));
+    setMatchCards(generateMatchCards(rounds, 118, matchExotic));
     setMatchTurn(1);
     setMatchFirst(null);
     setMatchLocked(false);
+    botKnownCardsRef.current.clear();
     resetScores();
     setPhase('playing');
   }, [rounds, matchExotic]);
+
+  useEffect(() => {
+    for (const card of matchCards) {
+      if (card.flipped || card.matched) {
+        botKnownCardsRef.current.set(card.id, card.elementNum);
+      }
+    }
+  }, [matchCards]);
 
   const handleMatchFlip = (cardId: number) => {
     if (matchLocked) return;
@@ -656,7 +729,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         const finishMatchTurn = () => {
           setMatchFirst(null);
           setMatchLocked(false);
-          setMatchTurn(t => t === 1 ? 2 : 1);
         };
 
         if (player2Mode === 'bot' && matchTurn === 2) {
@@ -666,7 +738,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         }
 
         if (matched.every(c => c.matched)) {
-          setTimeout(() => finishCurrentGame(newMatchP1, newMatchP2), 600);
+          const finishDelay = player2Mode === 'bot' && matchTurn === 2 ? BOT_RESULT_DELAY_MS : 600;
+          if (!matchFinishTimerRef.current) {
+            matchFinishTimerRef.current = setTimeout(() => {
+              matchFinishTimerRef.current = null;
+              finishCurrentGame(newMatchP1, newMatchP2);
+            }, finishDelay);
+          }
         }
       } else {
         playWrong();
@@ -681,6 +759,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       }
     }
   };
+
+  // Safety net: if all cards are matched, always end the game even if a prior callback was interrupted.
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'element-match' || matchCards.length === 0) return;
+    if (!matchCards.every(c => c.matched)) return;
+    if (matchFinishTimerRef.current) return;
+
+    const p1Pairs = Math.floor(matchCards.filter(c => c.matchedBy === 1).length / 2);
+    const p2Pairs = Math.floor(matchCards.filter(c => c.matchedBy === 2).length / 2);
+    const finishDelay = player2Mode === 'bot' && matchTurn === 2 ? BOT_RESULT_DELAY_MS : 600;
+
+    matchFinishTimerRef.current = setTimeout(() => {
+      matchFinishTimerRef.current = null;
+      finishCurrentGame(p1Pairs, p2Pairs);
+    }, finishDelay);
+  }, [gameMode, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -862,7 +956,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setPhase('playing');
     } else if (mode === 'element-match') {
       const n = counts[2];
-      setMatchCards(generateMatchCards(n, sharedPool()));
+      setMatchCards(generateMatchCards(n, 118));
       setMatchTurn(1);
       setMatchFirst(null);
       setMatchLocked(false);
@@ -987,10 +1081,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       botTimerRef.current = setTimeout(() => {
         botTimerRef.current = null;
         handleTFAnswer(botAnswer);
-        botTimerRef.current = setTimeout(() => {
-          botTimerRef.current = null;
-          nextTFRound();
-        }, BOT_RESULT_DELAY_MS);
       }, BOT_DELAY_MS);
       return;
     }
@@ -1013,13 +1103,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       botTimerRef.current = setTimeout(() => {
         botTimerRef.current = null;
         if (shouldGuess) {
-          const correctIndex = round.choices.findIndex(c => c === round.correctName);
-          const choice = pickBotChoice(Math.max(0, correctIndex), round.choices.length, player2.difficulty);
+          const choice = pickBotSnapChoice(round, snapClueIdx + 1, player2.difficulty);
           handleSnapAnswer(choice);
-          botTimerRef.current = setTimeout(() => {
-            botTimerRef.current = null;
-            nextSnapRound();
-          }, BOT_RESULT_DELAY_MS);
         } else {
           handleClueNext();
         }
@@ -1034,10 +1119,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         botTimerRef.current = null;
         const choice = pickBotChoice(Math.max(0, correctIndex), round.choices.length, player2.difficulty);
         handleSymbolAnswer(choice);
-        botTimerRef.current = setTimeout(() => {
-          botTimerRef.current = null;
-          nextSymbolRound();
-        }, BOT_RESULT_DELAY_MS);
       }, BOT_DELAY_MS);
       return;
     }
@@ -1048,10 +1129,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       botTimerRef.current = setTimeout(() => {
         botTimerRef.current = null;
         handleAtomAnswer(choice);
-        botTimerRef.current = setTimeout(() => {
-          botTimerRef.current = null;
-          nextAtomRound();
-        }, BOT_RESULT_DELAY_MS);
       }, BOT_DELAY_MS);
     }
   }, [
@@ -1070,6 +1147,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     phase,
     pickBotChoice,
     pickBotMatchCard,
+    pickBotSnapChoice,
     player2.difficulty,
     player2Mode,
     qIndex,
@@ -1087,6 +1165,55 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     tfIndex,
     tfShowResult,
     tfStatements,
+    tfTurn,
+  ]);
+
+  // Let bot result screens breathe before auto-advancing.
+  useEffect(() => {
+    if (player2Mode !== 'bot' || phase !== 'playing') return;
+    if (botTimerRef.current) return;
+
+    if (gameMode === 'tf-blitz' && tfTurn === 2 && tfShowResult) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextTFRound();
+      }, BOT_RESULT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'symbol-pick' && symbolTurn === 2 && symbolAnswered !== null) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextSymbolRound();
+      }, BOT_RESULT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'atom-quiz' && atomTurn === 2 && atomAnswered !== null) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextAtomRound();
+      }, BOT_RESULT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'clue-duel' && snapTurn === 2 && snapAnswered !== null) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextSnapRound();
+      }, BOT_RESULT_DELAY_MS);
+    }
+  }, [
+    atomAnswered,
+    atomTurn,
+    gameMode,
+    phase,
+    player2Mode,
+    snapAnswered,
+    snapTurn,
+    symbolAnswered,
+    symbolTurn,
+    tfShowResult,
     tfTurn,
   ]);
 
@@ -1125,7 +1252,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'element-match' ? 'selected' : ''}`}
-            onClick={() => { setGameMode('element-match'); setPhase('setup'); }}
+            onClick={() => { setGameMode('element-match'); setRounds(12); setPhase('setup'); }}
           >
             <span className="gm-icon">🃏</span>
             <span className="gm-name">Element Match</span>
@@ -1218,17 +1345,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   </button>
                 ))}
               </div>
-              <div className="diff-select-mini">
-                {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
-                  <button
-                    key={d}
-                    className={`diff-mini-btn ${p.difficulty === d ? 'selected' : ''}`}
-                    onClick={() => setP({ ...p, difficulty: d })}
-                  >
-                    {DIFFICULTY_CONFIG[d].label}
-                  </button>
-                ))}
-              </div>
+              {(gameMode !== 'element-match' || (label === 'Player 2' && player2Mode === 'bot')) && (
+                <div className="diff-select-mini">
+                  {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
+                    <button
+                      key={d}
+                      className={`diff-mini-btn ${p.difficulty === d ? 'selected' : ''}`}
+                      onClick={() => setP({ ...p, difficulty: d })}
+                    >
+                      {DIFFICULTY_CONFIG[d].label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -1419,10 +1548,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             const matchClass = card.matched
               ? card.matchedBy === 1 ? 'matched matched-p1' : 'matched matched-p2'
               : '';
+            const activeChoiceClass = card.flipped && !card.matched
+              ? (matchTurn === 1 ? 'active-p1' : 'active-p2')
+              : '';
             return (
               <button
                 key={card.id}
-                className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${matchClass}`}
+                className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${activeChoiceClass} ${matchClass}`}
                 onClick={() => handleMatchFlip(card.id)}
                 disabled={card.matched || card.flipped}
               >

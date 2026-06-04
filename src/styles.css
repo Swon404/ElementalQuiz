@@ -454,6 +454,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .setup-title {
@@ -586,10 +587,13 @@ body {
 .players-config {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .player-config-card {
   flex: 1;
+  min-width: 0;
   background: var(--bg-card);
   border-radius: var(--radius);
   padding: 14px;
@@ -662,6 +666,7 @@ body {
   align-items: center;
   gap: 8px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .rounds-select label { color: var(--text-secondary); }
@@ -948,6 +953,10 @@ body {
   font-weight: 700;
   color: var(--text-primary);
 }
+.match-card:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
 .match-card:not(.flipped):not(.matched):hover {
   border-color: var(--accent);
 }
@@ -957,6 +966,14 @@ body {
 .match-card.flipped {
   background: rgba(74, 144, 226, 0.2);
   border-color: var(--accent);
+}
+.match-card.active-p1 {
+  background: rgba(74, 144, 226, 0.24);
+  border-color: #4a90e2;
+}
+.match-card.active-p2 {
+  background: rgba(232, 121, 53, 0.24);
+  border-color: #e87935;
 }
 .match-card.matched {
   background: rgba(75, 181, 67, 0.2);
@@ -1680,6 +1697,20 @@ body {
   .choice-btn { padding: 12px; }
   .players-config { flex-direction: column; }
   .result-stats { flex-wrap: wrap; }
+}
+
+@media (max-width: 560px) {
+  .players-config {
+    flex-direction: column;
+  }
+
+  .player-config-card {
+    width: 100%;
+  }
+
+  .round-btn {
+    padding: 8px 12px;
+  }
 }
 
 @media (min-width: 768px) {
