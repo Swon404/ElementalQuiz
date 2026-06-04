@@ -24,7 +24,22 @@ type PlayerConfig = {
   avatar: string;
 };
 
+type Player2Mode = 'human' | 'bot';
+
 const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈'];
+
+const BOT_DELAY_MS = 800;
+const BOT_RESULT_DELAY_MS = 1100;
+const BOT_ACCURACY: Record<Difficulty, number> = {
+  explorer: 0.6,
+  scientist: 0.75,
+  professor: 0.88,
+};
+const BOT_MATCH_ACCURACY: Record<Difficulty, number> = {
+  explorer: 0.72,
+  scientist: 0.88,
+  professor: 0.97,
+};
 
 // --- True or False types ---
 type TFStatement = { text: string; answer: boolean; explanation: string };
@@ -348,6 +363,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const saved = loadTwoPlayerNames();
   const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: 'explorer', avatar: saved.avatar1 });
   const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: 'explorer', avatar: saved.avatar2 });
+  const [player2Mode, setPlayer2Mode] = useState<Player2Mode>('human');
 
   // Shared scores
   const [p1Score, setP1Score] = useState(0);
@@ -379,6 +395,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [matchExotic, setMatchExotic] = useState(false);
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
   // Clue Duel state
   const [snapRounds, setSnapRounds] = useState<SnapRound[]>([]);
@@ -498,6 +515,60 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     return () => stopTfTimer();
   }, [stopTfTimer]);
 
+  useEffect(() => {
+    return () => {
+      if (botTimerRef.current) {
+        clearTimeout(botTimerRef.current);
+        botTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const botGetsCorrect = useCallback((difficulty: Difficulty) => {
+    return Math.random() < BOT_ACCURACY[difficulty];
+  }, []);
+
+  const botGetsMatchRight = useCallback((difficulty: Difficulty) => {
+    return Math.random() < BOT_MATCH_ACCURACY[difficulty];
+  }, []);
+
+  const pickBotChoice = useCallback((correctIndex: number, choiceCount: number, difficulty: Difficulty) => {
+    if (choiceCount <= 1 || botGetsCorrect(difficulty)) return correctIndex;
+    const wrong: number[] = [];
+    for (let i = 0; i < choiceCount; i++) {
+      if (i !== correctIndex) wrong.push(i);
+    }
+    return wrong[Math.floor(Math.random() * wrong.length)] ?? correctIndex;
+  }, [botGetsCorrect]);
+
+  const pickBotMatchCard = useCallback((cards: MatchCard[], firstId: number | null, difficulty: Difficulty) => {
+    const available = cards.filter(c => !c.matched && !c.flipped);
+    if (available.length === 0) return null;
+
+    if (firstId !== null) {
+      const first = cards.find(c => c.id === firstId);
+      if (first) {
+        const partner = available.find(c => c.elementNum === first.elementNum && c.id !== first.id);
+        if (partner) return partner.id;
+      }
+    }
+
+    const grouped = new Map<number, MatchCard[]>();
+    for (const card of available) {
+      const list = grouped.get(card.elementNum) ?? [];
+      list.push(card);
+      grouped.set(card.elementNum, list);
+    }
+
+    const pairs = Array.from(grouped.values()).filter(group => group.length >= 2);
+    if (pairs.length > 0 && botGetsMatchRight(difficulty)) {
+      const chosenGroup = pairs[Math.floor(Math.random() * pairs.length)];
+      return chosenGroup[Math.floor(Math.random() * chosenGroup.length)].id;
+    }
+
+    return available[Math.floor(Math.random() * available.length)]?.id ?? null;
+  }, [botGetsMatchRight]);
+
   const startTFBlitz = useCallback(() => {
     setTfStatements(generateTFStatements(rounds * 2, sharedPool()));
     setTfIndex(0);
@@ -582,8 +653,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         const newMatchP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
         if (matchTurn === 1) setP1Score(s => s + 1);
         else setP2Score(s => s + 1);
-        setMatchFirst(null);
-        setMatchLocked(false);
+        const finishMatchTurn = () => {
+          setMatchFirst(null);
+          setMatchLocked(false);
+          setMatchTurn(t => t === 1 ? 2 : 1);
+        };
+
+        if (player2Mode === 'bot' && matchTurn === 2) {
+          setTimeout(finishMatchTurn, BOT_RESULT_DELAY_MS);
+        } else {
+          finishMatchTurn();
+        }
 
         if (matched.every(c => c.matched)) {
           setTimeout(() => finishCurrentGame(newMatchP1, newMatchP2), 600);
@@ -895,6 +975,121 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     </div>
   );
 
+  // --- Bot turns (Player 2) ---
+  useEffect(() => {
+    if (player2Mode !== 'bot') return;
+    if (phase !== 'playing') return;
+    if (botTimerRef.current) return;
+
+    if (gameMode === 'tf-blitz' && tfTurn === 2 && !tfShowResult && tfAnswered === null && tfStatements[tfIndex]) {
+      const stmt = tfStatements[tfIndex];
+      const botAnswer = botGetsCorrect(player2.difficulty) ? stmt.answer : !stmt.answer;
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        handleTFAnswer(botAnswer);
+        botTimerRef.current = setTimeout(() => {
+          botTimerRef.current = null;
+          nextTFRound();
+        }, BOT_RESULT_DELAY_MS);
+      }, BOT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked) {
+      const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty);
+      if (choiceId !== null) {
+        botTimerRef.current = setTimeout(() => {
+          botTimerRef.current = null;
+          handleMatchFlip(choiceId);
+        }, BOT_DELAY_MS);
+        return;
+      }
+    }
+
+    if (gameMode === 'clue-duel' && snapTurn === 2 && snapAnswered === null && snapRounds[snapIndex]) {
+      const round = snapRounds[snapIndex];
+      const confidence = Math.min(0.92, 0.3 + snapClueIdx * 0.14 + (player2.difficulty === 'professor' ? 0.14 : player2.difficulty === 'scientist' ? 0.08 : 0));
+      const shouldGuess = snapFirstWrongBy !== null || Math.random() < confidence;
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        if (shouldGuess) {
+          const correctIndex = round.choices.findIndex(c => c === round.correctName);
+          const choice = pickBotChoice(Math.max(0, correctIndex), round.choices.length, player2.difficulty);
+          handleSnapAnswer(choice);
+          botTimerRef.current = setTimeout(() => {
+            botTimerRef.current = null;
+            nextSnapRound();
+          }, BOT_RESULT_DELAY_MS);
+        } else {
+          handleClueNext();
+        }
+      }, BOT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'symbol-pick' && symbolTurn === 2 && symbolAnswered === null && symbolRounds[symbolIndex]) {
+      const round = symbolRounds[symbolIndex];
+      const correctIndex = round.choices.findIndex(c => c === round.correctSymbol);
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        const choice = pickBotChoice(Math.max(0, correctIndex), round.choices.length, player2.difficulty);
+        handleSymbolAnswer(choice);
+        botTimerRef.current = setTimeout(() => {
+          botTimerRef.current = null;
+          nextSymbolRound();
+        }, BOT_RESULT_DELAY_MS);
+      }, BOT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'atom-quiz' && atomTurn === 2 && atomAnswered === null && atomQuestions[atomIndex]) {
+      const q = atomQuestions[atomIndex];
+      const choice = pickBotChoice(q.correctIndex, q.choices.length, player2.difficulty);
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        handleAtomAnswer(choice);
+        botTimerRef.current = setTimeout(() => {
+          botTimerRef.current = null;
+          nextAtomRound();
+        }, BOT_RESULT_DELAY_MS);
+      }, BOT_DELAY_MS);
+    }
+  }, [
+    atomAnswered,
+    atomIndex,
+    atomQuestions,
+    atomTurn,
+    botGetsCorrect,
+    currentPlayer,
+    gameMode,
+    matchCards,
+    matchFirst,
+    matchLocked,
+    matchTurn,
+    p2Questions,
+    phase,
+    pickBotChoice,
+    pickBotMatchCard,
+    player2.difficulty,
+    player2Mode,
+    qIndex,
+    snapAnswered,
+    snapClueIdx,
+    snapFirstWrongBy,
+    snapIndex,
+    snapRounds,
+    snapTurn,
+    symbolAnswered,
+    symbolIndex,
+    symbolRounds,
+    symbolTurn,
+    tfAnswered,
+    tfIndex,
+    tfShowResult,
+    tfStatements,
+    tfTurn,
+  ]);
+
   // --- MODE SELECT ---
   if (phase === 'mode-select') {
     return (
@@ -985,11 +1180,31 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           {[{ p: player1, setP: setPlayer1, label: 'Player 1' }, { p: player2, setP: setPlayer2, label: 'Player 2' }].map(({ p, setP, label }) => (
             <div key={label} className="player-config-card">
               <h3>{label}</h3>
+              {label === 'Player 2' && (
+                <div className="rounds-select" style={{ marginTop: '0.25rem' }}>
+                  <label>Type: </label>
+                  <button
+                    className={`round-btn ${player2Mode === 'human' ? 'selected' : ''}`}
+                    onClick={() => setPlayer2Mode('human')}
+                  >
+                    Human
+                  </button>
+                  <button
+                    className={`round-btn ${player2Mode === 'bot' ? 'selected' : ''}`}
+                    onClick={() => {
+                      setPlayer2Mode('bot');
+                      if (!p.name.trim()) setP({ ...p, name: 'Bot Blaze' });
+                    }}
+                  >
+                    Bot
+                  </button>
+                </div>
+              )}
               <input
                 className="player-name-input"
                 value={p.name}
                 onChange={e => setP({ ...p, name: e.target.value })}
-                placeholder="Enter name"
+                placeholder={label === 'Player 2' && player2Mode === 'bot' ? 'Bot name' : 'Enter name'}
                 maxLength={20}
               />
               <div className="avatar-select">
@@ -1084,6 +1299,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const cp = currentPlayer === 1 ? player1 : player2;
     const questions = currentPlayer === 1 ? p1Questions : p2Questions;
     const streak = currentPlayer === 1 ? p1Streak : p2Streak;
+    const autoSelectIndex = currentPlayer === 2 && player2Mode === 'bot' && questions[qIndex]
+      ? pickBotChoice(questions[qIndex].correctIndex, questions[qIndex].choices.length, player2.difficulty)
+      : null;
 
     if (!questions[qIndex]) return null;
 
@@ -1111,6 +1329,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           totalQuestions={rounds}
           onAnswer={(correct, points) => handleQuizAnswer(correct, points)}
           timedMode={false}
+          autoSelectIndex={autoSelectIndex}
+          autoAdvanceDelayMs={BOT_RESULT_DELAY_MS}
         />
       </div>
     );

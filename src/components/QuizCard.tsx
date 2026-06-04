@@ -13,10 +13,14 @@ interface QuizCardProps {
   totalQuestions: number;
   onAnswer: (correct: boolean, points: number, elementNum: number) => void;
   timedMode: boolean;
+  autoSelectIndex?: number | null;
+  autoAdvanceDelayMs?: number;
 }
 
 export default function QuizCard({
   question, difficulty, streak, questionNumber, totalQuestions, onAnswer, timedMode,
+  autoSelectIndex = null,
+  autoAdvanceDelayMs = 900,
 }: QuizCardProps) {
   const config = DIFFICULTY_CONFIG[difficulty];
   const [selected, setSelected] = useState<number | null>(null);
@@ -26,6 +30,19 @@ export default function QuizCard({
   const [timeLeft, setTimeLeft] = useState<number>(config.timerSeconds);
   const [answered, setAnswered] = useState(false);
   const [pendingResult, setPendingResult] = useState<{ correct: boolean; points: number; elementNum: number } | null>(null);
+
+  useEffect(() => {
+    if (autoSelectIndex === null || answered || showResult) return;
+    const choiceIndex = secondChanceUsed ? question.correctIndex : autoSelectIndex;
+    const timer = setTimeout(() => handleSelect(choiceIndex), secondChanceUsed ? 500 : 700);
+    return () => clearTimeout(timer);
+  }, [autoSelectIndex, answered, question.correctIndex, question.id, secondChanceUsed, showResult]);
+
+  useEffect(() => {
+    if (autoSelectIndex === null || !showResult || !pendingResult) return;
+    const timer = setTimeout(() => handleNext(), autoAdvanceDelayMs);
+    return () => clearTimeout(timer);
+  }, [autoAdvanceDelayMs, autoSelectIndex, pendingResult, showResult]);
 
   useEffect(() => {
     setSelected(null);
