@@ -1069,6 +1069,18 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     </div>
   );
 
+  const isBotTurn =
+    player2Mode === 'bot' &&
+    phase === 'playing' &&
+    (
+      (gameMode === 'quiz-battle' && currentPlayer === 2) ||
+      (gameMode === 'tf-blitz' && tfTurn === 2) ||
+      (gameMode === 'element-match' && matchTurn === 2) ||
+      (gameMode === 'clue-duel' && snapTurn === 2) ||
+      (gameMode === 'symbol-pick' && symbolTurn === 2) ||
+      (gameMode === 'atom-quiz' && atomTurn === 2)
+    );
+
   // --- Bot turns (Player 2) ---
   useEffect(() => {
     if (player2Mode !== 'bot') return;
@@ -1441,7 +1453,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="player-indicator">
             <span className="player-avatar">{cp.avatar}</span>
-            <span className="player-name">{cp.name}'s Turn</span>
+            <span className="player-name">{isBotTurn ? `${player2.name} is thinking...` : `${cp.name}'s Turn`}</span>
             <span className="player-diff">Round {currentRound}/{rounds}</span>
           </div>
           <div className="two-player-scores">
@@ -1450,17 +1462,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span>{p2Score}✓ {player2.avatar}</span>
           </div>
         </div>
-        <QuizCard
-          question={questions[qIndex]}
-          difficulty={cp.difficulty}
-          streak={streak}
-          questionNumber={currentRound}
-          totalQuestions={rounds}
-          onAnswer={(correct, points) => handleQuizAnswer(correct, points)}
-          timedMode={false}
-          autoSelectIndex={autoSelectIndex}
-          autoAdvanceDelayMs={BOT_RESULT_DELAY_MS}
-        />
+        <div style={{ pointerEvents: isBotTurn ? 'none' : 'auto' }}>
+          <QuizCard
+            question={questions[qIndex]}
+            difficulty={cp.difficulty}
+            streak={streak}
+            questionNumber={currentRound}
+            totalQuestions={rounds}
+            onAnswer={(correct, points) => handleQuizAnswer(correct, points)}
+            timedMode={false}
+            autoSelectIndex={autoSelectIndex}
+            autoAdvanceDelayMs={BOT_RESULT_DELAY_MS}
+          />
+        </div>
       </div>
     );
   }
@@ -1479,7 +1493,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         <div className="tf-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="tf-turn-info">
-            <span>{cp.avatar} {cp.name}'s turn</span>
+            <span>{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</span>
             <span className="tf-round">Round {roundNum}/{totalRounds}</span>
           </div>
           <div className="tf-scores">
@@ -1504,8 +1518,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
         {!tfShowResult ? (
           <div className="tf-buttons">
-            <button className="tf-btn tf-true" onClick={() => handleTFAnswer(true)}>✅ True</button>
-            <button className="tf-btn tf-false" onClick={() => handleTFAnswer(false)}>❌ False</button>
+            <button className="tf-btn tf-true" onClick={() => handleTFAnswer(true)} disabled={isBotTurn}>✅ True</button>
+            <button className="tf-btn tf-false" onClick={() => handleTFAnswer(false)} disabled={isBotTurn}>❌ False</button>
           </div>
         ) : (
           <div className="tf-result-feedback">
@@ -1519,7 +1533,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <p className="tf-explanation" style={{ flex: 1, margin: 0 }}>{stmt.explanation}</p>
               <button className="tts-btn tts-btn-small" onClick={() => speakText(stmt.explanation)} title="Read aloud">🔊</button>
             </div>
-            <button className="start-btn" onClick={nextTFRound}>
+            <button className="start-btn" onClick={nextTFRound} disabled={isBotTurn}>
               {tfIndex + 1 >= tfStatements.length ? 'See Results' : 'Next →'}
             </button>
           </div>
@@ -1536,7 +1550,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         {quitOverlay}
         <div className="match-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
-          <span className="match-turn">{cp.avatar} {cp.name}'s turn</span>
+          <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</span>
           <div className="match-scores">
             <span>{player1.avatar} {p1Score}</span>
             <span>vs</span>
@@ -1556,7 +1570,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 key={card.id}
                 className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${activeChoiceClass} ${matchClass}`}
                 onClick={() => handleMatchFlip(card.id)}
-                disabled={card.matched || card.flipped}
+                disabled={isBotTurn || card.matched || card.flipped}
               >
                 <span className="match-card-inner">
                   {(card.flipped || card.matched)
@@ -1600,7 +1614,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               </div>
             )}
             <p className="snap-buzzer-name">
-              {snapFirstWrongBy !== null
+              {isBotTurn
+                ? `${player2.avatar} ${player2.name} is thinking...`
+                : snapFirstWrongBy !== null
                 ? `Guess now — ${Math.min(snapClueIdx + 1, 5)} clues visible!`
                 : `${activePlayer.avatar} ${activePlayer.name}'s turn — guess or pass!`}
             </p>
@@ -1633,10 +1649,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   key={i}
                   className="snap-choice"
                   onClick={() => handleSnapAnswer(i)}
+                  disabled={isBotTurn}
                 >{ch}</button>
               ))}
             </div>
-            <button className="start-btn" onClick={handleClueNext}>
+            <button className="start-btn" onClick={handleClueNext} disabled={isBotTurn}>
               {snapFirstWrongBy !== null
                 ? 'Skip bonus — next element →'
                 : snapClueIdx < 4
@@ -1660,7 +1677,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 <p style={{ margin: '0.3rem 0 0', color: 'var(--text-muted, #888)', fontSize: '0.9rem' }}>No points this round.</p>
               </div>
             )}
-            <button className="start-btn" onClick={nextSnapRound}>
+            <button className="start-btn" onClick={nextSnapRound} disabled={isBotTurn}>
               {snapIndex + 1 >= snapRounds.length ? 'See Results' : 'Next Element →'}
             </button>
           </div>
@@ -1686,7 +1703,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        <p className="snap-buzzer-name">{cp.avatar} {cp.name} — pick the symbol for:</p>
+        <p className="snap-buzzer-name">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name} — pick the symbol for:`}</p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 0 1rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.8rem' }}>{round.elementName}</h2>
           <button className="tts-btn tts-btn-small" onClick={() => speakText(round.elementName)} title="Read aloud">🔊</button>
@@ -1704,7 +1721,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <button
                 key={i}
                 className={cls}
-                disabled={answered}
+                disabled={isBotTurn || answered}
                 onClick={() => handleSymbolAnswer(i)}
                 style={{ fontSize: '1.4rem', fontWeight: 700, letterSpacing: '1px' }}
               >{ch}</button>
@@ -1719,7 +1736,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   <p className="snap-verdict wrong" style={{ margin: 0 }}>😬 Nope! {round.elementName} = <strong>{round.correctSymbol}</strong></p>
                   <button className="tts-btn tts-btn-small" onClick={() => speakText(`${round.elementName} is ${round.correctSymbol}`)} title="Read aloud">🔊</button>
                 </div>}
-            <button className="start-btn" onClick={nextSymbolRound}>
+            <button className="start-btn" onClick={nextSymbolRound} disabled={isBotTurn}>
               {symbolIndex + 1 >= symbolRounds.length ? 'See Results' : 'Next →'}
             </button>
           </div>
@@ -1744,7 +1761,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        <p className="snap-buzzer-name">{cp.avatar} {cp.name}'s turn</p>
+        <p className="snap-buzzer-name">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</p>
         {q.illustration && <div style={{ textAlign: 'center', fontSize: '2.5rem', margin: '0.25rem 0' }}>{q.illustration}</div>}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 1rem 1rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, textAlign: 'center' }}>{q.questionText}</h2>
@@ -1764,7 +1781,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <button
                 key={i}
                 className={cls}
-                disabled={finalAnswered || (atomSecondChance && isFirstWrong)}
+                disabled={isBotTurn || finalAnswered || (atomSecondChance && isFirstWrong)}
                 onClick={() => handleAtomAnswer(i)}
               >
                 {ch}
@@ -1784,7 +1801,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <p style={{ flex: 1, margin: 0, textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{q.explanation}</p>
               <button className="tts-btn tts-btn-small" onClick={() => speakText(q.explanation)} title="Read explanation aloud">🔊</button>
             </div>
-            <button className="start-btn" onClick={nextAtomRound}>
+            <button className="start-btn" onClick={nextAtomRound} disabled={isBotTurn}>
               {atomIndex + 1 >= atomQuestions.length ? 'See Results' : 'Next →'}
             </button>
           </div>
