@@ -85,6 +85,11 @@ function allFacts(el: Element): string[] {
   return Array.from(new Set(facts));
 }
 
+function randomKnownFact(el: Element): string {
+  const facts = allFacts(el);
+  return facts[Math.floor(Math.random() * facts.length)] ?? el.funFact;
+}
+
 function pickExtraFacts(el: Element, count: number, avoidText: string): string[] {
   const avoid = normalizeForComparison(avoidText);
   const candidates = allFacts(el).filter(f => {
@@ -92,6 +97,12 @@ function pickExtraFacts(el: Element, count: number, avoidText: string): string[]
     return normalized.length > 0 && !avoid.includes(normalized);
   });
   return shuffleArray(candidates).slice(0, count);
+}
+
+function elementNameChoices(el: Element, pool: Element[], count: number): string[] {
+  const sameCategory = shuffleArray(pool.filter(e => e.category === el.category && e.atomicNumber !== el.atomicNumber));
+  const otherCategories = shuffleArray(pool.filter(e => e.category !== el.category && e.atomicNumber !== el.atomicNumber));
+  return shuffleArray([el.name, ...[...sameCategory, ...otherCategories].slice(0, count - 1).map(e => e.name)]);
 }
 
 function enrichQuestion(question: Question): Question {
@@ -252,6 +263,21 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `Its symbol is ${el.symbol}.`,
       };
     },
+    (el, pool, n) => {
+      const nearby = pool.filter(e => e.atomicNumber !== el.atomicNumber && Math.abs(e.atomicNumber - el.atomicNumber) <= 6);
+      const distractors = pickRandom(nearby.length >= n - 1 ? nearby : pool, n - 1, [el]).map(e => e.name);
+      const choices = shuffleArray([el.name, ...distractors]);
+      return {
+        id: `an-3-${el.atomicNumber}`,
+        category: 'atomic-number',
+        questionText: `Which element has ${el.atomicNumber} protons in its nucleus?`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: `${el.name} has atomic number ${el.atomicNumber}, which means every ${el.name} atom has ${el.atomicNumber} protons. ${randomFact(el)}`,
+        hint: `Its symbol is ${el.symbol}.`,
+      };
+    },
   ],
 
   'group-classification': [
@@ -318,9 +344,48 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
+    (el, _pool, n) => {
+      const correct = String(el.period);
+      const periodChoices = ['1', '2', '3', '4', '5', '6', '7'].filter(p => p !== correct);
+      const rawChoices = shuffleArray([correct, ...pickRandom(periodChoices, n - 1)]);
+      const choices = rawChoices.map(p => `Period ${p}`);
+      return {
+        id: `gc-4-${el.atomicNumber}`,
+        category: 'group-classification',
+        questionText: `Which period (row) of the periodic table is ${el.name} in?`,
+        choices,
+        correctIndex: choices.indexOf(`Period ${correct}`),
+        element: el,
+        explanation: `${el.name} is in period ${el.period} and block ${el.block}. ${randomFact(el)}`,
+        hint: `Its atomic number is ${el.atomicNumber}.`,
+      };
+    },
   ],
 
   'discovery': [
+    (el, pool, n) => {
+      if (!el.discoveredBy || el.discoveredBy === 'Ancient') return null;
+      const correct = el.discoveredBy;
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.discoveredBy && e.discoveredBy !== 'Ancient'),
+        n - 1,
+        e => e.discoveredBy,
+        correct,
+        el
+      );
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([correct, ...distractors]);
+      return {
+        id: `di-1-${el.atomicNumber}`,
+        category: 'discovery',
+        questionText: `Who discovered ${el.name}?`,
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: `${el.name} was discovered by ${el.discoveredBy}${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}. ${randomFact(el)}`,
+        hint: `It was discovered in ${el.discoveryCountry}.`,
+      };
+    },
     (el, pool, n) => {
       if (!el.discoveryYear || el.discoveredBy === 'Ancient') return null;
       const centuryNum = Math.ceil(el.discoveryYear / 100);
@@ -480,6 +545,28 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
+    (el, pool, n) => {
+      if (el.radioactive || el.stableIsotopes <= 0) return null;
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => !e.radioactive && e.stableIsotopes > 0),
+        n - 1,
+        e => e.name,
+        el.name,
+        el
+      );
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([el.name, ...distractors]);
+      return {
+        id: `is-2-${el.atomicNumber}-${el.stableIsotopes}`,
+        category: 'isotopes',
+        questionText: `Which element has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}?`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: `${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}. ${randomFact(el)}`,
+        hint: `${el.name} is a ${categoryLabel(el.category)}.`,
+      };
+    },
   ],
 
   'compounds': [
@@ -515,6 +602,29 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: randomFact(el),
         hint: `${el.name}'s symbol is ${el.symbol} — look for it in the formulas.`,
+      };
+    },
+    (el, pool, n) => {
+      if (el.compounds.length === 0) return null;
+      const correct = el.compounds[Math.floor(Math.random() * el.compounds.length)];
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.compounds.length > 0 && e.atomicNumber !== el.atomicNumber),
+        n - 1,
+        e => e.compounds[Math.floor(Math.random() * e.compounds.length)],
+        correct,
+        el
+      );
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([correct, ...distractors]);
+      return {
+        id: `co-2-${el.atomicNumber}-${correct}`,
+        category: 'compounds',
+        questionText: `Which formula is one compound of ${el.name}?`,
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: `${correct} is one compound that contains ${el.name}. ${randomFact(el)}`,
+        hint: `Look for the symbol ${el.symbol}.`,
       };
     },
   ],
@@ -691,6 +801,42 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `This element is a ${categoryLabel(el.category)} with symbol ${el.symbol}.`,
       };
     },
+    // ff-7: Use any known fact, not only facts that mention the element name.
+    (el, pool, n) => {
+      const rawFact = randomKnownFact(el);
+      const fact = blankOutElement(rawFact, el);
+      const choices = elementNameChoices(el, pool, n);
+      return {
+        id: `ff-7-${el.atomicNumber}-${fact.length}`,
+        category: 'fun-fact',
+        questionText: `Which element matches this fact? "${fact}"`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: rawFact,
+        hint: `It is a ${categoryLabel(el.category)}.`,
+      };
+    },
+    // ff-8: Turn the structured element data into a compact clue set.
+    (el, pool, n) => {
+      const clues = [
+        `atomic number ${el.atomicNumber}`,
+        `${categoryLabel(el.category)}`,
+        `${el.stateAtRoomTemp} at room temperature`,
+        el.group === null ? `period ${el.period}` : `group ${el.group}, period ${el.period}`,
+      ];
+      const choices = elementNameChoices(el, pool, n);
+      return {
+        id: `ff-8-${el.atomicNumber}`,
+        category: 'fun-fact',
+        questionText: `Which element fits these clues: ${shuffleArray(clues).slice(0, 3).join(', ')}?`,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: `${el.name} has atomic number ${el.atomicNumber}, symbol ${el.symbol}, and is a ${categoryLabel(el.category)}. ${randomFact(el)}`,
+        hint: `Its symbol is ${el.symbol}.`,
+      };
+    },
   ],
 
   'uses': [
@@ -822,6 +968,28 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: `It is ${el.obtainedFrom.charAt(0).toLowerCase()}${el.obtainedFrom.slice(1)}. ${randomFact(el)}`,
         hint: `Its symbol is ${el.symbol}.`,
+      };
+    },
+    (el, pool, n) => {
+      if (!el.obtainedFrom) return null;
+      const distractors = pickUniqueDistractors(
+        pool.filter(e => e.obtainedFrom && e.atomicNumber !== el.atomicNumber),
+        n - 1,
+        e => e.obtainedFrom,
+        el.obtainedFrom,
+        el
+      );
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([el.obtainedFrom, ...distractors]);
+      return {
+        id: `ob-2-${el.atomicNumber}`,
+        category: 'obtained-from',
+        questionText: `How is ${el.name} usually obtained?`,
+        choices,
+        correctIndex: choices.indexOf(el.obtainedFrom),
+        element: el,
+        explanation: `${el.name} is usually obtained from: ${el.obtainedFrom}. ${randomFact(el)}`,
+        hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
   ],
@@ -1097,6 +1265,48 @@ export function generateQuiz(difficulty: Difficulty, count: number): Question[] 
     questions.push(q);
   }
   return questions;
+}
+
+function shortAnswerFact(el: Element, avoidText: string): string {
+  const options = [
+    `symbol ${el.symbol}`,
+    `atomic number ${el.atomicNumber}`,
+    categoryLabel(el.category),
+    `${el.stateAtRoomTemp} at room temperature`,
+    el.group === null ? `period ${el.period}` : `group ${el.group}`,
+    el.uses?.[0],
+    randomKnownFact(el).replace(/[.!?]+$/, ''),
+  ].filter((fact): fact is string => Boolean(fact && fact.trim()));
+
+  const avoid = normalizeForComparison(avoidText);
+  const usable = options.filter(fact => !avoid.includes(normalizeForComparison(fact)));
+  return shuffleArray(usable.length > 0 ? usable : options)[0];
+}
+
+function varyElementAnswerText(question: Question): Question {
+  const choiceElements = question.choices.map(choice => elements.find(e => e.name === choice));
+  if (choiceElements.some(el => !el)) return question;
+
+  const style = Math.floor(Math.random() * 4);
+  const choices = choiceElements.map(el => {
+    if (!el) return '';
+    const fact = shortAnswerFact(el, question.questionText);
+    if (style === 0) return `${el.name} (${el.symbol})`;
+    if (style === 1) return `${el.name} - ${fact}`;
+    if (style === 2) return `${el.name}, ${fact}`;
+    return `${el.name}: ${fact}`;
+  });
+
+  return {
+    ...question,
+    id: `qb-${style}-${question.id}`,
+    choices,
+    correctIndex: question.correctIndex,
+  };
+}
+
+export function generateQuizBattleQuiz(difficulty: Difficulty, count: number): Question[] {
+  return generateQuiz(difficulty, count).map(varyElementAnswerText);
 }
 
 /**

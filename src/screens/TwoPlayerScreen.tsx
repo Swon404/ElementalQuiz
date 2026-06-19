@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
-import { generateQuiz, type Question } from '../engine/questionGenerator.ts';
+import { generateQuizBattleQuiz, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
 import { loadTwoPlayerNames, saveTwoPlayerNames } from '../engine/storage.ts';
@@ -28,7 +28,7 @@ type Player2Mode = 'human' | 'bot';
 
 const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈'];
 
-const BOT_DELAY_MS = 800;
+const BOT_DELAY_MS = 2000;
 const BOT_RESULT_DELAY_MS = 1800;
 const BOT_ACCURACY: Record<Difficulty, number> = {
   explorer: 0.6,
@@ -75,7 +75,7 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
 
   for (let i = 0; i < count && i < poolElements.length; i++) {
     const el = poolElements[i];
-    const type = Math.floor(Math.random() * 10);
+    const type = Math.floor(Math.random() * 14);
     const isTrue = Math.random() > 0.5;
 
     if (type === 0) {
@@ -169,7 +169,7 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
         // fallback to symbol
         statements.push({ text: `The symbol for ${el.name} is ${el.symbol}.`, answer: true, explanation: `Yes! ${el.name}'s symbol is ${el.symbol}.` });
       }
-    } else {
+    } else if (type === 9) {
       // Atomic mass comparison
       const other = shuffleArray(elements.filter(e => Math.abs(e.atomicMass - el.atomicMass) > 2 && e.name !== el.name))[0] ||
                     shuffleArray(elements.filter(e => e.name !== el.name))[0];
@@ -178,6 +178,46 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
         statements.push({ text: `${el.name} has a higher atomic mass than ${other.name}.`, answer: heavier, explanation: `${el.name}'s atomic mass is ${el.atomicMass} and ${other.name}'s is ${other.atomicMass}.` });
       } else {
         statements.push({ text: `${el.name} has a lower atomic mass than ${other.name}.`, answer: !heavier, explanation: `${el.name}'s atomic mass is ${el.atomicMass} and ${other.name}'s is ${other.atomicMass}.` });
+      }
+    } else if (type === 10) {
+      // Compound fact
+      if (el.compounds.length > 0) {
+        const compound = el.compounds[Math.floor(Math.random() * el.compounds.length)];
+        if (isTrue) {
+          statements.push({ text: `${compound} is a compound that contains ${el.name}.`, answer: true, explanation: `Correct! ${compound} is listed as one of ${el.name}'s compounds.` });
+        } else {
+          const otherEl = shuffleArray(elements.filter(e => e.compounds.length > 0 && e.name !== el.name))[0];
+          const wrongCompound = otherEl.compounds[Math.floor(Math.random() * otherEl.compounds.length)];
+          statements.push({ text: `${wrongCompound} is a compound that contains ${el.name}.`, answer: false, explanation: `No — ${wrongCompound} is connected with ${otherEl.name}. One ${el.name} compound is ${compound}.` });
+        }
+      } else {
+        statements.push({ text: `${el.name} is a ${el.stateAtRoomTemp} at room temperature.`, answer: true, explanation: `Correct — ${el.name} is a ${el.stateAtRoomTemp}.` });
+      }
+    } else if (type === 11) {
+      // Obtained-from/source fact
+      if (isTrue) {
+        statements.push({ text: `${el.name} is obtained from: ${el.obtainedFrom}.`, answer: true, explanation: `Yes! ${el.name} is usually obtained from ${el.obtainedFrom}.` });
+      } else {
+        const otherEl = shuffleArray(elements.filter(e => e.obtainedFrom && e.name !== el.name))[0];
+        statements.push({ text: `${el.name} is obtained from: ${otherEl.obtainedFrom}.`, answer: false, explanation: `No — that describes ${otherEl.name}. ${el.name} is obtained from ${el.obtainedFrom}.` });
+      }
+    } else if (type === 12) {
+      // Stable isotope count
+      if (el.radioactive) {
+        statements.push({ text: `${el.name} is radioactive.`, answer: true, explanation: `Correct! ${el.name}'s most stable isotope has a half-life of ${el.halfLife}.` });
+      } else if (isTrue) {
+        statements.push({ text: `${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}.`, answer: true, explanation: `Yes! ${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}.` });
+      } else {
+        const wrongCount = Math.max(1, el.stableIsotopes + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 3) + 1));
+        statements.push({ text: `${el.name} has ${wrongCount} stable isotope${wrongCount === 1 ? '' : 's'}.`, answer: false, explanation: `No — ${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}.` });
+      }
+    } else {
+      // Periodic-table block
+      if (isTrue) {
+        statements.push({ text: `${el.name} is in the ${el.block}-block of the periodic table.`, answer: true, explanation: `Correct! ${el.name}'s electron configuration places it in the ${el.block}-block.` });
+      } else {
+        const wrongBlock = shuffleArray(['s', 'p', 'd', 'f'].filter(b => b !== el.block))[0];
+        statements.push({ text: `${el.name} is in the ${wrongBlock}-block of the periodic table.`, answer: false, explanation: `No — ${el.name} is in the ${el.block}-block.` });
       }
     }
   }
@@ -211,12 +251,12 @@ type SymbolRound = {
 };
 
 /** Pick distractor symbols that look very similar to the correct one.
- *  Generates plausible fake 2-letter symbols using letters from the element's name,
- *  plus real same-first-letter symbols and a splash of unrelated noise.
+ *  Prioritises same-first-letter, same-length, real-symbol, and name-letter look-alikes.
  */
 function pickSimilarSymbols(correctSymbol: string, elementName: string, count: number): string[] {
   const firstU = correctSymbol[0].toUpperCase();
   const firstL = firstU.toLowerCase();
+  const correctLower = correctSymbol.toLowerCase();
   const nameLetters: string[] = [];
   const nameSeen = new Set<string>();
   for (const ch of elementName.toLowerCase()) {
@@ -226,49 +266,82 @@ function pickSimilarSymbols(correctSymbol: string, elementName: string, count: n
     }
   }
   const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(c => c !== firstL);
+  const realSymbols = elements.map(e => e.symbol);
 
   const candidates = new Set<string>();
-  for (const l of nameLetters) candidates.add(firstU + l);
-  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l);
-  for (const s of elements.map(e => e.symbol)) {
+
+  // Real symbols that start the same are the hardest distractors.
+  for (const s of realSymbols) {
     if (s !== correctSymbol && s[0] === firstU) candidates.add(s);
   }
-  candidates.delete(correctSymbol);
 
-  const unrelated = elements.map(e => e.symbol).filter(s => s[0] !== firstU && s !== correctSymbol);
-  const noise = shuffleArray(unrelated).slice(0, Math.max(0, Math.min(2, count - 3)));
+  // Plausible fake symbols made from the element name.
+  for (const l of nameLetters) candidates.add(firstU + l);
+  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l);
+
+  // One-letter symbols are especially tricky when mixed with real same-first two-letter symbols.
+  if (correctSymbol.length === 1) {
+    for (const s of realSymbols) {
+      if (s.length === 2 && s[0] === firstU && s !== correctSymbol) candidates.add(s);
+    }
+  }
+
+  // Nearby alphabet second letters create slips like Ca/Cb/Cd/Ce.
+  if (correctSymbol.length === 2) {
+    const secondCode = correctSymbol[1].toLowerCase().charCodeAt(0);
+    for (let offset = -3; offset <= 3; offset++) {
+      const code = secondCode + offset;
+      if (code >= 97 && code <= 122 && code !== secondCode) {
+        candidates.add(firstU + String.fromCharCode(code));
+      }
+    }
+  }
+
+  candidates.delete(correctSymbol);
 
   const scored = Array.from(candidates).map(s => {
     let score = 0;
-    if (s[0] === firstU) score += 5;
-    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 6;
-    if (s.length === correctSymbol.length) score += 2;
+    if (s[0] === firstU) score += 10;
+    if (realSymbols.includes(s)) score += 5;
+    if (s.length === correctSymbol.length) score += 4;
+    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 4;
     const cSet = new Set(correctSymbol.toLowerCase());
     for (const ch of s.toLowerCase()) if (cSet.has(ch)) score += 1;
+    let samePositions = 0;
+    for (let i = 0; i < Math.min(s.length, correctSymbol.length); i++) {
+      if (s[i].toLowerCase() === correctLower[i]) samePositions++;
+    }
+    score += samePositions * 3;
     return { s, score, r: Math.random() };
   });
   scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
 
-  const top = scored.slice(0, Math.max(count + 1, count * 2)).map(x => x.s);
   const picked: string[] = [];
   const used = new Set<string>();
-  for (const s of shuffleArray(top)) {
-    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); if (picked.length >= count - noise.length) break; }
+  for (const { s } of scored) {
+    if (!used.has(s) && s !== correctSymbol) {
+      used.add(s);
+      picked.push(s);
+      if (picked.length >= count) break;
+    }
   }
-  for (const s of noise) {
-    if (!used.has(s) && s !== correctSymbol && picked.length < count) { used.add(s); picked.push(s); }
-  }
-  for (const s of shuffleArray(top)) {
+
+  // Last-resort fill still favours real symbols before random fakes.
+  for (const s of shuffleArray(realSymbols)) {
     if (picked.length >= count) break;
-    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); }
+    if (!used.has(s) && s !== correctSymbol) {
+      used.add(s);
+      picked.push(s);
+    }
   }
+
   return picked.slice(0, count);
 }
 
 function generateSymbolRounds(count: number, pool: number = 118): SymbolRound[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
   return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, el.name, 7); // 7 distractors + correct = 8 choices
+    const distractors = pickSimilarSymbols(el.symbol, el.name, 9); // 9 distractors + correct = 10 choices
     const choices = shuffleArray([el.symbol, ...distractors]);
     return { elementName: el.name, correctSymbol: el.symbol, choices };
   });
@@ -298,13 +371,20 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
     };
 
     // 5 clues: vague → obvious
+    const factPool = shuffleArray([el.funFact, ...(el.additionalFacts ?? [])].filter(Boolean));
+    const earlyClues = shuffleArray([
+      factPool[1] ? scrub(factPool[1]) : null,
+      el.obtainedFrom ? `I can be obtained from: ${scrub(el.obtainedFrom)}.` : null,
+      el.compounds.length > 0 ? `One compound connected with me is ${scrub(el.compounds[0])}.` : null,
+    ].filter((clue): clue is string => Boolean(clue)));
+
     const clues: string[] = [
       // Clue 1 — fun fact (scrubbed so name doesn't appear)
-      scrub(el.funFact || `This element is ${catLabel}.`),
+      scrub(factPool[0] || `This element is ${catLabel}.`),
       // Clue 2 — a real-world use (relatable!)
-      el.uses && el.uses.length > 0
+      earlyClues[0] ?? (el.uses && el.uses.length > 0
         ? `One of my real-world uses is: ${scrub(el.uses[0])}.`
-        : `I'm ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
+        : `I'm ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`),
       // Clue 3 — what type + state
       `I'm classified as ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
       // Clue 4 — atomic number (can count on the periodic table!)
@@ -339,9 +419,9 @@ type ChampSize = 'quick' | 'standard' | 'epic';
 // Per-game round counts for each championship size.
 // Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match (pairs), atom-quiz, clue-duel, symbol-pick.
 const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: '3 rounds each, 8 pairs',   counts: [3, 3, 8, 4, 4, 4] },
-  standard: { label: 'Standard', desc: '5 rounds each, 12 pairs',  counts: [5, 5, 12, 8, 6, 6] },
-  epic:     { label: 'Epic',     desc: '8 rounds each, 16 pairs',  counts: [8, 8, 16, 12, 8, 8] },
+  quick:    { label: 'Quick',    desc: '3 rounds each, 12 pairs',  counts: [3, 3, 12, 4, 4, 4] },
+  standard: { label: 'Standard', desc: '5 rounds each, 16 pairs',  counts: [5, 5, 16, 8, 6, 6] },
+  epic:     { label: 'Epic',     desc: '8 rounds each, 20 pairs',  counts: [8, 8, 20, 12, 8, 8] },
 };
 
 type ChampGameScore = {
@@ -459,8 +539,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   // --- Quiz Battle ---
   const startQuizBattle = useCallback(() => {
-    setP1Questions(generateQuiz(player1.difficulty, rounds));
-    setP2Questions(generateQuiz(player2.difficulty, rounds));
+    setP1Questions(generateQuizBattleQuiz(player1.difficulty, rounds));
+    setP2Questions(generateQuizBattleQuiz(player2.difficulty, rounds));
     setCurrentPlayer(1);
     setCurrentRound(1);
     setQIndex(0);
@@ -916,19 +996,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   // --- Championship orchestration ---
-  const startChampionship = useCallback(() => {
-    setIsChampionship(true);
-    setChampStep(0);
-    setChampScores([]);
-    setP1Score(0);
-    setP2Score(0);
-    const firstGame = CHAMP_GAMES[0];
-    setGameMode(firstGame);
-    // Start first sub-game with fixed rounds
-    launchSubGame(firstGame);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player1.difficulty, player2.difficulty]);
-
   const launchSubGame = useCallback((mode: GameMode) => {
     setGameMode(mode);
     setP1Score(0);
@@ -936,8 +1003,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const counts = CHAMP_SIZE_CONFIG[champSize].counts;
     if (mode === 'quiz-battle') {
       const n = counts[0];
-      setP1Questions(generateQuiz(player1.difficulty, n));
-      setP2Questions(generateQuiz(player2.difficulty, n));
+      setP1Questions(generateQuizBattleQuiz(player1.difficulty, n));
+      setP2Questions(generateQuizBattleQuiz(player2.difficulty, n));
       setCurrentPlayer(1);
       setCurrentRound(1);
       setQIndex(0);
@@ -993,6 +1060,18 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player1.difficulty, player2.difficulty, champSize]);
+
+  const startChampionship = () => {
+    setIsChampionship(true);
+    setChampStep(0);
+    setChampScores([]);
+    setP1Score(0);
+    setP2Score(0);
+    const firstGame = CHAMP_GAMES[0];
+    setGameMode(firstGame);
+    // Start first sub-game with fixed rounds
+    launchSubGame(firstGame);
+  };
 
   const finishCurrentGame = (finalP1: number = p1Score, finalP2: number = p2Score) => {
     setP1Score(finalP1);
@@ -1137,7 +1216,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
     if (gameMode === 'atom-quiz' && atomTurn === 2 && atomAnswered === null && atomQuestions[atomIndex]) {
       const q = atomQuestions[atomIndex];
-      const choice = pickBotChoice(q.correctIndex, q.choices.length, player2.difficulty);
+      const choice = atomSecondChance
+        ? q.correctIndex
+        : pickBotChoice(q.correctIndex, q.choices.length, player2.difficulty);
       botTimerRef.current = setTimeout(() => {
         botTimerRef.current = null;
         handleAtomAnswer(choice);
@@ -1147,6 +1228,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     atomAnswered,
     atomIndex,
     atomQuestions,
+    atomSecondChance,
     atomTurn,
     botGetsCorrect,
     currentPlayer,
@@ -1248,7 +1330,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
-            onClick={() => { setGameMode('quiz-battle'); setPhase('setup'); }}
+            onClick={() => { setGameMode('quiz-battle'); setRounds(3); setPhase('setup'); }}
           >
             <span className="gm-icon">⚔️</span>
             <span className="gm-name">Quiz Battle</span>
@@ -1377,7 +1459,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         {gameMode !== 'championship' && (
           <div className="rounds-select">
             <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' ? [8, 12, 16] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
+            {(gameMode === 'element-match' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -1462,7 +1544,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span>{p2Score}✓ {player2.avatar}</span>
           </div>
         </div>
-        <div style={{ pointerEvents: isBotTurn ? 'none' : 'auto' }}>
+        <div>
           <QuizCard
             question={questions[qIndex]}
             difficulty={cp.difficulty}
@@ -1472,7 +1554,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             onAnswer={(correct, points) => handleQuizAnswer(correct, points)}
             timedMode={false}
             autoSelectIndex={autoSelectIndex}
-            autoAdvanceDelayMs={BOT_RESULT_DELAY_MS}
+            autoAdvanceDelayMs={null}
+            disableChoiceInput={isBotTurn}
           />
         </div>
       </div>

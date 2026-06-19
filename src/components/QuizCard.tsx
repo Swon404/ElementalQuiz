@@ -14,13 +14,15 @@ interface QuizCardProps {
   onAnswer: (correct: boolean, points: number, elementNum: number) => void;
   timedMode: boolean;
   autoSelectIndex?: number | null;
-  autoAdvanceDelayMs?: number;
+  autoAdvanceDelayMs?: number | null;
+  disableChoiceInput?: boolean;
 }
 
 export default function QuizCard({
   question, difficulty, streak, questionNumber, totalQuestions, onAnswer, timedMode,
   autoSelectIndex = null,
   autoAdvanceDelayMs = 900,
+  disableChoiceInput = false,
 }: QuizCardProps) {
   const config = DIFFICULTY_CONFIG[difficulty];
   const [selected, setSelected] = useState<number | null>(null);
@@ -39,6 +41,7 @@ export default function QuizCard({
   }, [autoSelectIndex, answered, question.correctIndex, question.id, secondChanceUsed, showResult]);
 
   useEffect(() => {
+    if (autoAdvanceDelayMs === null) return;
     if (autoSelectIndex === null || !showResult || !pendingResult) return;
     const timer = setTimeout(() => handleNext(), autoAdvanceDelayMs);
     return () => clearTimeout(timer);
@@ -176,7 +179,7 @@ export default function QuizCard({
               key={i}
               className={btnClass}
               onClick={() => handleSelect(i)}
-              disabled={answered || disabledChoices.has(i)}
+              disabled={answered || disabledChoices.has(i) || disableChoiceInput}
             >
               <span className="choice-letter">{String.fromCharCode(65 + i)}</span>
               <span className="choice-text">{choice}</span>
