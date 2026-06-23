@@ -934,6 +934,58 @@ body {
   font-weight: 600;
   color: var(--text-secondary);
 }
+.hunt-target-banner,
+.hunt-found-message {
+  text-align: center;
+  margin: 0.5rem 0 0.75rem;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.hunt-target-banner {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.06);
+  border-radius: var(--radius-sm);
+}
+.hunt-found-message {
+  color: var(--success);
+}
+.hunt-picker {
+  width: min(640px, 100%);
+  margin: 0.75rem auto;
+}
+.hunt-element-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.4rem;
+  max-height: 260px;
+  overflow: auto;
+  margin-top: 0.5rem;
+}
+.hunt-element-btn {
+  border: 1px solid rgba(255,255,255,0.12);
+  background: var(--surface);
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.hunt-element-btn span {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+.hunt-element-btn small {
+  color: var(--text-secondary);
+}
+.hunt-element-btn.selected,
+.hunt-element-btn:hover {
+  border-color: var(--accent);
+  background: rgba(74, 144, 226, 0.2);
+}
 .match-grid {
   display: grid;
   gap: 0.5rem;
