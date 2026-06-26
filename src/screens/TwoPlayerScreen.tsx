@@ -482,6 +482,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [huntPickerOpen, setHuntPickerOpen] = useState(false);
   const [huntSearch, setHuntSearch] = useState('');
   const [huntFoundMessage, setHuntFoundMessage] = useState<string | null>(null);
+  const [huntRequiredPairs, setHuntRequiredPairs] = useState(0);
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -640,8 +641,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     return wrong[Math.floor(Math.random() * wrong.length)] ?? correctIndex;
   }, [botGetsCorrect]);
 
-  const pickBotMatchCard = useCallback((cards: MatchCard[], firstId: number | null, difficulty: Difficulty) => {
-    const available = cards.filter(c => !c.matched && !c.flipped);
+  const pickBotMatchCard = useCallback((cards: MatchCard[], firstId: number | null, difficulty: Difficulty, blockedElementNum?: number | null) => {
+    const available = cards.filter(c => !c.matched && !c.flipped && c.elementNum !== blockedElementNum);
     if (available.length === 0) return null;
 
     // Prefer known pairs from memory first.
@@ -812,6 +813,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     if (matchLocked) return;
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
+    const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
+    if (
+      gameMode === 'element-hunt' &&
+      card.elementNum === huntTargetElementNum &&
+      claimedPairsBeforeFlip < huntRequiredPairs
+    ) {
+      const remaining = huntRequiredPairs - claimedPairsBeforeFlip;
+      setHuntFoundMessage(`Find ${remaining} more pair${remaining === 1 ? '' : 's'} before the target unlocks.`);
+      return;
+    }
 
     const updated = matchCards.map(c => c.id === cardId ? { ...c, flipped: true } : c);
     setMatchCards(updated);
@@ -834,6 +845,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         const newMatchP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
         if (matchTurn === 1) setP1Score(s => s + 1);
         else setP2Score(s => s + 1);
+        if (gameMode === 'element-hunt') setHuntFoundMessage(null);
         if (gameMode === 'element-hunt' && first.elementNum === huntTargetElementNum) {
           const totalPairs = matched.length / 2;
           const p1MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 1).length / 2);
@@ -1239,7 +1251,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     }
 
     if ((gameMode === 'element-match' || gameMode === 'element-hunt') && matchTurn === 2 && !matchLocked) {
-      const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty);
+      const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
+      const blockedElementNum = gameMode === 'element-hunt' && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
+      const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty, blockedElementNum);
       if (choiceId !== null) {
         botTimerRef.current = setTimeout(() => {
           botTimerRef.current = null;
@@ -1299,6 +1313,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     matchFirst,
     matchLocked,
     matchTurn,
+    huntRequiredPairs,
+    huntTargetElementNum,
     p2Questions,
     phase,
     pickBotChoice,
@@ -1567,6 +1583,21 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </button>
           </div>
         )}
+        {gameMode === 'element-hunt' && (
+          <div className="rounds-select" style={{ alignItems: 'center' }}>
+            <label>Unlock after: </label>
+            {[0, 1, 2, 3, 4, 5].map(n => (
+              <button
+                key={n}
+                className={`round-btn ${huntRequiredPairs === n ? 'selected' : ''}`}
+                onClick={() => setHuntRequiredPairs(n)}
+              >
+                {n}
+              </button>
+            ))}
+            <span className="gm-desc">pairs</span>
+          </div>
+        )}
         {gameMode === 'element-hunt' && huntPickerOpen && (
           <div className="hunt-picker">
             <input
@@ -1753,6 +1784,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   if (phase === 'playing' && (gameMode === 'element-match' || gameMode === 'element-hunt')) {
     const cp = matchTurn === 1 ? player1 : player2;
     const huntTarget = elements.find(e => e.atomicNumber === huntTargetElementNum);
+    const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
+    const targetUnlocked = claimedPairs >= huntRequiredPairs;
     return (
       <div className="element-match-playing">
         {quitOverlay}
@@ -1768,6 +1801,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         {gameMode === 'element-hunt' && huntTarget && (
           <div className="hunt-target-banner">
             Target: <strong>{huntTarget.name} ({huntTarget.symbol})</strong>
+            {huntRequiredPairs > 0 && (
+              <span className="hunt-unlock-status">
+                {targetUnlocked
+                  ? 'Unlocked'
+                  : `Unlocks after ${huntRequiredPairs} pair${huntRequiredPairs === 1 ? '' : 's'} (${claimedPairs}/${huntRequiredPairs})`}
+              </span>
+            )}
           </div>
         )}
         {huntFoundMessage && <p className="hunt-found-message">{huntFoundMessage}</p>}
