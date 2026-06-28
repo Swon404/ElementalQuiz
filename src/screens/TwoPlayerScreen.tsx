@@ -15,7 +15,7 @@ interface TwoPlayerScreenProps {
   initialMode?: 'championship';
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'element-hunt' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'championship';
+type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'championship';
 type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
@@ -408,12 +408,11 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
 }
 
 // --- Championship config ---
-const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'element-hunt', 'atom-quiz', 'clue-duel', 'symbol-pick'];
+const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'atom-quiz', 'clue-duel', 'symbol-pick'];
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
-  'element-match': '🃏 Element Match',
-  'element-hunt': '🎯 Element Hunt',
+  'element-match': 'Element Match Hunt',
   'clue-duel': '🕵️ Clue Duel',
   'symbol-pick': '🔤 Symbol Pick',
   'atom-quiz': '⚛️ Atom Quiz',
@@ -421,11 +420,11 @@ const CHAMP_LABELS: Record<string, string> = {
 
 type ChampSize = 'quick' | 'standard' | 'epic';
 // Per-game round counts for each championship size.
-// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match, element-hunt, atom-quiz, clue-duel, symbol-pick.
-const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: '3 rounds each, 12 pairs',  counts: [3, 3, 12, 12, 4, 4, 4] },
-  standard: { label: 'Standard', desc: '5 rounds each, 16 pairs',  counts: [5, 5, 16, 16, 8, 6, 6] },
-  epic:     { label: 'Epic',     desc: '8 rounds each, 20 pairs',  counts: [8, 8, 20, 20, 12, 8, 8] },
+// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match hunt, atom-quiz, clue-duel, symbol-pick.
+const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
+  quick:    { label: 'Quick',    desc: '3 rounds each, 12 pairs',  counts: [3, 3, 12, 4, 4, 4] },
+  standard: { label: 'Standard', desc: '5 rounds each, 16 pairs',  counts: [5, 5, 16, 8, 6, 6] },
+  epic:     { label: 'Epic',     desc: '8 rounds each, 20 pairs',  counts: [8, 8, 20, 12, 8, 8] },
 };
 
 type ChampGameScore = {
@@ -477,7 +476,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [matchFirst, setMatchFirst] = useState<number | null>(null);
   const [matchLocked, setMatchLocked] = useState(false);
   const [matchExotic, setMatchExotic] = useState(false);
-  const [huntTargetMode, setHuntTargetMode] = useState<'random' | 'choose'>('random');
+  const [huntTargetMode, setHuntTargetMode] = useState<'none' | 'random' | 'choose'>('none');
   const [huntTargetElementNum, setHuntTargetElementNum] = useState<number | null>(null);
   const [huntPickerOpen, setHuntPickerOpen] = useState(false);
   const [huntSearch, setHuntSearch] = useState('');
@@ -773,23 +772,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   // --- Element Match ---
   const startElementMatch = useCallback(() => {
-    setMatchCards(generateMatchCards(rounds, 118, matchExotic));
-    setMatchTurn(1);
-    setMatchFirst(null);
-    setMatchLocked(false);
-    setHuntFoundMessage(null);
-    botKnownCardsRef.current.clear();
-    resetScores();
-    setPhase('playing');
-  }, [rounds, matchExotic]);
-
-  const startElementHunt = useCallback(() => {
     const chosenTarget = huntTargetMode === 'choose' && huntTargetElementNum
       ? huntTargetElementNum
       : null;
     const cards = generateMatchCards(rounds, 118, matchExotic, chosenTarget);
     const boardElementNums = Array.from(new Set(cards.map(c => c.elementNum)));
-    const targetNum = chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
+    const targetNum = huntTargetMode === 'none'
+      ? null
+      : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
     setMatchCards(cards);
     setHuntTargetElementNum(targetNum);
     setMatchTurn(1);
@@ -815,7 +805,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     if (!card || card.flipped || card.matched) return;
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
     if (
-      gameMode === 'element-hunt' &&
+      gameMode === 'element-match' &&
+      huntTargetElementNum !== null &&
       card.elementNum === huntTargetElementNum &&
       claimedPairsBeforeFlip < huntRequiredPairs
     ) {
@@ -845,18 +836,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         const newMatchP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
         if (matchTurn === 1) setP1Score(s => s + 1);
         else setP2Score(s => s + 1);
-        if (gameMode === 'element-hunt') setHuntFoundMessage(null);
-        if (gameMode === 'element-hunt' && first.elementNum === huntTargetElementNum) {
-          const totalPairs = matched.length / 2;
+        if (gameMode === 'element-match' && huntTargetElementNum !== null) setHuntFoundMessage(null);
+        if (gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum) {
           const p1MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 1).length / 2);
           const p2MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 2).length / 2);
           const claimedPairs = p1MatchedPairs + p2MatchedPairs;
-          const bonusPairs = totalPairs - claimedPairs;
-          const finalP1 = matchTurn === 1 ? p1MatchedPairs + bonusPairs : p1MatchedPairs;
-          const finalP2 = matchTurn === 2 ? p2MatchedPairs + bonusPairs : p2MatchedPairs;
+          const finalP1 = matchTurn === 1 ? claimedPairs : 0;
+          const finalP2 = matchTurn === 2 ? claimedPairs : 0;
           const target = elements.find(e => e.atomicNumber === first.elementNum);
           const hunter = matchTurn === 1 ? player1 : player2;
-          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and claimed ${bonusPairs} remaining pair${bonusPairs === 1 ? '' : 's'}!`);
+          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and claimed ${claimedPairs} found pair${claimedPairs === 1 ? '' : 's'}!`);
           setP1Score(finalP1);
           setP2Score(finalP2);
           if (!matchFinishTimerRef.current) {
@@ -903,7 +892,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   // Safety net: if all cards are matched, always end the game even if a prior callback was interrupted.
   useEffect(() => {
-    if (phase !== 'playing' || (gameMode !== 'element-match' && gameMode !== 'element-hunt') || matchCards.length === 0) return;
+    if (phase !== 'playing' || gameMode !== 'element-match' || matchCards.length === 0) return;
     if (!matchCards.every(c => c.matched)) return;
     if (matchFinishTimerRef.current) return;
 
@@ -1084,18 +1073,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setPhase('playing');
     } else if (mode === 'element-match') {
       const n = counts[2];
-      setMatchCards(generateMatchCards(n, 118));
-      setMatchTurn(1);
-      setMatchFirst(null);
-      setMatchLocked(false);
-      setRounds(n);
-      setPhase('playing');
-    } else if (mode === 'element-hunt') {
-      const n = counts[3];
-      const cards = generateMatchCards(n, 118);
+      const chosenTarget = huntTargetMode === 'choose' && huntTargetElementNum
+        ? huntTargetElementNum
+        : null;
+      const cards = generateMatchCards(n, 118, matchExotic, chosenTarget);
       const boardElementNums = Array.from(new Set(cards.map(c => c.elementNum)));
+      const targetNum = huntTargetMode === 'none'
+        ? null
+        : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
       setMatchCards(cards);
-      setHuntTargetElementNum(boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1);
+      setHuntTargetElementNum(targetNum);
       setHuntFoundMessage(null);
       setMatchTurn(1);
       setMatchFirst(null);
@@ -1103,7 +1090,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'atom-quiz') {
-      const n = counts[4];
+      const n = counts[3];
       setAtomQuestions(generateAtomQuestions(n));
       setAtomIndex(0);
       setAtomTurn(1);
@@ -1113,7 +1100,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'clue-duel') {
-      const n = counts[5];
+      const n = counts[4];
       setSnapRounds(generateSnapRounds(n, sharedPool()));
       setSnapIndex(0);
       setSnapClueIdx(0);
@@ -1123,7 +1110,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'symbol-pick') {
-      const n = counts[6];
+      const n = counts[5];
       setSymbolRounds(generateSymbolRounds(n, sharedPool()));
       setSymbolIndex(0);
       setSymbolTurn(1);
@@ -1132,7 +1119,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setPhase('playing');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player1.difficulty, player2.difficulty, champSize]);
+  }, [player1.difficulty, player2.difficulty, champSize, huntTargetMode, huntTargetElementNum, matchExotic]);
 
   const startChampionship = () => {
     setIsChampionship(true);
@@ -1194,7 +1181,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     if (gameMode === 'quiz-battle') startQuizBattle();
     else if (gameMode === 'tf-blitz') startTFBlitz();
     else if (gameMode === 'element-match') startElementMatch();
-    else if (gameMode === 'element-hunt') startElementHunt();
     else if (gameMode === 'clue-duel') startElementSnap();
     else if (gameMode === 'symbol-pick') startSymbolPick();
     else if (gameMode === 'atom-quiz') {
@@ -1228,7 +1214,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     (
       (gameMode === 'quiz-battle' && currentPlayer === 2) ||
       (gameMode === 'tf-blitz' && tfTurn === 2) ||
-      ((gameMode === 'element-match' || gameMode === 'element-hunt') && matchTurn === 2) ||
+      (gameMode === 'element-match' && matchTurn === 2) ||
       (gameMode === 'clue-duel' && snapTurn === 2) ||
       (gameMode === 'symbol-pick' && symbolTurn === 2) ||
       (gameMode === 'atom-quiz' && atomTurn === 2)
@@ -1250,9 +1236,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return;
     }
 
-    if ((gameMode === 'element-match' || gameMode === 'element-hunt') && matchTurn === 2 && !matchLocked) {
+    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked) {
       const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
-      const blockedElementNum = gameMode === 'element-hunt' && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
+      const blockedElementNum = huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
       const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty, blockedElementNum);
       if (choiceId !== null) {
         botTimerRef.current = setTimeout(() => {
@@ -1404,7 +1390,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           >
             <span className="gm-icon">🏆</span>
             <span className="gm-name">Championship</span>
-            <span className="gm-desc">Play all 7 games — highest combined score wins!</span>
+            <span className="gm-desc">Play all 6 games — highest combined score wins!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
@@ -1427,16 +1413,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             onClick={() => { setGameMode('element-match'); setRounds(12); setPhase('setup'); }}
           >
             <span className="gm-icon">🃏</span>
-            <span className="gm-name">Element Match</span>
-            <span className="gm-desc">Memory game — match symbols to names!</span>
-          </button>
-          <button
-            className={`game-mode-btn ${gameMode === 'element-hunt' ? 'selected' : ''}`}
-            onClick={() => { setGameMode('element-hunt'); setRounds(12); setPhase('setup'); }}
-          >
-            <span className="gm-icon">🎯</span>
-            <span className="gm-name">Element Hunt</span>
-            <span className="gm-desc">Find the target pair and claim the board!</span>
+            <span className="gm-name">Element Match Hunt</span>
+            <span className="gm-desc">Match pairs, or add a target hunt!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
@@ -1475,8 +1453,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         <h2 className="setup-title">
           {gameMode === 'quiz-battle' && '⚔️ Quiz Battle'}
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
-          {gameMode === 'element-match' && '🃏 Element Match'}
-          {gameMode === 'element-hunt' && '🎯 Element Hunt'}
+          {gameMode === 'element-match' && '🃏 Element Match Hunt'}
           {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
           {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
           {gameMode === 'atom-quiz' && '⚛️ Atom Quiz'}
@@ -1526,7 +1503,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   </button>
                 ))}
               </div>
-              {((gameMode !== 'element-match' && gameMode !== 'element-hunt') || (label === 'Player 2' && player2Mode === 'bot')) && (
+              {(gameMode !== 'element-match' || (label === 'Player 2' && player2Mode === 'bot')) && (
                 <div className="diff-select-mini">
                   {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => (
                     <button
@@ -1545,8 +1522,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
         {gameMode !== 'championship' && (
           <div className="rounds-select">
-            <label>{gameMode === 'element-match' || gameMode === 'element-hunt' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' || gameMode === 'element-hunt' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
+            <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
+            {(gameMode === 'element-match' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -1557,19 +1534,25 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             ))}
           </div>
         )}
-        {(gameMode === 'element-match' || gameMode === 'element-hunt') && (
+        {gameMode === 'element-match' && (
           <div className="rounds-select">
             <label>Pool: </label>
             <button className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
             <button className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
           </div>
         )}
-        {gameMode === 'element-hunt' && (
+        {gameMode === 'element-match' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Target: </label>
             <button
+              className={`round-btn ${huntTargetMode === 'none' ? 'selected' : ''}`}
+              onClick={() => { setHuntTargetMode('none'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
+            >
+              None
+            </button>
+            <button
               className={`round-btn ${huntTargetMode === 'random' ? 'selected' : ''}`}
-              onClick={() => { setHuntTargetMode('random'); setHuntPickerOpen(false); }}
+              onClick={() => { setHuntTargetMode('random'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
             >
               Random
             </button>
@@ -1583,7 +1566,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </button>
           </div>
         )}
-        {gameMode === 'element-hunt' && (
+        {gameMode === 'element-match' && huntTargetMode !== 'none' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Unlock after: </label>
             {[0, 1, 2, 3, 4, 5].map(n => (
@@ -1598,7 +1581,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">pairs</span>
           </div>
         )}
-        {gameMode === 'element-hunt' && huntPickerOpen && (
+        {gameMode === 'element-match' && huntPickerOpen && (
           <div className="hunt-picker">
             <input
               className="player-name-input"
@@ -1646,16 +1629,86 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </button>
               ))}
             </div>
+            <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Match target: </label>
+              <button
+                className={`round-btn ${huntTargetMode === 'none' ? 'selected' : ''}`}
+                onClick={() => { setHuntTargetMode('none'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
+              >
+                None
+              </button>
+              <button
+                className={`round-btn ${huntTargetMode === 'random' ? 'selected' : ''}`}
+                onClick={() => { setHuntTargetMode('random'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
+              >
+                Random
+              </button>
+              <button
+                className={`round-btn ${huntTargetMode === 'choose' ? 'selected' : ''}`}
+                onClick={() => { setHuntTargetMode('choose'); setHuntPickerOpen(true); }}
+              >
+                {huntTargetElementNum
+                  ? `Choose: ${elements.find(e => e.atomicNumber === huntTargetElementNum)?.symbol ?? '?'}`
+                  : 'Choose Element'}
+              </button>
+            </div>
+            {huntTargetMode !== 'none' && (
+              <div className="rounds-select" style={{ alignItems: 'center' }}>
+                <label>Unlock after: </label>
+                {[0, 1, 2, 3, 4, 5].map(n => (
+                  <button
+                    key={n}
+                    className={`round-btn ${huntRequiredPairs === n ? 'selected' : ''}`}
+                    onClick={() => setHuntRequiredPairs(n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <span className="gm-desc">pairs</span>
+              </div>
+            )}
+            {huntPickerOpen && (
+              <div className="hunt-picker">
+                <input
+                  className="player-name-input"
+                  value={huntSearch}
+                  onChange={e => setHuntSearch(e.target.value)}
+                  placeholder="Search element"
+                  maxLength={24}
+                />
+                <div className="hunt-element-grid">
+                  {elements
+                    .filter(el => {
+                      const q = huntSearch.trim().toLowerCase();
+                      return !q || el.name.toLowerCase().includes(q) || el.symbol.toLowerCase().includes(q) || String(el.atomicNumber) === q;
+                    })
+                    .slice(0, 36)
+                    .map(el => (
+                      <button
+                        key={el.atomicNumber}
+                        className={`hunt-element-btn ${huntTargetElementNum === el.atomicNumber ? 'selected' : ''}`}
+                        onClick={() => {
+                          setHuntTargetMode('choose');
+                          setHuntTargetElementNum(el.atomicNumber);
+                          setHuntPickerOpen(false);
+                        }}
+                      >
+                        <span>{el.symbol}</span>
+                        <small>{el.atomicNumber}. {el.name}</small>
+                      </button>
+                    ))}
+                </div>
+              </div>
+            )}
             <div className="champ-info">
               <div className="champ-games-list">
                 {([
                   ['⚡', 'Quiz Battle',    CHAMP_SIZE_CONFIG[champSize].counts[0], 'qs'],
                   ['✅', 'T/F Blitz',      CHAMP_SIZE_CONFIG[champSize].counts[1], 'qs'],
-                  ['🃏', 'Element Match',  CHAMP_SIZE_CONFIG[champSize].counts[2], 'pairs'],
-                  ['🎯', 'Element Hunt',   CHAMP_SIZE_CONFIG[champSize].counts[3], 'pairs'],
-                  ['⚛️', 'Atom Quiz',      CHAMP_SIZE_CONFIG[champSize].counts[4], 'qs'],
-                  ['🔍', 'Clue Duel',      CHAMP_SIZE_CONFIG[champSize].counts[5], 'qs'],
-                  ['🔤', 'Symbol Pick',    CHAMP_SIZE_CONFIG[champSize].counts[6], 'qs'],
+                  ['🃏', 'Element Match Hunt', CHAMP_SIZE_CONFIG[champSize].counts[2], 'pairs'],
+                  ['⚛️', 'Atom Quiz',      CHAMP_SIZE_CONFIG[champSize].counts[3], 'qs'],
+                  ['🔍', 'Clue Duel',      CHAMP_SIZE_CONFIG[champSize].counts[4], 'qs'],
+                  ['🔤', 'Symbol Pick',    CHAMP_SIZE_CONFIG[champSize].counts[5], 'qs'],
                 ] as [string, string, number, string][]).map(([icon, name, count, unit]) => (
                   <span key={name} className="champ-game-chip">
                     {icon} {name} <strong>{count}</strong> {unit}
@@ -1781,7 +1834,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }
 
   // --- PLAYING: Element Match ---
-  if (phase === 'playing' && (gameMode === 'element-match' || gameMode === 'element-hunt')) {
+  if (phase === 'playing' && gameMode === 'element-match') {
     const cp = matchTurn === 1 ? player1 : player2;
     const huntTarget = elements.find(e => e.atomicNumber === huntTargetElementNum);
     const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
@@ -1798,7 +1851,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        {gameMode === 'element-hunt' && huntTarget && (
+        {huntTarget && (
           <div className="hunt-target-banner">
             Target: <strong>{huntTarget.name} ({huntTarget.symbol})</strong>
             {huntRequiredPairs > 0 && (
@@ -2161,7 +2214,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </tbody>
           </table>
         </div>
-        <p>The champion has the highest combined score across all 7 games.</p>
+        <p>The champion has the highest combined score across all 6 games.</p>
         {!champWinner && (
           <button className="start-btn" style={{ marginBottom: '0.75rem' }} onClick={startChampTiebreaker}>
             🃏 Tiebreaker — 12-Card Memory Match!
@@ -2185,7 +2238,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       : gameMode === 'clue-duel' ? 'Clue Duel'
       : gameMode === 'symbol-pick' ? 'Symbol Pick'
       : gameMode === 'atom-quiz' ? 'Atom Quiz'
-      : 'Element Match';
+      : 'Element Match Hunt';
     const tiebreakerDraw = isChampTiebreaker && !winner;
     return (
       <div className="two-player-result">
@@ -2206,13 +2259,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <div className={`battle-player ${p1Score >= p2Score ? 'winner' : ''}`}>
               <span className="bp-avatar">{player1.avatar}</span>
               <span className="bp-name">{player1.name}</span>
-              <span className="bp-score">{p1Score}{gameMode === 'element-match' || gameMode === 'element-hunt' ? ' pairs' : `/${rounds}`}</span>
+              <span className="bp-score">{p1Score}{gameMode === 'element-match' ? ' pairs' : `/${rounds}`}</span>
             </div>
             <div className="vs-divider">VS</div>
             <div className={`battle-player ${p2Score >= p1Score ? 'winner' : ''}`}>
               <span className="bp-avatar">{player2.avatar}</span>
               <span className="bp-name">{player2.name}</span>
-              <span className="bp-score">{p2Score}{gameMode === 'element-match' || gameMode === 'element-hunt' ? ' pairs' : `/${rounds}`}</span>
+              <span className="bp-score">{p2Score}{gameMode === 'element-match' ? ' pairs' : `/${rounds}`}</span>
             </div>
           </div>
         </div>
@@ -2238,3 +2291,5 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   return null;
 }
+
+
