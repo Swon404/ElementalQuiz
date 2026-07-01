@@ -167,6 +167,452 @@ function categoryLabel(cat: string): string {
   return CATEGORY_LABELS[cat] || cat;
 }
 
+type RelatableTopic =
+  | 'body'
+  | 'food'
+  | 'technology'
+  | 'space'
+  | 'danger'
+  | 'history'
+  | 'weird'
+  | 'environment'
+  | 'common-object'
+  | 'symbol-origin';
+
+type RelatableTrivia = {
+  topic: RelatableTopic;
+  question: string;
+  explanation: string;
+  hint?: string;
+};
+
+const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
+  1: [
+    {
+      topic: 'space',
+      question: 'Which element makes up most of the Sun and other stars?',
+      explanation: 'Hydrogen is the main fuel of stars. In the Sun, hydrogen nuclei fuse together and release the light and heat we feel on Earth.',
+      hint: 'It is the lightest element.',
+    },
+    {
+      topic: 'technology',
+      question: 'Which element is being tested as a clean fuel for cars, buses, and rockets?',
+      explanation: 'Hydrogen can release energy and make water as its main exhaust, which is why it is useful in fuel cells and rocket engines.',
+      hint: 'Its symbol has one letter.',
+    },
+  ],
+  2: [
+    {
+      topic: 'common-object',
+      question: 'Which element makes party balloons float without burning?',
+      explanation: 'Helium is lighter than air and does not burn, so it is much safer for balloons than hydrogen.',
+      hint: 'It is a noble gas.',
+    },
+    {
+      topic: 'technology',
+      question: 'Which element is used as a super-cold liquid to keep MRI scanners working?',
+      explanation: 'Liquid helium is cold enough to keep the powerful magnets in MRI scanners superconducting.',
+      hint: 'It is named after the Sun.',
+    },
+  ],
+  3: [
+    {
+      topic: 'technology',
+      question: 'Which element powers many rechargeable phone, laptop, and electric car batteries?',
+      explanation: 'Lithium is very light and stores electrical energy well, which makes lithium-ion batteries useful in portable devices and electric vehicles.',
+      hint: 'It is the lightest metal.',
+    },
+  ],
+  4: [
+    {
+      topic: 'technology',
+      question: 'Which light metal is used in some satellites, aircraft parts, and strong copper alloys?',
+      explanation: 'Beryllium is light, stiff, and handles heat well, so it can be useful in high-performance engineering.',
+      hint: 'It is an alkaline earth metal.',
+    },
+  ],
+  5: [
+    {
+      topic: 'technology',
+      question: 'Which element is added to glass cookware so it can handle sudden temperature changes?',
+      explanation: 'Boron compounds are used in borosilicate glass, which resists heat shock better than ordinary glass.',
+      hint: 'Its name starts with B.',
+    },
+  ],
+  6: [
+    {
+      topic: 'food',
+      question: 'Which element makes fizzy drinks fizzy?',
+      explanation: 'Carbon dioxide gas is dissolved into drinks under pressure. When you open the bottle, the gas escapes as bubbles.',
+      hint: 'It can form diamond and graphite.',
+    },
+    {
+      topic: 'environment',
+      question: 'Which element do plants take from the air when they make sugar by photosynthesis?',
+      explanation: 'Plants use carbon dioxide from the air, water, and sunlight to build sugars. That locks carbon into leaves, wood, fruit, and roots.',
+      hint: 'It is central to life chemistry.',
+    },
+    {
+      topic: 'common-object',
+      question: 'Which element can be pencil lead, diamond, charcoal, and part of every living thing?',
+      explanation: 'Carbon atoms can connect in many different structures, making soft graphite, hard diamond, charcoal, and the molecules of life.',
+      hint: 'Its symbol is C.',
+    },
+  ],
+  7: [
+    {
+      topic: 'environment',
+      question: 'Which element makes up about 78 percent of the air around us?',
+      explanation: 'Nitrogen is the biggest part of air, even though our bodies cannot breathe it in the same way we use oxygen.',
+      hint: 'It is found in proteins and DNA.',
+    },
+    {
+      topic: 'food',
+      question: 'Which element do farmers add to soil because plants need it to make proteins?',
+      explanation: 'Plants need nitrogen to build proteins and grow. Fertilisers often contain nitrogen compounds to replace what crops remove from soil.',
+      hint: 'Its symbol is N.',
+    },
+  ],
+  8: [
+    {
+      topic: 'body',
+      question: 'Which element do your cells need from every breath to release energy from food?',
+      explanation: 'Oxygen helps cells release energy from glucose during respiration. Without it, most human cells stop working quickly.',
+      hint: 'It is a gas at room temperature.',
+    },
+    {
+      topic: 'environment',
+      question: 'Which element is the most abundant element in Earths crust by mass?',
+      explanation: 'Oxygen is locked into rocks and minerals such as silicates and oxides, making it the most abundant element in Earths crust by mass.',
+      hint: 'It is part of water.',
+    },
+  ],
+  9: [
+    {
+      topic: 'body',
+      question: 'Which element is used in toothpaste compounds that help protect teeth from decay?',
+      explanation: 'Fluoride compounds, which contain fluorine, help strengthen tooth enamel so acids cause less damage.',
+      hint: 'It is a halogen.',
+    },
+  ],
+  10: [
+    {
+      topic: 'common-object',
+      question: 'Which element gives real neon signs their bright red-orange glow?',
+      explanation: 'Neon gas glows red-orange when electricity passes through it. Other sign colours usually come from different gases or coatings.',
+      hint: 'It is a noble gas.',
+    },
+  ],
+  11: [
+    {
+      topic: 'food',
+      question: 'Which element joins with chlorine to make ordinary table salt?',
+      explanation: 'Sodium and chlorine bond to make sodium chloride, which is table salt. The bonded compound is very different from the pure elements.',
+      hint: 'Its symbol is Na.',
+    },
+    {
+      topic: 'common-object',
+      question: 'Which element made many older street lamps glow yellow-orange?',
+      explanation: 'Sodium vapour lamps produce a strong yellow-orange light and were used widely for roads and motorways.',
+      hint: 'It is an alkali metal.',
+    },
+  ],
+  12: [
+    {
+      topic: 'common-object',
+      question: 'Which element burns with a dazzling white flame in flares and fireworks?',
+      explanation: 'Magnesium burns extremely brightly, which makes it useful in emergency flares, fireworks, and old camera flash powders.',
+      hint: 'Its symbol is Mg.',
+    },
+    {
+      topic: 'environment',
+      question: 'Which element sits at the centre of chlorophyll, the green pigment in leaves?',
+      explanation: 'A magnesium atom sits inside each chlorophyll molecule, helping plants capture light for photosynthesis.',
+      hint: 'It is important in green leaves.',
+    },
+  ],
+  13: [
+    {
+      topic: 'common-object',
+      question: 'Which element is used for drink cans, kitchen foil, bikes, and aircraft because it is light?',
+      explanation: 'Aluminium is light, strong for its mass, and protected by a thin oxide layer, so it is useful in transport and packaging.',
+      hint: 'It is the most abundant metal in Earths crust.',
+    },
+  ],
+  14: [
+    {
+      topic: 'technology',
+      question: 'Which element is found in computer chips and many solar panels?',
+      explanation: 'Silicon is a semiconductor, so it can control electric current in computer chips and turn sunlight into electricity in solar cells.',
+      hint: 'Silicon Valley is named after it.',
+    },
+    {
+      topic: 'common-object',
+      question: 'Which element is a major part of sand, glass, and many rocks?',
+      explanation: 'Silicon commonly bonds with oxygen to make silicates and silica, which are found in sand, glass, and rocks.',
+      hint: 'Its symbol is Si.',
+    },
+  ],
+  15: [
+    {
+      topic: 'common-object',
+      question: 'Which element is used in safety matches and is also part of DNA?',
+      explanation: 'Phosphorus compounds are used in matches, and phosphate groups form part of the backbone of DNA.',
+      hint: 'Its symbol is P.',
+    },
+  ],
+  16: [
+    {
+      topic: 'danger',
+      question: 'Which element is famous for the rotten egg smell of some of its compounds?',
+      explanation: 'Hydrogen sulfide smells like rotten eggs. It contains sulfur and can be dangerous at high concentrations.',
+      hint: 'It is found near volcanoes and hot springs.',
+    },
+    {
+      topic: 'environment',
+      question: 'Which element can form gases from volcanoes that help make acid rain?',
+      explanation: 'Sulfur dioxide from volcanoes and burning fuels can react with water in the air to form acids.',
+      hint: 'Its symbol is S.',
+    },
+  ],
+  17: [
+    {
+      topic: 'common-object',
+      question: 'Which element helps keep swimming pools clean but is poisonous as a pure gas?',
+      explanation: 'Chlorine compounds disinfect pool water. Pure chlorine gas is toxic, showing how different compounds can be from elements alone.',
+      hint: 'It is a halogen.',
+    },
+    {
+      topic: 'food',
+      question: 'Which element joins with sodium to make ordinary table salt?',
+      explanation: 'Chlorine and sodium form sodium chloride. Pure chlorine is a dangerous gas, but table salt is safe in normal amounts.',
+      hint: 'Its symbol is Cl.',
+    },
+  ],
+  18: [
+    {
+      topic: 'common-object',
+      question: 'Which element is put inside some light bulbs so the hot filament does not react with air?',
+      explanation: 'Argon is unreactive, so it can fill bulbs and protect hot metal filaments from oxygen.',
+      hint: 'It is a noble gas.',
+    },
+  ],
+  19: [
+    {
+      topic: 'food',
+      question: 'Which element makes bananas very slightly radioactive?',
+      explanation: 'Bananas contain potassium, and a tiny fraction of natural potassium is radioactive potassium-40. The amount is harmless.',
+      hint: 'Its symbol is K.',
+    },
+    {
+      topic: 'body',
+      question: 'Which element helps nerves and muscles send electrical signals in your body?',
+      explanation: 'Potassium ions help control nerve signals, muscle movement, and heartbeat rhythms.',
+      hint: 'It is an alkali metal.',
+    },
+  ],
+  20: [
+    {
+      topic: 'body',
+      question: 'Which element helps make bones and teeth hard?',
+      explanation: 'Calcium compounds give bones and teeth much of their hardness, and calcium ions also help muscles and nerves work.',
+      hint: 'Its symbol is Ca.',
+    },
+  ],
+  24: [
+    {
+      topic: 'common-object',
+      question: 'Which element helps make stainless steel resist rust?',
+      explanation: 'Chromium forms a thin protective oxide layer on stainless steel, helping stop rust from spreading.',
+      hint: 'Its name is linked to colour.',
+    },
+  ],
+  26: [
+    {
+      topic: 'body',
+      question: 'Which element in haemoglobin helps blood carry oxygen?',
+      explanation: 'Iron atoms in haemoglobin bind oxygen in the lungs and help carry it around the body.',
+      hint: 'Its symbol is Fe.',
+    },
+    {
+      topic: 'common-object',
+      question: 'Which element is the main ingredient in steel?',
+      explanation: 'Steel is mostly iron with a small amount of carbon and sometimes other elements to change its properties.',
+      hint: 'It rusts when exposed to oxygen and water.',
+    },
+  ],
+  29: [
+    {
+      topic: 'technology',
+      question: 'Which element is used in electrical wiring because it conducts electricity well?',
+      explanation: 'Copper conducts electricity well, bends easily, and is cheaper than silver, so it is common in wires and circuits.',
+      hint: 'Its symbol is Cu.',
+    },
+    {
+      topic: 'history',
+      question: 'Which element gives the Statue of Liberty its green surface after reacting with air and rain?',
+      explanation: 'Copper slowly forms a green patina on its surface, which protects the metal underneath.',
+      hint: 'It is a reddish metal.',
+    },
+  ],
+  30: [
+    {
+      topic: 'body',
+      question: 'Which element is used in white sunscreen compounds that physically block UV rays?',
+      explanation: 'Zinc oxide can sit on the skin and reflect or absorb ultraviolet light, helping protect against sunburn.',
+      hint: 'Its symbol is Zn.',
+    },
+  ],
+  35: [
+    {
+      topic: 'weird',
+      question: 'Which reddish-brown element is one of only two elements that are liquid at room temperature?',
+      explanation: 'Bromine is a liquid at room temperature, along with mercury. It gives off irritating vapour, so it must be handled carefully.',
+      hint: 'It is a halogen.',
+    },
+  ],
+  36: [
+    {
+      topic: 'technology',
+      question: 'Which noble gas shares its name with Supermans home planet and is used in some lamps?',
+      explanation: 'Krypton is a noble gas used in some high-performance lamps and flash photography.',
+      hint: 'Its symbol is Kr.',
+    },
+  ],
+  47: [
+    {
+      topic: 'common-object',
+      question: 'Which element is used in mirrors and is the best electrical conductor?',
+      explanation: 'Silver reflects visible light very well and conducts electricity better than any other element.',
+      hint: 'Its symbol is Ag.',
+    },
+  ],
+  50: [
+    {
+      topic: 'history',
+      question: 'Which element gave tin cans their name, even though most cans are mostly steel?',
+      explanation: 'Tin was used as a thin coating on steel cans to help stop corrosion, so people called them tin cans.',
+      hint: 'Its symbol is Sn.',
+    },
+  ],
+  53: [
+    {
+      topic: 'body',
+      question: 'Which element does your thyroid need to make hormones that help control metabolism?',
+      explanation: 'Iodine is needed for thyroid hormones. In some places, iodine is added to table salt to help prevent deficiency.',
+      hint: 'Its symbol is I.',
+    },
+  ],
+  54: [
+    {
+      topic: 'technology',
+      question: 'Which noble gas is used in bright camera flashes, car headlights, and some spacecraft engines?',
+      explanation: 'Xenon can make a bright white light in lamps, and xenon ions can be used as propellant in ion thrusters.',
+      hint: 'Its symbol is Xe.',
+    },
+  ],
+  56: [
+    {
+      topic: 'common-object',
+      question: 'Which element gives many green fireworks their colour?',
+      explanation: 'Barium salts can produce bright green colours when heated in fireworks.',
+      hint: 'It is an alkaline earth metal.',
+    },
+  ],
+  60: [
+    {
+      topic: 'technology',
+      question: 'Which element is used in very strong magnets found in headphones, speakers, and wind turbines?',
+      explanation: 'Neodymium magnets are extremely strong for their size, which makes them useful in compact electronics and generators.',
+      hint: 'It is a lanthanide.',
+    },
+  ],
+  74: [
+    {
+      topic: 'technology',
+      question: 'Which element has such a high melting point that it was used in old light bulb filaments?',
+      explanation: 'Tungsten has the highest melting point of all metals, so it can glow white-hot without melting.',
+      hint: 'Its symbol is W.',
+    },
+  ],
+  77: [
+    {
+      topic: 'space',
+      question: 'Which element is unusually common in the asteroid layer linked to the dinosaur extinction?',
+      explanation: 'Iridium is rare in Earths crust but more common in many meteorites, which helped scientists identify evidence for a giant asteroid impact.',
+      hint: 'It is a dense transition metal.',
+    },
+  ],
+  78: [
+    {
+      topic: 'technology',
+      question: 'Which element helps catalytic converters clean car exhaust gases?',
+      explanation: 'Platinum can act as a catalyst, helping convert harmful exhaust gases into less harmful substances.',
+      hint: 'It is a precious metal.',
+    },
+  ],
+  79: [
+    {
+      topic: 'technology',
+      question: 'Which element is used on some electronics connectors because it conducts well and resists corrosion?',
+      explanation: 'Gold does not tarnish easily and conducts electricity well, so thin coatings are useful on reliable connectors.',
+      hint: 'Its symbol is Au.',
+    },
+    {
+      topic: 'history',
+      question: 'Which element has been treasured for coins and jewellery for thousands of years because it stays shiny?',
+      explanation: 'Gold is rare, easy to shape, and resists corrosion, so it keeps its shine for a very long time.',
+      hint: 'It is a yellow precious metal.',
+    },
+  ],
+  80: [
+    {
+      topic: 'weird',
+      question: 'Which metal is liquid at room temperature?',
+      explanation: 'Mercury is the only metal that is liquid at normal room temperature, but it is toxic and must be handled carefully.',
+      hint: 'Its symbol is Hg.',
+    },
+  ],
+  82: [
+    {
+      topic: 'danger',
+      question: 'Which heavy metal was once used in paint and pipes but is dangerous to the brain?',
+      explanation: 'Lead was once common in paint and plumbing, but it is poisonous, especially to developing brains.',
+      hint: 'Its symbol is Pb.',
+    },
+    {
+      topic: 'technology',
+      question: 'Which element is used in heavy shielding to block X-rays and gamma rays?',
+      explanation: 'Lead is dense, so it can absorb a lot of high-energy radiation in a relatively thin layer.',
+      hint: 'It is very dense and soft.',
+    },
+  ],
+  83: [
+    {
+      topic: 'weird',
+      question: 'Which element forms rainbow-coloured crystals and is used in some stomach medicines?',
+      explanation: 'Bismuth can form colourful oxide crystals, and bismuth compounds are used in some medicines for upset stomachs.',
+      hint: 'Its symbol is Bi.',
+    },
+  ],
+  92: [
+    {
+      topic: 'technology',
+      question: 'Which element is used as fuel in many nuclear power stations?',
+      explanation: 'Uranium atoms can split in nuclear fission, releasing heat that power stations use to make electricity.',
+      hint: 'It is an actinide.',
+    },
+  ],
+  95: [
+    {
+      topic: 'common-object',
+      question: 'Which element is used in tiny amounts inside many smoke detectors?',
+      explanation: 'Americium-241 emits alpha particles that help some smoke detectors sense smoke in the air.',
+      hint: 'It is named after the Americas.',
+    },
+  ],
+};
+
 type QuestionGenerator = (element: Element, pool: Element[], choiceCount: number) => Question | null;
 
 const generators: Record<QuestionCategory, QuestionGenerator[]> = {
@@ -835,6 +1281,24 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         element: el,
         explanation: `${el.name} has atomic number ${el.atomicNumber}, symbol ${el.symbol}, and is a ${categoryLabel(el.category)}. ${randomFact(el)}`,
         hint: `Its symbol is ${el.symbol}.`,
+      };
+    },
+    // ff-9: Relatable real-life trivia prompts: body, food, tech, space, danger, history, and everyday objects.
+    (el, pool, n) => {
+      const entries = RELATABLE_TRIVIA[el.atomicNumber];
+      if (!entries || entries.length === 0) return null;
+      const entryIndex = Math.floor(Math.random() * entries.length);
+      const trivia = entries[entryIndex];
+      const choices = elementNameChoices(el, pool, n);
+      return {
+        id: `ff-9-${el.atomicNumber}-${trivia.topic}-${entryIndex}`,
+        category: 'fun-fact',
+        questionText: trivia.question,
+        choices,
+        correctIndex: choices.indexOf(el.name),
+        element: el,
+        explanation: trivia.explanation,
+        hint: trivia.hint ?? `Its symbol is ${el.symbol}.`,
       };
     },
   ],
