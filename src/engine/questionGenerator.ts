@@ -167,7 +167,7 @@ function categoryLabel(cat: string): string {
   return CATEGORY_LABELS[cat] || cat;
 }
 
-type RelatableTopic =
+export type RelatableTopic =
   | 'body'
   | 'food'
   | 'technology'
@@ -179,7 +179,7 @@ type RelatableTopic =
   | 'common-object'
   | 'symbol-origin';
 
-type RelatableTrivia = {
+export type RelatableTrivia = {
   topic: RelatableTopic;
   question: string;
   explanation: string;
@@ -612,6 +612,16 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     },
   ],
 };
+
+export function getRelatableTrivia(element: Element): RelatableTrivia[] {
+  return RELATABLE_TRIVIA[element.atomicNumber] ?? [];
+}
+
+export function pickRelatableTrivia(element: Element): RelatableTrivia | null {
+  const entries = getRelatableTrivia(element);
+  if (entries.length === 0) return null;
+  return entries[Math.floor(Math.random() * entries.length)];
+}
 
 type QuestionGenerator = (element: Element, pool: Element[], choiceCount: number) => Question | null;
 
@@ -1285,10 +1295,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
     },
     // ff-9: Relatable real-life trivia prompts: body, food, tech, space, danger, history, and everyday objects.
     (el, pool, n) => {
-      const entries = RELATABLE_TRIVIA[el.atomicNumber];
-      if (!entries || entries.length === 0) return null;
-      const entryIndex = Math.floor(Math.random() * entries.length);
-      const trivia = entries[entryIndex];
+      const entries = getRelatableTrivia(el);
+      if (entries.length === 0) return null;
+      const trivia = pickRelatableTrivia(el);
+      if (!trivia) return null;
+      const entryIndex = entries.indexOf(trivia);
       const choices = elementNameChoices(el, pool, n);
       return {
         id: `ff-9-${el.atomicNumber}-${trivia.topic}-${entryIndex}`,

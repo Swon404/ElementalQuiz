@@ -347,6 +347,66 @@ const GENERAL_QUESTIONS: QFactory[] = [
     const choices = shuffleArray([correct, 'Energy levels get lower', 'Energy stays the same', 'Electrons slow down']);
     return { questionText: 'As electron shells get further from the nucleus, what happens to energy?', choices, correctIndex: choices.indexOf(correct), explanation: 'Outer shells = higher energy! That\'s why they\'re also called energy levels. Electrons in outer shells have more energy.', illustration: '📈' };
   },
+  () => {
+    const correct = 'The tiny, dense centre of the atom';
+    const choices = shuffleArray([correct, 'The outer electron shell', 'The space between molecules', 'A cloud of electrons']);
+    return { questionText: 'If an atom were a sports stadium, what would the nucleus be most like?', choices, correctIndex: choices.indexOf(correct), explanation: 'The nucleus is tiny compared with the whole atom, but it contains nearly all the mass. Most of the rest is empty space!' };
+  },
+  () => {
+    const correct = 'Protons';
+    const choices = shuffleArray([correct, 'Neutrons', 'Electrons', 'Shells']);
+    return { questionText: 'What particle count decides whether an atom is hydrogen, carbon, gold, or another element?', choices, correctIndex: choices.indexOf(correct), explanation: 'The number of protons decides the element. Carbon always has 6 protons, oxygen always has 8, and gold always has 79.' };
+  },
+  () => {
+    const correct = 'Electrons';
+    const choices = shuffleArray([correct, 'Protons', 'Neutrons', 'The whole nucleus']);
+    return { questionText: 'In normal chemical reactions, which particles are shared, gained, or lost?', choices, correctIndex: choices.indexOf(correct), explanation: 'Chemical reactions rearrange electrons. The nucleus usually stays the same unless it is a nuclear reaction.' };
+  },
+  () => {
+    const correct = 'Positive and negative charges attract';
+    const choices = shuffleArray([correct, 'Gravity pulls them strongly', 'Neutrons pull them in', 'Electrons are glued to protons']);
+    return { questionText: 'Why are negative electrons attracted toward the positive nucleus?', choices, correctIndex: choices.indexOf(correct), explanation: 'Opposite electric charges attract. The positive protons in the nucleus attract the negative electrons around it.' };
+  },
+  () => {
+    const correct = 'The electrons';
+    const choices = shuffleArray([correct, 'The protons', 'The neutrons', 'The nucleus']);
+    return { questionText: 'When you rub a balloon on hair and it sticks to a wall, which atomic particles have moved around?', choices, correctIndex: choices.indexOf(correct), explanation: 'Static electricity happens because electrons move from one surface to another, leaving objects charged.' };
+  },
+  () => {
+    const correct = 'Neutrons';
+    const choices = shuffleArray([correct, 'Protons', 'Electrons', 'Valence shells']);
+    return { questionText: 'Which particles can change between isotopes of the same element?', choices, correctIndex: choices.indexOf(correct), explanation: 'Isotopes have the same number of protons but different numbers of neutrons. Carbon-12 and Carbon-14 are both carbon.' };
+  },
+  () => {
+    const correct = 'It has a full outer electron shell';
+    const choices = shuffleArray([correct, 'It has no protons', 'It is always radioactive', 'It has no neutrons']);
+    return { questionText: 'Why is a noble gas atom usually so unreactive?', choices, correctIndex: choices.indexOf(correct), explanation: 'Noble gases usually have full outer shells, so they do not need to gain, lose, or share electrons easily.' };
+  },
+  () => {
+    const correct = 'Electron shells';
+    const choices = shuffleArray([correct, 'Neutron rings', 'Proton paths', 'Gravity layers']);
+    return { questionText: 'What are the layers around an atom where electrons are found called?', choices, correctIndex: choices.indexOf(correct), explanation: 'Electrons sit in energy levels often called shells. The first shell fills before the second starts filling.' };
+  },
+  () => {
+    const correct = 'It has lost electrons';
+    const choices = shuffleArray([correct, 'It has gained protons', 'It has lost neutrons', 'It has become radioactive']);
+    return { questionText: 'If an atom becomes a positive ion, what has usually happened?', choices, correctIndex: choices.indexOf(correct), explanation: 'A positive ion has more protons than electrons. That usually happens when the atom loses one or more electrons.' };
+  },
+  () => {
+    const correct = 'It has gained electrons';
+    const choices = shuffleArray([correct, 'It has gained protons', 'It has lost neutrons', 'It has split its nucleus']);
+    return { questionText: 'If an atom becomes a negative ion, what has usually happened?', choices, correctIndex: choices.indexOf(correct), explanation: 'A negative ion has extra electrons, so its overall charge becomes negative.' };
+  },
+  () => {
+    const correct = 'Because atoms are mostly empty space';
+    const choices = shuffleArray([correct, 'Because atoms are flat', 'Because electrons are bigger than nuclei', 'Because protons disappear']);
+    return { questionText: 'Why can tiny particles sometimes pass through thin sheets of matter?', choices, correctIndex: choices.indexOf(correct), explanation: 'Atoms are mostly empty space, with a very small nucleus. That idea helped scientists discover the nuclear model of the atom.' };
+  },
+  () => {
+    const correct = 'The nucleus has changed';
+    const choices = shuffleArray([correct, 'Only the outer electrons changed', 'The atom changed colour', 'The atom became a molecule']);
+    return { questionText: 'What is the big difference between a nuclear reaction and a chemical reaction?', choices, correctIndex: choices.indexOf(correct), explanation: 'Chemical reactions rearrange electrons. Nuclear reactions change the nucleus itself, which can turn one element into another.' };
+  },
 ];
 
 export function generateAtomQuestions(count: number): AtomQuestion[] {

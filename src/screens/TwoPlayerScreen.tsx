@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
-import { generateQuizBattleQuiz, type Question } from '../engine/questionGenerator.ts';
+import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
 import { loadTwoPlayerNames, saveTwoPlayerNames } from '../engine/storage.ts';
@@ -75,7 +75,7 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
 
   for (let i = 0; i < count && i < poolElements.length; i++) {
     const el = poolElements[i];
-    const type = Math.floor(Math.random() * 14);
+    const type = Math.floor(Math.random() * 17);
     const isTrue = Math.random() > 0.5;
 
     if (type === 0) {
@@ -211,13 +211,47 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
         const wrongCount = Math.max(1, el.stableIsotopes + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 3) + 1));
         statements.push({ text: `${el.name} has ${wrongCount} stable isotope${wrongCount === 1 ? '' : 's'}.`, answer: false, explanation: `No — ${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}.` });
       }
-    } else {
+    } else if (type === 13) {
       // Periodic-table block
       if (isTrue) {
         statements.push({ text: `${el.name} is in the ${el.block}-block of the periodic table.`, answer: true, explanation: `Correct! ${el.name}'s electron configuration places it in the ${el.block}-block.` });
       } else {
         const wrongBlock = shuffleArray(['s', 'p', 'd', 'f'].filter(b => b !== el.block))[0];
         statements.push({ text: `${el.name} is in the ${wrongBlock}-block of the periodic table.`, answer: false, explanation: `No — ${el.name} is in the ${el.block}-block.` });
+      }
+    } else if (type === 14) {
+      // Real-life trivia clue
+      const trivia = pickRelatableTrivia(el);
+      if (trivia && isTrue) {
+        statements.push({ text: `${el.name} is the answer to this clue: ${trivia.question}`, answer: true, explanation: trivia.explanation });
+      } else {
+        const otherEl = shuffleArray(elements.filter(e => e.atomicNumber !== el.atomicNumber && pickRelatableTrivia(e)))[0];
+        const otherTrivia = otherEl ? pickRelatableTrivia(otherEl) : null;
+        if (otherEl && otherTrivia) {
+          statements.push({ text: `${el.name} is the answer to this clue: ${otherTrivia.question}`, answer: false, explanation: `No, that clue points to ${otherEl.name}. ${otherTrivia.explanation}` });
+        } else {
+          statements.push({ text: `The symbol for ${el.name} is ${el.symbol}.`, answer: true, explanation: `Yes! ${el.name}'s symbol is ${el.symbol}.` });
+        }
+      }
+    } else if (type === 15) {
+      // Everyday use fact
+      const use = el.uses.length > 0 ? el.uses[Math.floor(Math.random() * el.uses.length)] : null;
+      const otherEl = shuffleArray(elements.filter(e => e.atomicNumber !== el.atomicNumber && e.uses.length > 0))[0];
+      const wrongUse = otherEl ? otherEl.uses[Math.floor(Math.random() * otherEl.uses.length)] : null;
+      if (use && isTrue) {
+        statements.push({ text: `A real-world use of ${el.name} is ${use}.`, answer: true, explanation: `Correct! ${el.name} is used for ${use}.` });
+      } else if (wrongUse && otherEl) {
+        statements.push({ text: `A real-world use of ${el.name} is ${wrongUse}.`, answer: false, explanation: `No, that use fits ${otherEl.name}. ${use ? `One use of ${el.name} is ${use}.` : `${el.name} has different uses.`}` });
+      } else {
+        statements.push({ text: `${el.name} is a ${el.stateAtRoomTemp} at room temperature.`, answer: true, explanation: `Correct â€” ${el.name} is a ${el.stateAtRoomTemp}.` });
+      }
+    } else {
+      // Body, food, space, and technology trivia
+      const trivia = pickRelatableTrivia(el);
+      if (trivia) {
+        statements.push({ text: `This clue belongs to ${el.name}: ${trivia.question}`, answer: true, explanation: trivia.explanation });
+      } else {
+        statements.push({ text: `${el.name} has atomic number ${el.atomicNumber}.`, answer: true, explanation: `Correct! Atomic number means proton count, so ${el.name} has ${el.atomicNumber} protons.` });
       }
     }
   }
@@ -374,11 +408,14 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
     };
 
     // 5 clues: vague → obvious
-    const factPool = shuffleArray([el.funFact, ...(el.additionalFacts ?? [])].filter(Boolean));
+    const relatable = pickRelatableTrivia(el);
+    const factPool = shuffleArray([el.funFact, ...(el.additionalFacts ?? []), relatable?.explanation].filter((fact): fact is string => Boolean(fact)));
     const earlyClues = shuffleArray([
+      relatable ? `Real-life clue: ${scrub(relatable.question)}` : null,
       factPool[1] ? scrub(factPool[1]) : null,
       el.obtainedFrom ? `I can be obtained from: ${scrub(el.obtainedFrom)}.` : null,
       el.compounds.length > 0 ? `One compound connected with me is ${scrub(el.compounds[0])}.` : null,
+      el.uses.length > 0 ? `People use me for: ${scrub(el.uses[Math.floor(Math.random() * el.uses.length)])}.` : null,
     ].filter((clue): clue is string => Boolean(clue)));
 
     const clues: string[] = [
