@@ -568,6 +568,30 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     prevPhaseRef.current = phase;
   }, [phase]);
 
+  const normalizeChampPoints = useCallback((mode: GameMode, score: number) => {
+    if (mode === 'element-match') return Math.min(score, 3);
+    return score;
+  }, []);
+
+  const committedChampTotals = champScores.reduce((totals, game) => {
+    return {
+      p1: totals.p1 + game.p1Champ,
+      p2: totals.p2 + game.p2Champ,
+    };
+  }, { p1: 0, p2: 0 });
+
+  const liveChampTotals = {
+    p1: committedChampTotals.p1 + (isChampionship && phase === 'playing' ? normalizeChampPoints(gameMode, p1Score) : 0),
+    p2: committedChampTotals.p2 + (isChampionship && phase === 'playing' ? normalizeChampPoints(gameMode, p2Score) : 0),
+  };
+
+  const championshipTotalsBar = isChampionship && phase === 'playing' ? (
+    <div className="champ-live-total">
+      <span>{player1.avatar} {player1.name}: <strong>{liveChampTotals.p1}</strong></span>
+      <span>{player2.avatar} {player2.name}: <strong>{liveChampTotals.p2}</strong></span>
+    </div>
+  ) : null;
+
   const resetScores = () => {
     setP1Score(0);
     setP2Score(0);
@@ -869,17 +893,23 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         );
         setMatchCards(matched);
         // Capture final scores before state update so the setTimeout closure isn't stale
-        const newMatchP1 = matchTurn === 1 ? p1Score + 1 : p1Score;
-        const newMatchP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
-        if (matchTurn === 1) setP1Score(s => s + 1);
-        else setP2Score(s => s + 1);
+        const candidateP1 = matchTurn === 1 ? p1Score + 1 : p1Score;
+        const candidateP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
+        const newMatchP1 = isChampionship ? Math.min(candidateP1, 3) : candidateP1;
+        const newMatchP2 = isChampionship ? Math.min(candidateP2, 3) : candidateP2;
+        if (matchTurn === 1) setP1Score(s => isChampionship ? Math.min(s + 1, 3) : s + 1);
+        else setP2Score(s => isChampionship ? Math.min(s + 1, 3) : s + 1);
         if (gameMode === 'element-match' && huntTargetElementNum !== null) setHuntFoundMessage(null);
         if (gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum) {
           const p1MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 1).length / 2);
           const p2MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 2).length / 2);
           const claimedPairs = p1MatchedPairs + p2MatchedPairs;
-          const finalP1 = matchTurn === 1 ? claimedPairs : 0;
-          const finalP2 = matchTurn === 2 ? claimedPairs : 0;
+          const finalP1 = matchTurn === 1
+            ? (isChampionship ? Math.min(claimedPairs, 3) : claimedPairs)
+            : 0;
+          const finalP2 = matchTurn === 2
+            ? (isChampionship ? Math.min(claimedPairs, 3) : claimedPairs)
+            : 0;
           const target = elements.find(e => e.atomicNumber === first.elementNum);
           const hunter = matchTurn === 1 ? player1 : player2;
           setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and claimed ${claimedPairs} found pair${claimedPairs === 1 ? '' : 's'}!`);
@@ -941,7 +971,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       matchFinishTimerRef.current = null;
       finishCurrentGame(p1Pairs, p2Pairs);
     }, finishDelay);
-  }, [gameMode, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
+  }, [gameMode, isChampionship, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -1175,12 +1205,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setP2Score(finalP2);
 
     if (isChampionship) {
+      const champP1 = normalizeChampPoints(gameMode, finalP1);
+      const champP2 = normalizeChampPoints(gameMode, finalP2);
       // Save this game's raw scores — they carry over directly as championship points
       setChampScores(prev => [...prev, {
         p1Raw: finalP1,
         p2Raw: finalP2,
-        p1Champ: finalP1,
-        p2Champ: finalP2,
+        p1Champ: champP1,
+        p2Champ: champP2,
       }]);
       if (champStep + 1 >= CHAMP_GAMES.length) {
         setPhase('champ-result');
@@ -1256,6 +1288,20 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       (gameMode === 'symbol-pick' && symbolTurn === 2) ||
       (gameMode === 'atom-quiz' && atomTurn === 2)
     );
+
+  const renderTurnBanner = (turnOwner: 1 | 2, detail?: string) => {
+    const turnPlayer = turnOwner === 1 ? player1 : player2;
+    const botThinking = turnOwner === 2 && player2Mode === 'bot';
+    return (
+      <div className={`turn-banner ${turnOwner === 1 ? 'p1' : 'p2'} ${botThinking ? 'thinking' : ''}`}>
+        <span className="turn-pill">Now Playing</span>
+        <span className="turn-main">
+          {turnPlayer.avatar} {turnPlayer.name}{botThinking ? ' is thinking...' : "'s turn"}
+        </span>
+        {detail && <span className="turn-detail">{detail}</span>}
+      </div>
+    );
+  };
 
   // --- Bot turns (Player 2) ---
   useEffect(() => {
@@ -1784,11 +1830,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="player-diff">Round {currentRound}/{rounds}</span>
           </div>
           <div className="two-player-scores">
-            <span>{player1.avatar} {p1Score}✓</span>
+            <span className={`player-score-chip ${currentPlayer === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}✓</span>
             <span>vs</span>
-            <span>{p2Score}✓ {player2.avatar}</span>
+            <span className={`player-score-chip ${currentPlayer === 2 ? 'active p2' : ''}`}>{p2Score}✓ {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(currentPlayer as 1 | 2, `Question ${currentRound} of ${rounds}`)}
+        {championshipTotalsBar}
         <div>
           <QuizCard
             question={questions[qIndex]}
@@ -1825,11 +1873,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="tf-round">Round {roundNum}/{totalRounds}</span>
           </div>
           <div className="tf-scores">
-            <span>{player1.avatar} {p1Score}</span>
+            <span className={`player-score-chip ${tfTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
             <span>vs</span>
-            <span>{p2Score} {player2.avatar}</span>
+            <span className={`player-score-chip ${tfTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(tfTurn as 1 | 2, `Round ${roundNum} of ${totalRounds}`)}
+        {championshipTotalsBar}
 
         <div className="tf-statement-card">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
@@ -1883,11 +1933,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</span>
           <div className="match-scores">
-            <span>{player1.avatar} {p1Score}</span>
+            <span className={`player-score-chip ${matchTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
             <span>vs</span>
-            <span>{p2Score} {player2.avatar}</span>
+            <span className={`player-score-chip ${matchTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(matchTurn as 1 | 2)}
+        {championshipTotalsBar}
         {huntTarget && (
           <div className="hunt-target-banner">
             Target: <strong>{huntTarget.name} ({huntTarget.symbol})</strong>
@@ -1944,11 +1996,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">Element {Math.floor(snapIndex / 2) + 1}/{Math.floor(snapRounds.length / 2)} each</span>
           <div className="snap-scores">
-            <span>{player1.avatar} {p1Score}</span>
+            <span className={`player-score-chip ${snapTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
             <span>vs</span>
-            <span>{p2Score} {player2.avatar}</span>
+            <span className={`player-score-chip ${snapTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(snapTurn as 1 | 2, `Clue ${snapClueIdx + 1} of 5`)}
+        {championshipTotalsBar}
 
         {snapAnswered === null && (
           <>
@@ -2042,11 +2096,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">{Math.floor(symbolIndex / 2) + 1}/{Math.floor(symbolRounds.length / 2)}</span>
           <div className="snap-scores">
-            <span>{player1.avatar} {p1Score}</span>
+            <span className={`player-score-chip ${symbolTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
             <span>vs</span>
-            <span>{p2Score} {player2.avatar}</span>
+            <span className={`player-score-chip ${symbolTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(symbolTurn as 1 | 2, `Question ${symbolIndex + 1} of ${symbolRounds.length}`)}
+        {championshipTotalsBar}
         <p className="snap-buzzer-name">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name} — pick the symbol for:`}</p>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 0 1rem' }}>
           <h2 style={{ margin: 0, fontSize: '1.8rem' }}>{round.elementName}</h2>
@@ -2100,11 +2156,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">⚛️ {Math.floor(atomIndex / 2) + 1}/{Math.floor(atomQuestions.length / 2)}</span>
           <div className="snap-scores">
-            <span>{player1.avatar} {p1Score}</span>
+            <span className={`player-score-chip ${atomTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
             <span>vs</span>
-            <span>{p2Score} {player2.avatar}</span>
+            <span className={`player-score-chip ${atomTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
+        {renderTurnBanner(atomTurn as 1 | 2, `Question ${atomIndex + 1} of ${atomQuestions.length}`)}
+        {championshipTotalsBar}
         <p className="snap-buzzer-name">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</p>
         {q.illustration && <div style={{ textAlign: 'center', fontSize: '2.5rem', margin: '0.25rem 0' }}>{q.illustration}</div>}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', margin: '0.5rem 1rem 1rem' }}>
@@ -2244,14 +2302,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </tr>
               ))}
               <tr className="champ-total-row">
-                <td><strong>Total</strong></td>
-                <td><strong>{rawTotalP1}</strong></td>
-                <td><strong>{rawTotalP2}</strong></td>
+                <td><strong>Champ Total</strong></td>
+                <td><strong>{totalP1}</strong></td>
+                <td><strong>{totalP2}</strong></td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p>The champion has the highest combined score across all 6 games.</p>
+        <p>The champion has the highest championship total across all 6 games.</p>
+        {(rawTotalP1 !== totalP1 || rawTotalP2 !== totalP2) && (
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
+            Raw totals were {rawTotalP1} vs {rawTotalP2}. Championship scoring rules were applied.
+          </p>
+        )}
         {!champWinner && (
           <button className="start-btn" style={{ marginBottom: '0.75rem' }} onClick={startChampTiebreaker}>
             🃏 Tiebreaker — 12-Card Memory Match!
