@@ -4,7 +4,7 @@ import Elementor from '../components/Elementor.tsx';
 import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
-import { loadTwoPlayerNames, saveTwoPlayerNames } from '../engine/storage.ts';
+import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
@@ -15,7 +15,7 @@ interface TwoPlayerScreenProps {
   initialMode?: 'championship';
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'championship';
+type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'atomic-order' | 'championship';
 type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
@@ -287,6 +287,30 @@ type SymbolRound = {
   choices: string[];
 };
 
+// --- Atomic Order types ---
+type AtomicOrderRound = { p1: number[]; p2: number[] };
+type AtomicOrderFeedback = 'correct' | 'left' | 'right';
+type AtomicOrderResult = { solved: boolean; attempts: number; elapsedMs: number };
+const ATOMIC_ORDER_TILE_COUNTS: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
+
+function shuffledAtomicNumbers(pool: number, count: number): number[] {
+  const picked = shuffleArray(elements.slice(0, pool)).slice(0, count).map(el => el.atomicNumber);
+  const sorted = [...picked].sort((a, b) => a - b);
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const shuffled = shuffleArray(sorted);
+    if (shuffled.every((value, index) => value !== sorted[index])) return shuffled;
+  }
+  // A one-place rotation is a guaranteed fallback derangement.
+  return [...sorted.slice(1), sorted[0]];
+}
+
+function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty): AtomicOrderRound[] {
+  return Array.from({ length: count }, () => ({
+    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty]),
+    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty]),
+  }));
+}
+
 /** Pick distractor symbols that look very similar to the correct one.
  *  Prioritises same-first-letter, same-length, real-symbol, and name-letter look-alikes.
  */
@@ -445,7 +469,7 @@ function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
 }
 
 // --- Championship config ---
-const CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'element-match', 'atom-quiz', 'clue-duel', 'symbol-pick'];
+const DEFAULT_CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match'];
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
@@ -453,15 +477,20 @@ const CHAMP_LABELS: Record<string, string> = {
   'clue-duel': '🕵️ Clue Duel',
   'symbol-pick': '🔤 Symbol Pick',
   'atom-quiz': '⚛️ Atom Quiz',
+  'atomic-order': '🔢 Atomic Order',
 };
 
 type ChampSize = 'quick' | 'standard' | 'epic';
-// Per-game round counts for each championship size.
-// Order matches CHAMP_GAMES: quiz-battle, tf-blitz, element-match hunt, atom-quiz, clue-duel, symbol-pick.
-const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: [number, number, number, number, number, number] }> = {
-  quick:    { label: 'Quick',    desc: '3 rounds each, 12 pairs',  counts: [3, 3, 12, 4, 4, 4] },
-  standard: { label: 'Standard', desc: '5 rounds each, 16 pairs',  counts: [5, 5, 16, 8, 6, 6] },
-  epic:     { label: 'Epic',     desc: '8 rounds each, 20 pairs',  counts: [8, 8, 20, 12, 8, 8] },
+const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: Record<Exclude<GameMode, 'championship'>, number> }> = {
+  quick: { label: 'Quick', desc: 'Short games', counts: {
+    'quiz-battle': 3, 'tf-blitz': 3, 'element-match': 12, 'atom-quiz': 4, 'clue-duel': 4, 'symbol-pick': 4, 'atomic-order': 3,
+  } },
+  standard: { label: 'Standard', desc: 'Medium games', counts: {
+    'quiz-battle': 5, 'tf-blitz': 5, 'element-match': 16, 'atom-quiz': 8, 'clue-duel': 6, 'symbol-pick': 6, 'atomic-order': 5,
+  } },
+  epic: { label: 'Epic', desc: 'Long games', counts: {
+    'quiz-battle': 8, 'tf-blitz': 8, 'element-match': 20, 'atom-quiz': 12, 'clue-duel': 8, 'symbol-pick': 8, 'atomic-order': 7,
+  } },
 };
 
 type ChampGameScore = {
@@ -474,16 +503,17 @@ type ChampGameScore = {
 
 
 export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: TwoPlayerScreenProps) {
+  const [savedSettings] = useState(loadTwoPlayerSettings);
   const [phase, setPhase] = useState<Phase>(initialMode ? 'setup' : 'mode-select');
   const [gameMode, setGameMode] = useState<GameMode>(initialMode ?? 'championship');
-  const [rounds, setRounds] = useState(12);
+  const [rounds, setRounds] = useState(savedSettings.rounds);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
 
   // Load saved names
   const saved = loadTwoPlayerNames();
-  const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: 'explorer', avatar: saved.avatar1 });
-  const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: 'explorer', avatar: saved.avatar2 });
-  const [player2Mode, setPlayer2Mode] = useState<Player2Mode>('human');
+  const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: savedSettings.player1Difficulty, avatar: saved.avatar1 });
+  const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: savedSettings.player2Difficulty, avatar: saved.avatar2 });
+  const [player2Mode, setPlayer2Mode] = useState<Player2Mode>(savedSettings.player2Mode);
 
   // Shared scores
   const [p1Score, setP1Score] = useState(0);
@@ -512,13 +542,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [matchTurn, setMatchTurn] = useState(1);
   const [matchFirst, setMatchFirst] = useState<number | null>(null);
   const [matchLocked, setMatchLocked] = useState(false);
-  const [matchExotic, setMatchExotic] = useState(false);
-  const [huntTargetMode, setHuntTargetMode] = useState<'none' | 'random' | 'choose'>('none');
-  const [huntTargetElementNum, setHuntTargetElementNum] = useState<number | null>(null);
+  const [matchExotic, setMatchExotic] = useState(savedSettings.matchExotic);
+  const [huntTargetMode, setHuntTargetMode] = useState<'none' | 'random' | 'choose'>(savedSettings.huntTargetMode);
+  const [huntTargetElementNum, setHuntTargetElementNum] = useState<number | null>(savedSettings.huntTargetElementNum);
   const [huntPickerOpen, setHuntPickerOpen] = useState(false);
   const [huntSearch, setHuntSearch] = useState('');
   const [huntFoundMessage, setHuntFoundMessage] = useState<string | null>(null);
-  const [huntRequiredPairs, setHuntRequiredPairs] = useState(0);
+  const [huntRequiredPairs, setHuntRequiredPairs] = useState(savedSettings.huntRequiredPairs);
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -548,18 +578,54 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [atomSecondChance, setAtomSecondChance] = useState(false);
   const [atomFirstWrong, setAtomFirstWrong] = useState<number | null>(null);
 
+  // Atomic Order state
+  const [orderRounds, setOrderRounds] = useState<AtomicOrderRound[]>([]);
+  const [orderRoundIndex, setOrderRoundIndex] = useState(0);
+  const [orderTurn, setOrderTurn] = useState<1 | 2>(1);
+  const [orderTiles, setOrderTiles] = useState<number[]>([]);
+  const [orderAttempts, setOrderAttempts] = useState(0);
+  const [orderFeedback, setOrderFeedback] = useState<AtomicOrderFeedback[]>([]);
+  const [orderSelected, setOrderSelected] = useState<number | null>(null);
+  const [orderTurnResult, setOrderTurnResult] = useState<AtomicOrderResult | null>(null);
+  const [orderP1Result, setOrderP1Result] = useState<AtomicOrderResult | null>(null);
+  const [orderRoundWinner, setOrderRoundWinner] = useState<1 | 2 | null>(null);
+  const [orderRoundComplete, setOrderRoundComplete] = useState(false);
+  const [orderStartedAt, setOrderStartedAt] = useState(0);
+  const [orderTimerStarted, setOrderTimerStarted] = useState(false);
+  const [orderElapsed, setOrderElapsed] = useState(0);
+
   // Championship state
-  const [champStep, setChampStep] = useState(0); // index into CHAMP_GAMES
+  const [champStep, setChampStep] = useState(0); // index into activeChampGames
   const [champScores, setChampScores] = useState<ChampGameScore[]>([]);
   const [isChampionship, setIsChampionship] = useState(false);
   const [isChampTiebreaker, setIsChampTiebreaker] = useState(false);
-  const [champSize, setChampSize] = useState<ChampSize>('standard');
+  const [champSize, setChampSize] = useState<ChampSize>(savedSettings.champSize);
+  const [selectedChampGames, setSelectedChampGames] = useState<GameMode[]>(() => {
+    const valid = savedSettings.championshipGames.filter((mode): mode is GameMode => DEFAULT_CHAMP_GAMES.includes(mode as GameMode));
+    return valid.length >= 2 ? valid : DEFAULT_CHAMP_GAMES;
+  });
+  const [activeChampGames, setActiveChampGames] = useState<GameMode[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
 
   // Save names whenever they change
   useEffect(() => {
     saveTwoPlayerNames({ name1: player1.name, avatar1: player1.avatar, name2: player2.name, avatar2: player2.avatar });
   }, [player1.name, player1.avatar, player2.name, player2.avatar]);
+
+  useEffect(() => {
+    saveTwoPlayerSettings({
+      player1Difficulty: player1.difficulty,
+      player2Difficulty: player2.difficulty,
+      player2Mode,
+      rounds,
+      champSize,
+      championshipGames: selectedChampGames,
+      matchExotic,
+      huntTargetMode,
+      huntTargetElementNum,
+      huntRequiredPairs,
+    });
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1112,6 +1178,119 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     }
   };
 
+  // --- Atomic Order ---
+  const beginAtomicOrderTurn = (gameRounds: AtomicOrderRound[], roundIndex: number, turn: 1 | 2) => {
+    const puzzle = gameRounds[roundIndex];
+    if (!puzzle) return;
+    setOrderTurn(turn);
+    setOrderTiles([...(turn === 1 ? puzzle.p1 : puzzle.p2)]);
+    setOrderAttempts(0);
+    setOrderFeedback([]);
+    setOrderSelected(null);
+    setOrderTurnResult(null);
+    setOrderRoundComplete(false);
+    setOrderStartedAt(0);
+    setOrderTimerStarted(false);
+    setOrderElapsed(0);
+  };
+
+  const startAtomicOrder = (count: number = rounds) => {
+    const gameRounds = generateAtomicOrderRounds(count, player1.difficulty, player2.difficulty);
+    setOrderRounds(gameRounds);
+    setOrderRoundIndex(0);
+    setOrderP1Result(null);
+    setOrderRoundWinner(null);
+    resetScores();
+    setRounds(count);
+    beginAtomicOrderTurn(gameRounds, 0, 1);
+    setPhase('playing');
+  };
+
+  const startAtomicOrderTimer = () => {
+    if (orderTimerStarted || orderTurnResult) return;
+    setOrderStartedAt(Date.now());
+    setOrderElapsed(0);
+    setOrderTimerStarted(true);
+  };
+
+  const moveAtomicOrderTile = (fromIndex: number, toIndex: number) => {
+    if (!orderTimerStarted || orderTurnResult || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    setOrderTiles(current => {
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    setOrderFeedback([]);
+    setOrderSelected(null);
+  };
+
+  const selectAtomicOrderTile = (index: number) => {
+    if (!orderTimerStarted || orderTurnResult || isBotTurn) return;
+    if (orderSelected === null) setOrderSelected(index);
+    else if (orderSelected === index) setOrderSelected(null);
+    else moveAtomicOrderTile(orderSelected, index);
+  };
+
+  const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
+    setOrderTurnResult(result);
+    if (orderTurn === 1) {
+      setOrderP1Result(result);
+      return;
+    }
+
+    const p1 = orderP1Result;
+    let winner: 1 | 2 | null = null;
+    if (p1 && p1.elapsedMs !== result.elapsedMs) {
+      winner = p1.elapsedMs < result.elapsedMs ? 1 : 2;
+    }
+    setOrderRoundWinner(winner);
+    setOrderRoundComplete(true);
+    if (winner === 1) setP1Score(score => score + 1);
+    if (winner === 2) setP2Score(score => score + 1);
+  };
+
+  const submitAtomicOrder = () => {
+    if (!orderTimerStarted || orderTurnResult || orderTiles.length < 3) return;
+    const sorted = [...orderTiles].sort((a, b) => a - b);
+    const feedback = orderTiles.map((atomicNumber, index): AtomicOrderFeedback => {
+      const targetIndex = sorted.indexOf(atomicNumber);
+      return targetIndex === index ? 'correct' : targetIndex < index ? 'left' : 'right';
+    });
+    const attempts = orderAttempts + 1;
+    const solved = feedback.every(value => value === 'correct');
+    setOrderAttempts(attempts);
+    setOrderFeedback(feedback);
+    if (solved) playCorrect();
+    else playWrong();
+    if (solved) {
+      finishAtomicOrderTurn({ solved, attempts, elapsedMs: Math.max(1, Date.now() - orderStartedAt) });
+    }
+  };
+
+  const nextAtomicOrderStage = () => {
+    if (orderTurn === 1) {
+      beginAtomicOrderTurn(orderRounds, orderRoundIndex, 2);
+      return;
+    }
+    if (!orderRoundComplete) return;
+    const nextRound = orderRoundIndex + 1;
+    if (nextRound >= orderRounds.length) {
+      finishCurrentGame();
+      return;
+    }
+    setOrderRoundIndex(nextRound);
+    setOrderP1Result(null);
+    setOrderRoundWinner(null);
+    beginAtomicOrderTurn(orderRounds, nextRound, 1);
+  };
+
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'atomic-order' || !orderTimerStarted || orderTurnResult || !orderStartedAt) return;
+    const timer = setInterval(() => setOrderElapsed(Date.now() - orderStartedAt), 100);
+    return () => clearInterval(timer);
+  }, [gameMode, orderStartedAt, orderTimerStarted, orderTurnResult, phase]);
+
   // --- Championship orchestration ---
   const launchSubGame = useCallback((mode: GameMode) => {
     setGameMode(mode);
@@ -1119,7 +1298,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setP2Score(0);
     const counts = CHAMP_SIZE_CONFIG[champSize].counts;
     if (mode === 'quiz-battle') {
-      const n = counts[0];
+      const n = counts[mode];
       setP1Questions(generateQuizBattleQuiz(player1.difficulty, n));
       setP2Questions(generateQuizBattleQuiz(player2.difficulty, n));
       setCurrentPlayer(1);
@@ -1130,7 +1309,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'tf-blitz') {
-      const n = counts[1];
+      const n = counts[mode];
       setTfStatements(generateTFStatements(n * 2, sharedPool()));
       setTfIndex(0);
       setTfTurn(1);
@@ -1139,7 +1318,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'element-match') {
-      const n = counts[2];
+      const n = counts[mode];
       const chosenTarget = huntTargetMode === 'choose' && huntTargetElementNum
         ? huntTargetElementNum
         : null;
@@ -1157,7 +1336,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'atom-quiz') {
-      const n = counts[3];
+      const n = counts[mode];
       setAtomQuestions(generateAtomQuestions(n));
       setAtomIndex(0);
       setAtomTurn(1);
@@ -1167,7 +1346,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'clue-duel') {
-      const n = counts[4];
+      const n = counts[mode];
       setSnapRounds(generateSnapRounds(n, sharedPool()));
       setSnapIndex(0);
       setSnapClueIdx(0);
@@ -1177,24 +1356,28 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setRounds(n);
       setPhase('playing');
     } else if (mode === 'symbol-pick') {
-      const n = counts[5];
+      const n = counts[mode];
       setSymbolRounds(generateSymbolRounds(n, sharedPool()));
       setSymbolIndex(0);
       setSymbolTurn(1);
       setSymbolAnswered(null);
       setRounds(n);
       setPhase('playing');
+    } else if (mode === 'atomic-order') {
+      startAtomicOrder(counts[mode]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player1.difficulty, player2.difficulty, champSize, huntTargetMode, huntTargetElementNum, matchExotic]);
 
   const startChampionship = () => {
+    const games = selectedChampGames.length >= 2 ? selectedChampGames : DEFAULT_CHAMP_GAMES;
     setIsChampionship(true);
+    setActiveChampGames(games);
     setChampStep(0);
     setChampScores([]);
     setP1Score(0);
     setP2Score(0);
-    const firstGame = CHAMP_GAMES[0];
+    const firstGame = games[0];
     setGameMode(firstGame);
     // Start first sub-game with fixed rounds
     launchSubGame(firstGame);
@@ -1214,7 +1397,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         p1Champ: champP1,
         p2Champ: champP2,
       }]);
-      if (champStep + 1 >= CHAMP_GAMES.length) {
+      if (champStep + 1 >= activeChampGames.length) {
         setPhase('champ-result');
       } else {
         setPhase('champ-between');
@@ -1227,7 +1410,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const nextChampGame = () => {
     const next = champStep + 1;
     setChampStep(next);
-    launchSubGame(CHAMP_GAMES[next]);
+    launchSubGame(activeChampGames[next]);
   };
 
   const startChampTiebreaker = useCallback(() => {
@@ -1252,6 +1435,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     else if (gameMode === 'element-match') startElementMatch();
     else if (gameMode === 'clue-duel') startElementSnap();
     else if (gameMode === 'symbol-pick') startSymbolPick();
+    else if (gameMode === 'atomic-order') startAtomicOrder();
     else if (gameMode === 'atom-quiz') {
       setAtomQuestions(generateAtomQuestions(rounds));
       setAtomIndex(0);
@@ -1286,7 +1470,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       (gameMode === 'element-match' && matchTurn === 2) ||
       (gameMode === 'clue-duel' && snapTurn === 2) ||
       (gameMode === 'symbol-pick' && symbolTurn === 2) ||
-      (gameMode === 'atom-quiz' && atomTurn === 2)
+      (gameMode === 'atom-quiz' && atomTurn === 2) ||
+      (gameMode === 'atomic-order' && orderTurn === 2)
     );
 
   const renderTurnBanner = (turnOwner: 1 | 2, detail?: string) => {
@@ -1359,6 +1544,29 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return;
     }
 
+    if (gameMode === 'atomic-order' && orderTurn === 2 && !orderTurnResult && orderTiles.length >= 3) {
+      const attempts = player2.difficulty === 'professor'
+        ? 1 + Math.floor(Math.random() * 4)
+        : player2.difficulty === 'scientist'
+          ? 2 + Math.floor(Math.random() * 4)
+          : 3 + Math.floor(Math.random() * 5);
+      const [minimumSeconds, extraSeconds] = player2.difficulty === 'professor'
+        ? [9, 11]
+        : player2.difficulty === 'scientist'
+          ? [14, 14]
+          : [20, 18];
+      const elapsedMs = Math.round((minimumSeconds + Math.random() * extraSeconds) * 1000);
+      setOrderTimerStarted(true);
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        setOrderTiles(current => [...current].sort((a, b) => a - b));
+        setOrderFeedback(orderTiles.map(() => 'correct'));
+        setOrderAttempts(attempts);
+        finishAtomicOrderTurn({ solved: true, attempts, elapsedMs });
+      }, BOT_DELAY_MS);
+      return;
+    }
+
     if (gameMode === 'atom-quiz' && atomTurn === 2 && atomAnswered === null && atomQuestions[atomIndex]) {
       const q = atomQuestions[atomIndex];
       const choice = atomSecondChance
@@ -1382,6 +1590,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     matchFirst,
     matchLocked,
     matchTurn,
+    orderTiles,
+    orderTurn,
+    orderTurnResult,
     huntRequiredPairs,
     huntTargetElementNum,
     p2Questions,
@@ -1443,11 +1654,21 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         botTimerRef.current = null;
         nextSnapRound();
       }, BOT_RESULT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'atomic-order' && orderTurn === 2 && orderTurnResult) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextAtomicOrderStage();
+      }, BOT_RESULT_DELAY_MS);
     }
   }, [
     atomAnswered,
     atomTurn,
     gameMode,
+    orderTurn,
+    orderTurnResult,
     phase,
     player2Mode,
     snapAnswered,
@@ -1473,7 +1694,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           >
             <span className="gm-icon">🏆</span>
             <span className="gm-name">Championship</span>
-            <span className="gm-desc">Play all 6 games — highest combined score wins!</span>
+            <span className="gm-desc">Choose your games — highest combined score wins!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
@@ -1516,6 +1737,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">Pick the correct symbol from look-alikes!</span>
           </button>
           <button
+            className={`game-mode-btn ${gameMode === 'atomic-order' ? 'selected' : ''}`}
+            onClick={() => { setGameMode('atomic-order'); setRounds(5); setPhase('setup'); }}
+          >
+            <span className="gm-icon">🔢</span>
+            <span className="gm-name">Atomic Order</span>
+            <span className="gm-desc">Race to order elements — unlimited tries!</span>
+          </button>
+          <button
             className={`game-mode-btn ${gameMode === 'atom-quiz' ? 'selected' : ''}`}
             onClick={() => { setGameMode('atom-quiz'); setPhase('setup'); }}
           >
@@ -1540,6 +1769,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
           {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
           {gameMode === 'atom-quiz' && '⚛️ Atom Quiz'}
+          {gameMode === 'atomic-order' && '🔢 Atomic Order'}
           {gameMode === 'championship' && '🏆 Championship'}
         </h2>
         <Elementor expression="greeting" message="Set up your players!" />
@@ -1606,7 +1836,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         {gameMode !== 'championship' && (
           <div className="rounds-select">
             <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
-            {(gameMode === 'element-match' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
+            {(gameMode === 'element-match' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'atomic-order' ? [3, 5, 7] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
               <button
                 key={r}
                 className={`round-btn ${rounds === r ? 'selected' : ''}`}
@@ -1712,6 +1942,34 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </button>
               ))}
             </div>
+            <div className="champ-game-picker">
+              <label>Games (choose at least 2):</label>
+              <div className="champ-games-list">
+                {DEFAULT_CHAMP_GAMES.map(mode => {
+                  const selected = selectedChampGames.includes(mode);
+                  return (
+                    <button
+                      key={mode}
+                      className={`champ-game-chip champ-game-toggle ${selected ? 'selected' : ''}`}
+                      onClick={() => setSelectedChampGames(current => {
+                        if (current.includes(mode)) {
+                          return current.length <= 2 ? current : current.filter(game => game !== mode);
+                        }
+                        return DEFAULT_CHAMP_GAMES.filter(game => current.includes(game) || game === mode);
+                      })}
+                      aria-pressed={selected}
+                    >
+                      {selected ? '✓ ' : ''}{CHAMP_LABELS[mode]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="rounds-select">
+              <label>Match pool: </label>
+              <button className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
+              <button className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
+            </div>
             <div className="rounds-select" style={{ alignItems: 'center' }}>
               <label>Match target: </label>
               <button
@@ -1785,20 +2043,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             )}
             <div className="champ-info">
               <div className="champ-games-list">
-                {([
-                  ['⚡', 'Quiz Battle',    CHAMP_SIZE_CONFIG[champSize].counts[0], 'qs'],
-                  ['✅', 'T/F Blitz',      CHAMP_SIZE_CONFIG[champSize].counts[1], 'qs'],
-                  ['🃏', 'Element Match Hunt', CHAMP_SIZE_CONFIG[champSize].counts[2], 'pairs'],
-                  ['⚛️', 'Atom Quiz',      CHAMP_SIZE_CONFIG[champSize].counts[3], 'qs'],
-                  ['🔍', 'Clue Duel',      CHAMP_SIZE_CONFIG[champSize].counts[4], 'qs'],
-                  ['🔤', 'Symbol Pick',    CHAMP_SIZE_CONFIG[champSize].counts[5], 'qs'],
-                ] as [string, string, number, string][]).map(([icon, name, count, unit]) => (
-                  <span key={name} className="champ-game-chip">
-                    {icon} {name} <strong>{count}</strong> {unit}
+                {selectedChampGames.map(mode => (
+                  <span key={mode} className="champ-game-chip">
+                    {CHAMP_LABELS[mode]} <strong>{CHAMP_SIZE_CONFIG[champSize].counts[mode as Exclude<GameMode, 'championship'>]}</strong> {mode === 'element-match' ? 'pairs' : 'rounds'}
                   </span>
                 ))}
               </div>
-              <p className="champ-info-footer">Scores add up across all games — highest total wins!</p>
+              <p className="champ-info-footer">{selectedChampGames.length} games selected — scores add up across the Championship.</p>
             </div>
           </>
         )}
@@ -2212,10 +2463,110 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     );
   }
 
+  // --- PLAYING: Atomic Order ---
+  if (phase === 'playing' && gameMode === 'atomic-order' && orderTiles.length >= 3) {
+    const currentResult = orderTurnResult;
+    const elapsedMs = currentResult?.elapsedMs ?? orderElapsed;
+    const currentPlayerConfig = orderTurn === 1 ? player1 : player2;
+    return (
+      <div className="atomic-order-playing two-player-playing">
+        {quitOverlay}
+        <div className="two-player-header">
+          <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
+          <div className="player-indicator">
+            <span className="player-avatar">{currentPlayerConfig.avatar}</span>
+            <span className="player-name">{isBotTurn ? `${player2.name} is ordering...` : `${currentPlayerConfig.name}'s Turn`}</span>
+            <span className="player-diff">Round {orderRoundIndex + 1}/{orderRounds.length}</span>
+          </div>
+          <div className="two-player-scores">
+            <span className={`player-score-chip ${orderTurn === 1 ? 'active p1' : ''}`}>{player1.avatar} {p1Score}</span>
+            <span>vs</span>
+            <span className={`player-score-chip ${orderTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
+          </div>
+        </div>
+        {renderTurnBanner(orderTurn, orderTimerStarted ? `Attempt ${orderAttempts + 1} · ${(elapsedMs / 1000).toFixed(1)}s` : 'Ready to start')}
+        {championshipTotalsBar}
+
+        <div className="atomic-order-card">
+          <h2>Put {orderTiles.length} elements in atomic-number order</h2>
+          <p className="atomic-order-instruction">Lowest to highest. Attempts are unlimited; the fastest time wins the point.</p>
+          {!orderTimerStarted && !currentResult && (
+            <div className="atomic-order-ready">
+              <p>The elements will appear when the timer starts.</p>
+              <button className="start-btn" onClick={startAtomicOrderTimer} disabled={isBotTurn}>Start Timer</button>
+            </div>
+          )}
+          {(orderTimerStarted || currentResult) && <>
+          <div className="atomic-order-direction"><span>LOWEST</span><span>→</span><span>HIGHEST</span></div>
+          <div className="atomic-order-tiles" style={{ gridTemplateColumns: `repeat(${orderTiles.length}, minmax(0, 1fr))` }}>
+            {orderTiles.map((atomicNumber, index) => {
+              const el = elements.find(item => item.atomicNumber === atomicNumber)!;
+              const feedback = orderFeedback[index];
+              return (
+                <button
+                  key={atomicNumber}
+                  className={`atomic-order-tile ${feedback ?? ''} ${orderSelected === index ? 'selected' : ''}`}
+                  draggable={orderTimerStarted && !currentResult && !isBotTurn}
+                  onDragStart={event => event.dataTransfer.setData('text/plain', String(index))}
+                  onDragOver={event => event.preventDefault()}
+                  onDrop={event => {
+                    event.preventDefault();
+                    moveAtomicOrderTile(Number(event.dataTransfer.getData('text/plain')), index);
+                  }}
+                  onClick={() => selectAtomicOrderTile(index)}
+                  disabled={Boolean(currentResult) || isBotTurn}
+                >
+                  <strong>{el.symbol}</strong>
+                  <span>{el.name}</span>
+                  {currentResult?.solved && <span className="atomic-order-number">Atomic no. {el.atomicNumber}</span>}
+                  {feedback === 'correct' && <small>✓ Correct</small>}
+                  {feedback === 'left' && <small>← Move left</small>}
+                  {feedback === 'right' && <small>Move right →</small>}
+                </button>
+              );
+            })}
+          </div>
+
+          {!currentResult ? (
+            <button className="start-btn" onClick={submitAtomicOrder} disabled={isBotTurn}>Check order</button>
+          ) : (
+            <div className="atomic-order-result">
+              <h3>✅ Correct in {currentResult.attempts} {currentResult.attempts === 1 ? 'try' : 'tries'}!</h3>
+              <p>Time: {(currentResult.elapsedMs / 1000).toFixed(1)} seconds</p>
+              {orderRoundComplete && (
+                <>
+                  <div className="atomic-order-comparison">
+                    <span>{player1.avatar} {orderP1Result ? `${orderP1Result.attempts} tries · ${(orderP1Result.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+                    <span>{player2.avatar} {currentResult.attempts} tries · {(currentResult.elapsedMs / 1000).toFixed(1)}s</span>
+                  </div>
+                  <p className="atomic-order-round-winner">
+                    {orderRoundWinner === 1
+                      ? `${player1.avatar} ${player1.name} wins the point!`
+                      : orderRoundWinner === 2
+                        ? `${player2.avatar} ${player2.name} wins the point!`
+                        : 'Round tied — no point awarded.'}
+                  </p>
+                </>
+              )}
+              <button className="start-btn" onClick={nextAtomicOrderStage} disabled={isBotTurn}>
+                {orderTurn === 1
+                  ? `Pass to ${player2.name} →`
+                  : orderRoundIndex + 1 >= orderRounds.length
+                    ? 'See Results'
+                    : 'Next Round →'}
+              </button>
+            </div>
+          )}
+          </>}
+        </div>
+      </div>
+    );
+  }
+
   // --- CHAMPIONSHIP: Between-games interstitial ---
   if (phase === 'champ-between') {
-    const justFinished = CHAMP_GAMES[champStep];
-    const nextGame = CHAMP_GAMES[champStep + 1];
+    const justFinished = activeChampGames[champStep];
+    const nextGame = activeChampGames[champStep + 1];
     // champScores already includes the just-finished game (pushed in finishCurrentGame)
     const totalP1 = champScores.reduce((s, g) => s + g.p1Champ, 0);
     const totalP2 = champScores.reduce((s, g) => s + g.p2Champ, 0);
@@ -2223,7 +2574,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     return (
       <div className="champ-between">
         <div className="champ-between-header">
-          <h2>🏆 Championship — Game {champStep + 1} of {CHAMP_GAMES.length}</h2>
+          <h2>🏆 Championship — Game {champStep + 1} of {activeChampGames.length}</h2>
         </div>
         <div className="champ-game-result">
           <h3>{CHAMP_LABELS[justFinished]} Complete!</h3>
@@ -2294,7 +2645,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               </tr>
             </thead>
             <tbody>
-              {CHAMP_GAMES.map((g, i) => (
+              {activeChampGames.map((g, i) => (
                 <tr key={g} className={allScores[i]?.p1Raw > allScores[i]?.p2Raw ? 'p1-won' : allScores[i]?.p2Raw > allScores[i]?.p1Raw ? 'p2-won' : ''}>
                   <td>{CHAMP_LABELS[g]}</td>
                   <td>{allScores[i] ? allScores[i].p1Raw : '-'}</td>
@@ -2309,7 +2660,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </tbody>
           </table>
         </div>
-        <p>The champion has the highest championship total across all 6 games.</p>
+        <p>The champion has the highest total across the {activeChampGames.length} selected games.</p>
         {(rawTotalP1 !== totalP1 || rawTotalP2 !== totalP2) && (
           <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
             Raw totals were {rawTotalP1} vs {rawTotalP2}. Championship scoring rules were applied.
@@ -2338,6 +2689,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       : gameMode === 'clue-duel' ? 'Clue Duel'
       : gameMode === 'symbol-pick' ? 'Symbol Pick'
       : gameMode === 'atom-quiz' ? 'Atom Quiz'
+      : gameMode === 'atomic-order' ? 'Atomic Order'
       : 'Element Match Hunt';
     const tiebreakerDraw = isChampTiebreaker && !winner;
     return (

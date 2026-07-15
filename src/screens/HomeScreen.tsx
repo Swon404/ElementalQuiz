@@ -155,7 +155,7 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
         <button className="menu-btn primary" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player-champ')}>
           <span className="menu-icon">🏆</span>
           <span className="menu-label">2 Player Championship</span>
-          <span className="menu-desc">All 6 games — straight to the championship!</span>
+          <span className="menu-desc">Choose your games — straight to the championship!</span>
         </button>
 
         <button className="menu-btn two-player" style={{ marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player')}>

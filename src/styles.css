@@ -1210,6 +1210,54 @@ body {
   animation: fadeIn 0.2s ease;
 }
 
+/* ===== Atomic Order ===== */
+.atomic-order-card {
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  text-align: center;
+}
+.atomic-order-card h2 { margin: 0 0 0.35rem; }
+.atomic-order-instruction { margin: 0 0 0.75rem; color: var(--text-secondary); }
+.atomic-order-ready {
+  max-width: 420px; margin: 1rem auto; padding: 1rem;
+  border: 2px dashed var(--border); border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+.atomic-order-ready p { margin-top: 0; }
+.atomic-order-direction {
+  display: flex; justify-content: space-between; max-width: 620px; margin: 0 auto 0.45rem;
+  color: var(--text-secondary); font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em;
+}
+.atomic-order-tiles {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.55rem;
+  max-width: 620px; margin: 0 auto 1rem;
+}
+.atomic-order-tile {
+  min-height: 112px; padding: 0.55rem 0.35rem; border-radius: var(--radius-sm);
+  border: 2px solid var(--border); background: var(--surface); color: var(--text-primary);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem;
+  cursor: grab; transition: transform 0.15s, border-color 0.15s, background 0.15s;
+}
+.atomic-order-tile:hover:not(:disabled), .atomic-order-tile.selected {
+  transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 5px 14px rgba(0,0,0,0.25);
+}
+.atomic-order-tile strong { font-size: 1.65rem; }
+.atomic-order-tile span { font-size: 0.78rem; overflow-wrap: anywhere; }
+.atomic-order-tile .atomic-order-number { color: var(--text-primary); font-size: 0.7rem; font-weight: 800; }
+.atomic-order-tile small { font-size: 0.68rem; font-weight: 800; }
+.atomic-order-tile.correct { background: rgba(75,181,67,0.25); border-color: #4bb543; }
+.atomic-order-tile.left, .atomic-order-tile.right { background: rgba(249,202,36,0.2); border-color: #f9ca24; }
+.atomic-order-tile:disabled { opacity: 1; cursor: default; }
+.atomic-order-result { animation: fadeIn 0.2s ease; }
+.atomic-order-result h3 { margin: 0.25rem 0; }
+.atomic-order-comparison {
+  display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;
+  color: var(--text-secondary); font-weight: 700; font-size: 0.88rem;
+}
+.atomic-order-round-winner { color: #f9ca24; font-weight: 800; }
+
 /* ===== Championship ===== */
 .game-mode-btn.championship {
   border-color: #f9ca24; background: linear-gradient(135deg, rgba(249,202,36,0.15), rgba(255,165,2,0.1));
@@ -1228,6 +1276,12 @@ body {
   white-space: nowrap;
 }
 .champ-game-chip strong { color: #f9ca24; }
+.champ-game-picker { margin: 0.75rem 0; text-align: center; }
+.champ-game-picker > label { display: block; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.champ-game-toggle { border: 1px solid var(--border); cursor: pointer; }
+.champ-game-toggle.selected {
+  color: var(--text-primary); border-color: #f9ca24; background: rgba(249,202,36,0.16);
+}
 .champ-info-footer {
   text-align: center; font-size: 0.78rem; color: var(--text-secondary);
   margin: 0; opacity: 0.8;
@@ -1860,6 +1914,12 @@ body {
   .round-btn {
     padding: 8px 12px;
   }
+
+  .atomic-order-tiles { gap: 0.3rem; }
+  .atomic-order-tile { min-height: 92px; padding: 0.35rem 0.15rem; }
+  .atomic-order-tile strong { font-size: 1.25rem; }
+  .atomic-order-tile span { font-size: 0.62rem; }
+  .atomic-order-tile small { font-size: 0.55rem; }
 }
 
 @media (min-width: 768px) {

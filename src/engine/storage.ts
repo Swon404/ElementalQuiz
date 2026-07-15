@@ -28,8 +28,35 @@ const PROFILES_KEY = 'elementalquiz_profiles';
 const ACTIVE_PROFILE_KEY = 'elementalquiz_active_profile';
 const STORAGE_KEY = 'elementalquiz_progress'; // legacy single-player key
 const TWO_PLAYER_KEY = 'elementalquiz_2p_names';
+const TWO_PLAYER_SETTINGS_KEY = 'elementalquiz_2p_settings';
 
 export type TwoPlayerNames = { name1: string; avatar1: string; name2: string; avatar2: string };
+
+export type TwoPlayerSettings = {
+  player1Difficulty: Difficulty;
+  player2Difficulty: Difficulty;
+  player2Mode: 'human' | 'bot';
+  rounds: number;
+  champSize: 'quick' | 'standard' | 'epic';
+  championshipGames: string[];
+  matchExotic: boolean;
+  huntTargetMode: 'none' | 'random' | 'choose';
+  huntTargetElementNum: number | null;
+  huntRequiredPairs: number;
+};
+
+const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
+  player1Difficulty: 'explorer',
+  player2Difficulty: 'explorer',
+  player2Mode: 'human',
+  rounds: 5,
+  champSize: 'standard',
+  championshipGames: ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match'],
+  matchExotic: false,
+  huntTargetMode: 'none',
+  huntTargetElementNum: null,
+  huntRequiredPairs: 0,
+};
 
 export function loadTwoPlayerNames(): TwoPlayerNames {
   try {
@@ -41,6 +68,20 @@ export function loadTwoPlayerNames(): TwoPlayerNames {
 
 export function saveTwoPlayerNames(names: TwoPlayerNames): void {
   localStorage.setItem(TWO_PLAYER_KEY, JSON.stringify(names));
+}
+
+export function loadTwoPlayerSettings(): TwoPlayerSettings {
+  try {
+    const raw = localStorage.getItem(TWO_PLAYER_SETTINGS_KEY);
+    if (raw) return { ...DEFAULT_TWO_PLAYER_SETTINGS, ...JSON.parse(raw) };
+  } catch { /* ignore */ }
+  return { ...DEFAULT_TWO_PLAYER_SETTINGS };
+}
+
+export function saveTwoPlayerSettings(settings: TwoPlayerSettings): void {
+  try {
+    localStorage.setItem(TWO_PLAYER_SETTINGS_KEY, JSON.stringify(settings));
+  } catch { /* ignore */ }
 }
 
 function getDefaultProgress(): PlayerProgress {

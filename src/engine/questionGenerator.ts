@@ -1742,7 +1742,7 @@ export function generateQuiz(difficulty: Difficulty, count: number): Question[] 
   return questions;
 }
 
-function shortAnswerFact(el: Element, avoidText: string): string {
+function shortAnswerFact(el: Element, avoidText: string, usedFacts: Set<string>): string {
   const options = [
     `symbol ${el.symbol}`,
     `atomic number ${el.atomicNumber}`,
@@ -1754,8 +1754,17 @@ function shortAnswerFact(el: Element, avoidText: string): string {
   ].filter((fact): fact is string => Boolean(fact && fact.trim()));
 
   const avoid = normalizeForComparison(avoidText);
-  const usable = options.filter(fact => !avoid.includes(normalizeForComparison(fact)));
-  return shuffleArray(usable.length > 0 ? usable : options)[0];
+  const shuffled = shuffleArray(options);
+  const fact = shuffled.find(candidate => {
+    const normalized = normalizeForComparison(candidate);
+    return !avoid.includes(normalized) && !usedFacts.has(normalized);
+  }) ?? shuffled.find(candidate => !usedFacts.has(normalizeForComparison(candidate)))
+    // Symbols and atomic numbers are element-specific, so this is only a
+    // defensive fallback if the element data ever contains duplicate facts.
+    ?? `atomic number ${el.atomicNumber}`;
+
+  usedFacts.add(normalizeForComparison(fact));
+  return fact;
 }
 
 function varyElementAnswerText(question: Question): Question {
@@ -1763,9 +1772,10 @@ function varyElementAnswerText(question: Question): Question {
   if (choiceElements.some(el => !el)) return question;
 
   const style = Math.floor(Math.random() * 4);
+  const usedFacts = new Set<string>();
   const choices = choiceElements.map(el => {
     if (!el) return '';
-    const fact = shortAnswerFact(el, question.questionText);
+    const fact = shortAnswerFact(el, question.questionText, usedFacts);
     if (style === 0) return `${el.name} (${el.symbol})`;
     if (style === 1) return `${el.name} - ${fact}`;
     if (style === 2) return `${el.name}, ${fact}`;
