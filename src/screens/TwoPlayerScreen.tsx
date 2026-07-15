@@ -1229,7 +1229,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     if (!orderTimerStarted || orderTurnResult || isBotTurn) return;
     if (orderSelected === null) setOrderSelected(index);
     else if (orderSelected === index) setOrderSelected(null);
-    else moveAtomicOrderTile(orderSelected, index);
+    else {
+      setOrderTiles(current => {
+        const next = [...current];
+        [next[orderSelected], next[index]] = [next[index], next[orderSelected]];
+        return next;
+      });
+      setOrderFeedback([]);
+      setOrderSelected(null);
+    }
   };
 
   const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
@@ -2489,7 +2497,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
         <div className="atomic-order-card">
           <h2>Put {orderTiles.length} elements in atomic-number order</h2>
-          <p className="atomic-order-instruction">Lowest to highest. Attempts are unlimited; the fastest time wins the point.</p>
+          <p className="atomic-order-instruction">Lowest to highest. Drag tiles, or tap two to swap them. Attempts are unlimited; fastest wins.</p>
           {!orderTimerStarted && !currentResult && (
             <div className="atomic-order-ready">
               <p>The elements will appear when the timer starts.</p>
