@@ -84,6 +84,51 @@ export function saveTwoPlayerSettings(settings: TwoPlayerSettings): void {
   } catch { /* ignore */ }
 }
 
+/* ===== Atomic Order Best Times (Two Player) ===== */
+
+const ATOMIC_ORDER_TIMES_KEY = 'elementalquiz_atomic_order_times';
+
+type AtomicOrderTimesStore = Record<string, number[]>;
+
+function loadAtomicOrderTimesStore(): AtomicOrderTimesStore {
+  try {
+    const raw = localStorage.getItem(ATOMIC_ORDER_TIMES_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveAtomicOrderTimesStore(store: AtomicOrderTimesStore): void {
+  try {
+    localStorage.setItem(ATOMIC_ORDER_TIMES_KEY, JSON.stringify(store));
+  } catch { /* ignore */ }
+}
+
+function atomicOrderTimesKey(playerName: string, difficulty: Difficulty): string {
+  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}`;
+}
+
+/** Get a player's top 3 fastest Atomic Order times (ms) for a difficulty, fastest first. */
+export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty): number[] {
+  const store = loadAtomicOrderTimesStore();
+  return store[atomicOrderTimesKey(playerName, difficulty)] ?? [];
+}
+
+/**
+ * Record a new Atomic Order time, keeping only the fastest 3.
+ * Returns the updated top 3 (fastest first) and whether this run beat one of the previous top 3 times.
+ */
+export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, elapsedMs: number): { times: number[]; isNewTop3: boolean } {
+  const store = loadAtomicOrderTimesStore();
+  const key = atomicOrderTimesKey(playerName, difficulty);
+  const existing = store[key] ?? [];
+  const beatExisting = existing.some(t => elapsedMs < t);
+  const combined = [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3);
+  store[key] = combined;
+  saveAtomicOrderTimesStore(store);
+  return { times: combined, isNewTop3: beatExisting };
+}
+
 function getDefaultProgress(): PlayerProgress {
   return {
     totalEP: 0,

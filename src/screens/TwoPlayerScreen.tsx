@@ -4,7 +4,7 @@ import Elementor from '../components/Elementor.tsx';
 import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
-import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings } from '../engine/storage.ts';
+import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderBestTimes, recordAtomicOrderTime } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
@@ -30,6 +30,7 @@ const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈
 
 const BOT_DELAY_MS = 2000;
 const BOT_RESULT_DELAY_MS = 1800;
+const HUNT_TARGET_BONUS = 2;
 const BOT_ACCURACY: Record<Difficulty, number> = {
   explorer: 0.6,
   scientist: 0.75,
@@ -593,6 +594,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderStartedAt, setOrderStartedAt] = useState(0);
   const [orderTimerStarted, setOrderTimerStarted] = useState(false);
   const [orderElapsed, setOrderElapsed] = useState(0);
+  const [orderBestTimesP1, setOrderBestTimesP1] = useState<number[]>([]);
+  const [orderBestTimesP2, setOrderBestTimesP2] = useState<number[]>([]);
+  const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -967,18 +971,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         else setP2Score(s => isChampionship ? Math.min(s + 1, 3) : s + 1);
         if (gameMode === 'element-match' && huntTargetElementNum !== null) setHuntFoundMessage(null);
         if (gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum) {
-          const p1MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 1).length / 2);
-          const p2MatchedPairs = Math.floor(matched.filter(c => c.matchedBy === 2).length / 2);
-          const claimedPairs = p1MatchedPairs + p2MatchedPairs;
-          const finalP1 = matchTurn === 1
-            ? (isChampionship ? Math.min(claimedPairs, 3) : claimedPairs)
-            : 0;
-          const finalP2 = matchTurn === 2
-            ? (isChampionship ? Math.min(claimedPairs, 3) : claimedPairs)
-            : 0;
+          // Each player keeps the pairs they personally found, plus the finder earns a bonus for the target.
+          const bonusRawP1 = matchTurn === 1 ? candidateP1 + HUNT_TARGET_BONUS : candidateP1;
+          const bonusRawP2 = matchTurn === 2 ? candidateP2 + HUNT_TARGET_BONUS : candidateP2;
+          const finalP1 = isChampionship ? Math.min(bonusRawP1, 3) : bonusRawP1;
+          const finalP2 = isChampionship ? Math.min(bonusRawP2, 3) : bonusRawP2;
           const target = elements.find(e => e.atomicNumber === first.elementNum);
           const hunter = matchTurn === 1 ? player1 : player2;
-          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and claimed ${claimedPairs} found pair${claimedPairs === 1 ? '' : 's'}!`);
+          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and earns a +${HUNT_TARGET_BONUS} bonus!`);
           setP1Score(finalP1);
           setP2Score(finalP2);
           if (!matchFinishTimerRef.current) {
@@ -1192,6 +1192,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderStartedAt(0);
     setOrderTimerStarted(false);
     setOrderElapsed(0);
+    setOrderTurnNewBest(false);
   };
 
   const startAtomicOrder = (count: number = rounds) => {
@@ -1200,6 +1201,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
+    setOrderBestTimesP1(getAtomicOrderBestTimes(player1.name, player1.difficulty));
+    setOrderBestTimesP2(getAtomicOrderBestTimes(player2.name, player2.difficulty));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1242,6 +1245,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
     setOrderTurnResult(result);
+
+    // Bot times are simulated for pacing, not a genuine result — skip the leaderboard for bot turns.
+    const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
+    if (!isBotFinisher) {
+      const finisher = orderTurn === 1 ? player1 : player2;
+      const { times, isNewTop3 } = recordAtomicOrderTime(finisher.name, finisher.difficulty, result.elapsedMs);
+      if (orderTurn === 1) setOrderBestTimesP1(times);
+      else setOrderBestTimesP2(times);
+      setOrderTurnNewBest(isNewTop3);
+    } else {
+      setOrderTurnNewBest(false);
+    }
+
     if (orderTurn === 1) {
       setOrderP1Result(result);
       return;
@@ -2541,6 +2557,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <div className="atomic-order-result">
               <h3>✅ Correct in {currentResult.attempts} {currentResult.attempts === 1 ? 'try' : 'tries'}!</h3>
               <p>Time: {(currentResult.elapsedMs / 1000).toFixed(1)} seconds</p>
+              {orderTurnNewBest && <p className="atomic-order-new-best">🎉 New personal best — you beat one of your top 3 times!</p>}
               {orderRoundComplete && (
                 <>
                   <div className="atomic-order-comparison">
@@ -2566,6 +2583,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </div>
           )}
           </>}
+          <div className="atomic-order-best-times">
+            <div className="atomic-order-best-col">
+              <span className="atomic-order-best-label">{player1.avatar} {player1.name}'s top 3</span>
+              <span className="atomic-order-best-values">
+                {orderBestTimesP1.length ? orderBestTimesP1.map(t => `${(t / 1000).toFixed(1)}s`).join('  ·  ') : 'No times yet'}
+              </span>
+            </div>
+            {player2Mode === 'human' && (
+              <div className="atomic-order-best-col">
+                <span className="atomic-order-best-label">{player2.avatar} {player2.name}'s top 3</span>
+                <span className="atomic-order-best-values">
+                  {orderBestTimesP2.length ? orderBestTimesP2.map(t => `${(t / 1000).toFixed(1)}s`).join('  ·  ') : 'No times yet'}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
