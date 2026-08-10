@@ -4,7 +4,7 @@ import Elementor from '../components/Elementor.tsx';
 import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
-import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderBestTimes, recordAtomicOrderTime } from '../engine/storage.ts';
+import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderLeaderboard, recordAtomicOrderTime, type AtomicOrderLeaderboardEntry } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
@@ -594,9 +594,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderStartedAt, setOrderStartedAt] = useState(0);
   const [orderTimerStarted, setOrderTimerStarted] = useState(false);
   const [orderElapsed, setOrderElapsed] = useState(0);
-  const [orderBestTimesP1, setOrderBestTimesP1] = useState<number[]>([]);
-  const [orderBestTimesP2, setOrderBestTimesP2] = useState<number[]>([]);
+  const [orderLeaderboardP1, setOrderLeaderboardP1] = useState<AtomicOrderLeaderboardEntry[]>([]);
+  const [orderLeaderboardP2, setOrderLeaderboardP2] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
+  const [orderShowHints, setOrderShowHints] = useState(savedSettings.orderShowHints);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -628,8 +629,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       huntTargetMode,
       huntTargetElementNum,
       huntRequiredPairs,
+      orderShowHints,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderShowHints, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1201,8 +1203,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
-    setOrderBestTimesP1(getAtomicOrderBestTimes(player1.name, player1.difficulty));
-    setOrderBestTimesP2(getAtomicOrderBestTimes(player2.name, player2.difficulty));
+    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints));
+    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1250,10 +1252,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
       const finisher = orderTurn === 1 ? player1 : player2;
-      const { times, isNewTop3 } = recordAtomicOrderTime(finisher.name, finisher.difficulty, result.elapsedMs);
-      if (orderTurn === 1) setOrderBestTimesP1(times);
-      else setOrderBestTimesP2(times);
-      setOrderTurnNewBest(isNewTop3);
+      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, result.elapsedMs);
+      if (orderTurn === 1) setOrderLeaderboardP1(leaderboard);
+      else setOrderLeaderboardP2(leaderboard);
+      setOrderTurnNewBest(madeLeaderboard);
     } else {
       setOrderTurnNewBest(false);
     }
@@ -1876,6 +1878,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <label>Pool: </label>
             <button className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
             <button className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
+          </div>
+        )}
+        {gameMode === 'atomic-order' && (
+          <div className="rounds-select" style={{ alignItems: 'center' }}>
+            <label>Direction hints: </label>
+            <button className={`round-btn ${!orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(false)}>Off</button>
+            <button className={`round-btn ${orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(true)}>On</button>
+            <span className="gm-desc">Off is more of a challenge — no ← / → hints after checking.</span>
           </div>
         )}
         {gameMode === 'element-match' && (
@@ -2525,7 +2535,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <div className="atomic-order-tiles" style={{ gridTemplateColumns: `repeat(${orderTiles.length}, minmax(0, 1fr))` }}>
             {orderTiles.map((atomicNumber, index) => {
               const el = elements.find(item => item.atomicNumber === atomicNumber)!;
-              const feedback = orderFeedback[index];
+              const rawFeedback = orderFeedback[index];
+              // "Correct" placement always shows (confirms progress); left/right move hints are gated behind the setting.
+              const feedback = rawFeedback === 'correct' ? 'correct' : (orderShowHints ? rawFeedback : undefined);
               return (
                 <button
                   key={atomicNumber}
@@ -2557,7 +2569,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <div className="atomic-order-result">
               <h3>✅ Correct in {currentResult.attempts} {currentResult.attempts === 1 ? 'try' : 'tries'}!</h3>
               <p>Time: {(currentResult.elapsedMs / 1000).toFixed(1)} seconds</p>
-              {orderTurnNewBest && <p className="atomic-order-new-best">🎉 New personal best — you beat one of your top 3 times!</p>}
+              {orderTurnNewBest && <p className="atomic-order-new-best">🎉 You cracked the Top 5 leaderboard!</p>}
               {orderRoundComplete && (
                 <>
                   <div className="atomic-order-comparison">
@@ -2583,21 +2595,36 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </div>
           )}
           </>}
-          <div className="atomic-order-best-times">
-            <div className="atomic-order-best-col">
-              <span className="atomic-order-best-label">{player1.avatar} {player1.name}'s top 3</span>
-              <span className="atomic-order-best-values">
-                {orderBestTimesP1.length ? orderBestTimesP1.map(t => `${(t / 1000).toFixed(1)}s`).join('  ·  ') : 'No times yet'}
-              </span>
-            </div>
-            {player2Mode === 'human' && (
-              <div className="atomic-order-best-col">
-                <span className="atomic-order-best-label">{player2.avatar} {player2.name}'s top 3</span>
-                <span className="atomic-order-best-values">
-                  {orderBestTimesP2.length ? orderBestTimesP2.map(t => `${(t / 1000).toFixed(1)}s`).join('  ·  ') : 'No times yet'}
-                </span>
+          <div className="atomic-order-leaderboard">
+            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'}</span>
+            <div className="atomic-order-leaderboard-cols">
+              <div className="atomic-order-leaderboard-col">
+                <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>
+                {orderLeaderboardP1.length ? (
+                  <ol className="atomic-order-leaderboard-list">
+                    {orderLeaderboardP1.map((entry, i) => (
+                      <li key={i} className={entry.name === player1.name.trim() ? 'me' : ''}>
+                        <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                      </li>
+                    ))}
+                  </ol>
+                ) : <span className="atomic-order-best-values">No times yet</span>}
               </div>
-            )}
+              {player2Mode === 'human' && player2.difficulty !== player1.difficulty && (
+                <div className="atomic-order-leaderboard-col">
+                  <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player2.difficulty].label} Top 5</span>
+                  {orderLeaderboardP2.length ? (
+                    <ol className="atomic-order-leaderboard-list">
+                      {orderLeaderboardP2.map((entry, i) => (
+                        <li key={i} className={entry.name === player2.name.trim() ? 'me' : ''}>
+                          <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : <span className="atomic-order-best-values">No times yet</span>}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

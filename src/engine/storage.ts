@@ -43,6 +43,7 @@ export type TwoPlayerSettings = {
   huntTargetMode: 'none' | 'random' | 'choose';
   huntTargetElementNum: number | null;
   huntRequiredPairs: number;
+  orderShowHints: boolean;
 };
 
 const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
@@ -56,6 +57,7 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   huntTargetMode: 'none',
   huntTargetElementNum: null,
   huntRequiredPairs: 0,
+  orderShowHints: false,
 };
 
 export function loadTwoPlayerNames(): TwoPlayerNames {
@@ -84,16 +86,28 @@ export function saveTwoPlayerSettings(settings: TwoPlayerSettings): void {
   } catch { /* ignore */ }
 }
 
-/* ===== Atomic Order Best Times (Two Player) ===== */
+/* ===== Atomic Order Best Times & Leaderboard (Two Player) ===== */
 
 const ATOMIC_ORDER_TIMES_KEY = 'elementalquiz_atomic_order_times';
 
-type AtomicOrderTimesStore = Record<string, number[]>;
+type AtomicOrderTimesEntry = { name: string; times: number[] };
+type AtomicOrderTimesStore = Record<string, AtomicOrderTimesEntry>;
+
+export type AtomicOrderLeaderboardEntry = { name: string; timeMs: number };
 
 function loadAtomicOrderTimesStore(): AtomicOrderTimesStore {
   try {
     const raw = localStorage.getItem(ATOMIC_ORDER_TIMES_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, number[] | AtomicOrderTimesEntry>;
+      const store: AtomicOrderTimesStore = {};
+      for (const key of Object.keys(parsed)) {
+        const value = parsed[key];
+        // Legacy format stored a bare number[] with no display name — fall back to the key's name segment.
+        store[key] = Array.isArray(value) ? { name: key.split('::')[0] || 'Player', times: value } : value;
+      }
+      return store;
+    }
   } catch { /* ignore */ }
   return {};
 }
@@ -104,29 +118,47 @@ function saveAtomicOrderTimesStore(store: AtomicOrderTimesStore): void {
   } catch { /* ignore */ }
 }
 
-function atomicOrderTimesKey(playerName: string, difficulty: Difficulty): string {
-  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}`;
+function atomicOrderTimesKey(playerName: string, difficulty: Difficulty, showHints: boolean): string {
+  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}::${showHints ? 'hints' : 'no-hints'}`;
 }
 
-/** Get a player's top 3 fastest Atomic Order times (ms) for a difficulty, fastest first. */
-export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty): number[] {
+function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficulty: Difficulty, showHints: boolean, limit: number): AtomicOrderLeaderboardEntry[] {
+  const suffix = `::${difficulty}::${showHints ? 'hints' : 'no-hints'}`;
+  const entries: AtomicOrderLeaderboardEntry[] = [];
+  for (const key of Object.keys(store)) {
+    if (!key.endsWith(suffix)) continue;
+    const { name, times } = store[key];
+    for (const timeMs of times) entries.push({ name, timeMs });
+  }
+  return entries.sort((a, b) => a.timeMs - b.timeMs).slice(0, limit);
+}
+
+/** Get a player's top 3 fastest Atomic Order times (ms) for a difficulty, fastest first. Hints on/off are tracked separately since hints make solving easier. */
+export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty, showHints: boolean): number[] {
   const store = loadAtomicOrderTimesStore();
-  return store[atomicOrderTimesKey(playerName, difficulty)] ?? [];
+  return store[atomicOrderTimesKey(playerName, difficulty, showHints)]?.times ?? [];
+}
+
+/** Get the leaderboard (fastest first) across every player who has recorded an Atomic Order time for this difficulty + hints setting. */
+export function getAtomicOrderLeaderboard(difficulty: Difficulty, showHints: boolean, limit = 5): AtomicOrderLeaderboardEntry[] {
+  return atomicOrderLeaderboardFromStore(loadAtomicOrderTimesStore(), difficulty, showHints, limit);
 }
 
 /**
- * Record a new Atomic Order time, keeping only the fastest 3.
- * Returns the updated top 3 (fastest first) and whether this run beat one of the previous top 3 times.
+ * Record a new Atomic Order time, keeping only each player's fastest 3.
+ * Returns the refreshed leaderboard (top 5) and whether this run made the leaderboard.
  */
-export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, elapsedMs: number): { times: number[]; isNewTop3: boolean } {
+export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, showHints: boolean, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
   const store = loadAtomicOrderTimesStore();
-  const key = atomicOrderTimesKey(playerName, difficulty);
-  const existing = store[key] ?? [];
-  const beatExisting = existing.some(t => elapsedMs < t);
+  const key = atomicOrderTimesKey(playerName, difficulty, showHints);
+  const name = playerName.trim() || 'Player';
+  const existing = store[key]?.times ?? [];
   const combined = [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3);
-  store[key] = combined;
+  store[key] = { name, times: combined };
   saveAtomicOrderTimesStore(store);
-  return { times: combined, isNewTop3: beatExisting };
+  const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, showHints, 5);
+  const madeLeaderboard = leaderboard.some(e => e.name === name && e.timeMs === elapsedMs);
+  return { leaderboard, madeLeaderboard };
 }
 
 function getDefaultProgress(): PlayerProgress {

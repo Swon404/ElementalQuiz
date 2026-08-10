@@ -1264,12 +1264,34 @@ body {
 .atomic-order-new-best {
   color: var(--gold); font-weight: 800; font-size: 0.85rem;
 }
-.atomic-order-best-times {
-  display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;
+.atomic-order-leaderboard {
+  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
   margin-top: 1.1rem; padding-top: 0.85rem; border-top: 1px solid var(--border);
 }
-.atomic-order-best-col {
-  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+.atomic-order-best-mode {
+  font-size: 0.68rem; font-weight: 800; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.atomic-order-leaderboard-cols {
+  display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap; width: 100%;
+}
+.atomic-order-leaderboard-col {
+  display: flex; flex-direction: column; align-items: center; gap: 0.3rem; min-width: 160px;
+}
+.atomic-order-leaderboard-list {
+  list-style: none; margin: 0; padding: 0; width: 100%; max-width: 220px;
+  display: flex; flex-direction: column; gap: 0.15rem; counter-reset: order-rank;
+}
+.atomic-order-leaderboard-list li {
+  display: flex; justify-content: space-between; gap: 0.5rem;
+  font-size: 0.78rem; color: var(--text-primary); padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm); counter-increment: order-rank;
+}
+.atomic-order-leaderboard-list li::before {
+  content: counter(order-rank) ". ";
+  font-weight: 800; color: var(--text-secondary); margin-right: 0.15rem;
+}
+.atomic-order-leaderboard-list li.me {
+  background: rgba(233,69,96,0.2); font-weight: 800; color: var(--gold);
 }
 .atomic-order-best-label {
   font-size: 0.72rem; font-weight: 800; color: var(--text-secondary); letter-spacing: 0.03em;
