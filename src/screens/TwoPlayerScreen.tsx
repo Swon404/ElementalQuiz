@@ -598,6 +598,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderLeaderboardP2, setOrderLeaderboardP2] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
   const [orderShowHints, setOrderShowHints] = useState(savedSettings.orderShowHints);
+  const [orderWrongGuessPenalty, setOrderWrongGuessPenalty] = useState(savedSettings.orderWrongGuessPenalty);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -630,8 +631,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       huntTargetElementNum,
       huntRequiredPairs,
       orderShowHints,
+      orderWrongGuessPenalty,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderShowHints, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1203,8 +1205,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
-    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints));
-    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints));
+    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints, orderWrongGuessPenalty));
+    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints, orderWrongGuessPenalty));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1252,7 +1254,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
       const finisher = orderTurn === 1 ? player1 : player2;
-      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, result.elapsedMs);
+      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, orderWrongGuessPenalty, result.elapsedMs);
       if (orderTurn === 1) setOrderLeaderboardP1(leaderboard);
       else setOrderLeaderboardP2(leaderboard);
       setOrderTurnNewBest(madeLeaderboard);
@@ -1289,6 +1291,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderFeedback(feedback);
     if (solved) playCorrect();
     else playWrong();
+    if (!solved && orderWrongGuessPenalty) {
+      // Shift the clock's start time back so the 1s penalty is reflected immediately and carries into the final time.
+      setOrderStartedAt(startedAt => startedAt - 1000);
+    }
     if (solved) {
       finishAtomicOrderTurn({ solved, attempts, elapsedMs: Math.max(1, Date.now() - orderStartedAt) });
     }
@@ -1888,6 +1894,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">Off is more of a challenge — no ← / → hints after checking.</span>
           </div>
         )}
+        {gameMode === 'atomic-order' && (
+          <div className="rounds-select" style={{ alignItems: 'center' }}>
+            <label>Wrong guess penalty: </label>
+            <button className={`round-btn ${!orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(false)}>Off</button>
+            <button className={`round-btn ${orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(true)}>On</button>
+            <span className="gm-desc">On adds +1s to your time for every wrong guess.</span>
+          </div>
+        )}
         {gameMode === 'element-match' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Target: </label>
@@ -2075,6 +2089,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </div>
               </div>
             )}
+            <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Atomic Order hints: </label>
+              <button className={`round-btn ${!orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(false)}>Off</button>
+              <button className={`round-btn ${orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(true)}>On</button>
+            </div>
+            <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Atomic Order penalty: </label>
+              <button className={`round-btn ${!orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(false)}>Off</button>
+              <button className={`round-btn ${orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(true)}>On</button>
+              <span className="gm-desc">On adds +1s per wrong guess.</span>
+            </div>
             <div className="champ-info">
               <div className="champ-games-list">
                 {selectedChampGames.map(mode => (
@@ -2518,11 +2543,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className={`player-score-chip ${orderTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        {renderTurnBanner(orderTurn, orderTimerStarted ? `Attempt ${orderAttempts + 1} · ${(elapsedMs / 1000).toFixed(1)}s` : 'Ready to start')}
+        {renderTurnBanner(orderTurn, orderTimerStarted ? `Attempt ${orderAttempts + 1}` : 'Ready to start')}
         {championshipTotalsBar}
 
         <div className="atomic-order-card">
           <h2>Put {orderTiles.length} elements in atomic-number order</h2>
+          {(orderTimerStarted || currentResult) && (
+            <div className="atomic-order-big-timer">{(elapsedMs / 1000).toFixed(1)}<span>s</span></div>
+          )}
           <p className="atomic-order-instruction">Lowest to highest. Drag tiles, or tap two to swap them. Attempts are unlimited; fastest wins.</p>
           {!orderTimerStarted && !currentResult && (
             <div className="atomic-order-ready">
@@ -2596,7 +2624,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           )}
           </>}
           <div className="atomic-order-leaderboard">
-            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'}</span>
+            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'}</span>
             <div className="atomic-order-leaderboard-cols">
               <div className="atomic-order-leaderboard-col">
                 <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>
