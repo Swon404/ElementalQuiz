@@ -1246,9 +1246,7 @@ body {
   border: 2px solid var(--border); background: var(--surface); color: var(--text-primary);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem;
   cursor: grab; transition: transform 0.15s, border-color 0.15s, background 0.15s;
-}
-.atomic-order-tile:hover:not(:disabled) {
-  transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 5px 14px rgba(0,0,0,0.25);
+  -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
 }
 .atomic-order-tile.selected {
   transform: translateY(-4px) scale(1.06); border-color: var(--accent); border-width: 3px;
@@ -1267,6 +1265,13 @@ body {
 .atomic-order-tile.correct { background: rgba(75,181,67,0.25); border-color: #4bb543; }
 .atomic-order-tile.left, .atomic-order-tile.right { background: rgba(249,202,36,0.2); border-color: #f9ca24; }
 .atomic-order-tile:disabled { opacity: 1; cursor: default; }
+/* Scope hover-raise to real pointer devices only — iOS otherwise "sticks" :hover after a tap,
+   making tiles look selected/raised when they aren't. */
+@media (hover: hover) and (pointer: fine) {
+  .atomic-order-tile:hover:not(:disabled) {
+    transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 5px 14px rgba(0,0,0,0.25);
+  }
+}
 .atomic-order-result { animation: fadeIn 0.2s ease; }
 .atomic-order-new-best {
   color: var(--gold); font-weight: 800; font-size: 0.85rem;

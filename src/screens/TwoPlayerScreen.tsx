@@ -1280,6 +1280,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const submitAtomicOrder = () => {
     if (!orderTimerStarted || orderTurnResult || orderTiles.length < 3) return;
+    setOrderSelected(null);
     const sorted = [...orderTiles].sort((a, b) => a - b);
     const feedback = orderTiles.map((atomicNumber, index): AtomicOrderFeedback => {
       const targetIndex = sorted.indexOf(atomicNumber);
