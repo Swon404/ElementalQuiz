@@ -294,9 +294,17 @@ type AtomicOrderFeedback = 'correct' | 'left' | 'right';
 type AtomicOrderResult = { solved: boolean; attempts: number; elapsedMs: number };
 const ATOMIC_ORDER_TILE_COUNTS: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
 
-function shuffledAtomicNumbers(pool: number, count: number): number[] {
+function shuffledAtomicNumbers(pool: number, count: number, randomizeStart: boolean): number[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count).map(el => el.atomicNumber);
   const sorted = [...picked].sort((a, b) => a - b);
+  if (randomizeStart) {
+    // Use an ordinary shuffle, only rejecting the already-complete order.
+    // Unlike the challenge start, individual tiles are allowed to begin correctly.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const shuffled = shuffleArray(sorted);
+      if (shuffled.some((value, index) => value !== sorted[index])) return shuffled;
+    }
+  }
   for (let attempt = 0; attempt < 50; attempt++) {
     const shuffled = shuffleArray(sorted);
     if (shuffled.every((value, index) => value !== sorted[index])) return shuffled;
@@ -305,10 +313,10 @@ function shuffledAtomicNumbers(pool: number, count: number): number[] {
   return [...sorted.slice(1), sorted[0]];
 }
 
-function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty): AtomicOrderRound[] {
+function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty, randomizeStart: boolean): AtomicOrderRound[] {
   return Array.from({ length: count }, () => ({
-    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty]),
-    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty]),
+    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty], randomizeStart),
+    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty], randomizeStart),
   }));
 }
 
@@ -599,6 +607,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
   const [orderShowHints, setOrderShowHints] = useState(savedSettings.orderShowHints);
   const [orderWrongGuessPenalty, setOrderWrongGuessPenalty] = useState(savedSettings.orderWrongGuessPenalty);
+  const [orderRandomizeStart, setOrderRandomizeStart] = useState(savedSettings.orderRandomizeStart);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -632,8 +641,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       huntRequiredPairs,
       orderShowHints,
       orderWrongGuessPenalty,
+      orderRandomizeStart,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderRandomizeStart, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1200,13 +1210,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   const startAtomicOrder = (count: number = rounds) => {
-    const gameRounds = generateAtomicOrderRounds(count, player1.difficulty, player2.difficulty);
+    const gameRounds = generateAtomicOrderRounds(count, player1.difficulty, player2.difficulty, orderRandomizeStart);
     setOrderRounds(gameRounds);
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
-    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints, orderWrongGuessPenalty));
-    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints, orderWrongGuessPenalty));
+    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart));
+    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1254,7 +1264,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
       const finisher = orderTurn === 1 ? player1 : player2;
-      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, orderWrongGuessPenalty, result.elapsedMs);
+      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart, result.elapsedMs);
       if (orderTurn === 1) setOrderLeaderboardP1(leaderboard);
       else setOrderLeaderboardP2(leaderboard);
       setOrderTurnNewBest(madeLeaderboard);
@@ -1903,6 +1913,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">On adds +1s to your time for every wrong guess.</span>
           </div>
         )}
+        {gameMode === 'atomic-order' && (
+          <div className="rounds-select" style={{ alignItems: 'center' }}>
+            <label>Randomize at start: </label>
+            <button className={`round-btn ${!orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(false)}>Off</button>
+            <button className={`round-btn ${orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(true)}>On</button>
+            <span className="gm-desc">On uses a normal shuffle, so starting positions give nothing away.</span>
+          </div>
+        )}
         {gameMode === 'element-match' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Target: </label>
@@ -2100,6 +2118,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <button className={`round-btn ${!orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(false)}>Off</button>
               <button className={`round-btn ${orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(true)}>On</button>
               <span className="gm-desc">On adds +1s per wrong guess.</span>
+            </div>
+            <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Randomize at start: </label>
+              <button className={`round-btn ${!orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(false)}>Off</button>
+              <button className={`round-btn ${orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(true)}>On</button>
+              <span className="gm-desc">On allows any unsolved starting layout.</span>
             </div>
             <div className="champ-info">
               <div className="champ-games-list">
@@ -2625,7 +2649,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           )}
           </>}
           <div className="atomic-order-leaderboard">
-            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'}</span>
+            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'} · {orderRandomizeStart ? 'Random start' : 'All misplaced'}</span>
             <div className="atomic-order-leaderboard-cols">
               <div className="atomic-order-leaderboard-col">
                 <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>

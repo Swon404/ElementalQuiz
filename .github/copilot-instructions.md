@@ -44,6 +44,25 @@ Use these instructions for all changes in this repository.
 - Keep content scientifically accurate but calm, especially around toxicity, radiation, danger, and historical events.
 - Avoid death-centered, violent, graphic, or sensational phrasing.
 
+## Two-Player And Championship
+
+- `src/screens/TwoPlayerScreen.tsx` contains the shared-device two-player modes and Championship orchestration. Preserve its explicit phase/state-machine approach unless a broader refactor is requested.
+- Championship games are selected during setup. Do not assume every mode is included; use `selectedChampGames` for configuration and the frozen `activeChampGames` list while a Championship is running.
+- Keep Element Match Hunt last in the default Championship order.
+- Quick, Standard, and Epic determine per-mode round counts through `CHAMP_SIZE_CONFIG`. Index counts by game mode rather than array position.
+- Persist two-player setup through `loadTwoPlayerSettings` and `saveTwoPlayerSettings` in `src/engine/storage.ts`. This includes both difficulties, human/bot mode, Championship size and selected games, rounds, Match pool, target mode, chosen target, unlock count, and Atomic Order settings.
+- When adding a two-player mode, update the `GameMode` union, mode selector and setup labels, standalone launcher, Championship label/default/config, live bot-turn handling where relevant, results label, and persisted defaults.
+
+## Atomic Order Rules
+
+- Atomic Order gives Explorer 3 tiles, Scientist 4 tiles, and Professor 5 tiles, using each player's difficulty pool.
+- Atomic Order has a saved **Randomize at start** option. When on (the default), use an ordinary unsolved shuffle so any individual tile may begin correctly; when off, use a derangement where no tile begins correctly. Do not silently merge these behaviors because guaranteed-misplaced starts can reveal exploitable information.
+- Keep tiles hidden until the current player presses **Start Timer**. Attempts are unlimited; completion time decides the round point. Attempts are display-only unless the product rules are deliberately changed.
+- Players may drag to reorder. Touch/click interaction is a two-tile swap: first tap selects and visibly highlights a tile, tapping it again cancels, and tapping a different tile swaps the pair.
+- After checking, green means the exact position is correct. Directional hint/penalty behavior follows the saved Atomic Order setup options.
+- Once solved, reveal atomic numbers on the tiles and lock the row so it cannot be moved again.
+- The bot must always finish but should remain beatable. Preserve clear difficulty separation and avoid unrealistically short completion times.
+
 ## Quiz Patterns
 
 - Use `DIFFICULTY_CONFIG` from `src/engine/scoring.ts` as the source of truth for difficulty labels, choice counts, timers, point values, second chance behavior, and question categories.
