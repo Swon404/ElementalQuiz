@@ -46,6 +46,7 @@ export type TwoPlayerSettings = {
   orderShowHints: boolean;
   orderWrongGuessPenalty: boolean;
   orderRandomizeStart: boolean;
+  orderCountOnlyFeedback: boolean;
 };
 
 const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
@@ -62,6 +63,7 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   orderShowHints: false,
   orderWrongGuessPenalty: false,
   orderRandomizeStart: true,
+  orderCountOnlyFeedback: false,
 };
 
 export function loadTwoPlayerNames(): TwoPlayerNames {
@@ -122,12 +124,12 @@ function saveAtomicOrderTimesStore(store: AtomicOrderTimesStore): void {
   } catch { /* ignore */ }
 }
 
-function atomicOrderTimesKey(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean): string {
-  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}`;
+function atomicOrderTimesKey(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean): string {
+  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}::${countOnlyFeedback ? 'count-only' : 'tile-feedback'}`;
 }
 
-function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, limit: number): AtomicOrderLeaderboardEntry[] {
-  const suffix = `::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}`;
+function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, limit: number): AtomicOrderLeaderboardEntry[] {
+  const suffix = `::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}::${countOnlyFeedback ? 'count-only' : 'tile-feedback'}`;
   const entries: AtomicOrderLeaderboardEntry[] = [];
   for (const key of Object.keys(store)) {
     if (!key.endsWith(suffix)) continue;
@@ -138,29 +140,29 @@ function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficult
 }
 
 /** Get a player's top 3 fastest Atomic Order times (ms) for one ruleset, fastest first. */
-export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean): number[] {
+export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean): number[] {
   const store = loadAtomicOrderTimesStore();
-  return store[atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart)]?.times ?? [];
+  return store[atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback)]?.times ?? [];
 }
 
 /** Get the leaderboard (fastest first) across every player who has recorded a time for this ruleset. */
-export function getAtomicOrderLeaderboard(difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, limit = 5): AtomicOrderLeaderboardEntry[] {
-  return atomicOrderLeaderboardFromStore(loadAtomicOrderTimesStore(), difficulty, showHints, wrongGuessPenalty, randomizeStart, limit);
+export function getAtomicOrderLeaderboard(difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, limit = 5): AtomicOrderLeaderboardEntry[] {
+  return atomicOrderLeaderboardFromStore(loadAtomicOrderTimesStore(), difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback, limit);
 }
 
 /**
  * Record a new Atomic Order time, keeping only each player's fastest 3.
  * Returns the refreshed leaderboard (top 5) and whether this run made the leaderboard.
  */
-export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
+export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
   const store = loadAtomicOrderTimesStore();
-  const key = atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart);
+  const key = atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback);
   const name = playerName.trim() || 'Player';
   const existing = store[key]?.times ?? [];
   const combined = [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3);
   store[key] = { name, times: combined };
   saveAtomicOrderTimesStore(store);
-  const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, showHints, wrongGuessPenalty, randomizeStart, 5);
+  const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback, 5);
   const madeLeaderboard = leaderboard.some(e => e.name === name && e.timeMs === elapsedMs);
   return { leaderboard, madeLeaderboard };
 }

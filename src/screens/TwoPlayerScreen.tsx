@@ -30,7 +30,8 @@ const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈
 
 const BOT_DELAY_MS = 2000;
 const BOT_RESULT_DELAY_MS = 1800;
-const HUNT_TARGET_BONUS = 2;
+const HUNT_TARGET_PAIR_POINTS = 2;
+const HUNT_WIN_BONUS = 2;
 const BOT_ACCURACY: Record<Difficulty, number> = {
   explorer: 0.6,
   scientist: 0.75,
@@ -594,6 +595,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderTiles, setOrderTiles] = useState<number[]>([]);
   const [orderAttempts, setOrderAttempts] = useState(0);
   const [orderFeedback, setOrderFeedback] = useState<AtomicOrderFeedback[]>([]);
+  const [orderCorrectCount, setOrderCorrectCount] = useState<number | null>(null);
   const [orderSelected, setOrderSelected] = useState<number | null>(null);
   const [orderTurnResult, setOrderTurnResult] = useState<AtomicOrderResult | null>(null);
   const [orderP1Result, setOrderP1Result] = useState<AtomicOrderResult | null>(null);
@@ -608,6 +610,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderShowHints, setOrderShowHints] = useState(savedSettings.orderShowHints);
   const [orderWrongGuessPenalty, setOrderWrongGuessPenalty] = useState(savedSettings.orderWrongGuessPenalty);
   const [orderRandomizeStart, setOrderRandomizeStart] = useState(savedSettings.orderRandomizeStart);
+  const [orderCountOnlyFeedback, setOrderCountOnlyFeedback] = useState(savedSettings.orderCountOnlyFeedback);
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -642,8 +645,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       orderShowHints,
       orderWrongGuessPenalty,
       orderRandomizeStart,
+      orderCountOnlyFeedback,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderRandomizeStart, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderCountOnlyFeedback, orderRandomizeStart, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -652,8 +656,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     prevPhaseRef.current = phase;
   }, [phase]);
 
-  const normalizeChampPoints = useCallback((mode: GameMode, score: number) => {
-    if (mode === 'element-match') return Math.min(score, 3);
+  const normalizeChampPoints = useCallback((_mode: GameMode, score: number) => {
     return score;
   }, []);
 
@@ -972,27 +975,27 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
       if (first.elementNum === second.elementNum) {
         playCorrect();
+        const isTargetMatch = gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum;
+        const pairPoints = isTargetMatch ? HUNT_TARGET_PAIR_POINTS : 1;
         const matched = updated.map(c =>
           c.elementNum === first.elementNum ? { ...c, matched: true, matchedBy: matchTurn as 1 | 2 } : c
         );
         setMatchCards(matched);
         // Capture final scores before state update so the setTimeout closure isn't stale
-        const candidateP1 = matchTurn === 1 ? p1Score + 1 : p1Score;
-        const candidateP2 = matchTurn === 2 ? p2Score + 1 : p2Score;
-        const newMatchP1 = isChampionship ? Math.min(candidateP1, 3) : candidateP1;
-        const newMatchP2 = isChampionship ? Math.min(candidateP2, 3) : candidateP2;
-        if (matchTurn === 1) setP1Score(s => isChampionship ? Math.min(s + 1, 3) : s + 1);
-        else setP2Score(s => isChampionship ? Math.min(s + 1, 3) : s + 1);
+        const candidateP1 = matchTurn === 1 ? p1Score + pairPoints : p1Score;
+        const candidateP2 = matchTurn === 2 ? p2Score + pairPoints : p2Score;
+        const newMatchP1 = candidateP1;
+        const newMatchP2 = candidateP2;
+        if (matchTurn === 1) setP1Score(s => s + pairPoints);
+        else setP2Score(s => s + pairPoints);
         if (gameMode === 'element-match' && huntTargetElementNum !== null) setHuntFoundMessage(null);
-        if (gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum) {
-          // Each player keeps the pairs they personally found, plus the finder earns a bonus for the target.
-          const bonusRawP1 = matchTurn === 1 ? candidateP1 + HUNT_TARGET_BONUS : candidateP1;
-          const bonusRawP2 = matchTurn === 2 ? candidateP2 + HUNT_TARGET_BONUS : candidateP2;
-          const finalP1 = isChampionship ? Math.min(bonusRawP1, 3) : bonusRawP1;
-          const finalP2 = isChampionship ? Math.min(bonusRawP2, 3) : bonusRawP2;
+        if (isTargetMatch) {
+          // The target match is worth 2 points, plus another 2 points for winning the hunt.
+          const finalP1 = matchTurn === 1 ? candidateP1 + HUNT_WIN_BONUS : candidateP1;
+          const finalP2 = matchTurn === 2 ? candidateP2 + HUNT_WIN_BONUS : candidateP2;
           const target = elements.find(e => e.atomicNumber === first.elementNum);
           const hunter = matchTurn === 1 ? player1 : player2;
-          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'} and earns a +${HUNT_TARGET_BONUS} bonus!`);
+          setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'}: +${HUNT_TARGET_PAIR_POINTS} for the pair and +${HUNT_WIN_BONUS} for winning!`);
           setP1Score(finalP1);
           setP2Score(finalP2);
           if (!matchFinishTimerRef.current) {
@@ -1200,6 +1203,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderTiles([...(turn === 1 ? puzzle.p1 : puzzle.p2)]);
     setOrderAttempts(0);
     setOrderFeedback([]);
+    setOrderCorrectCount(null);
     setOrderSelected(null);
     setOrderTurnResult(null);
     setOrderRoundComplete(false);
@@ -1215,8 +1219,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
-    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart));
-    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart));
+    const leaderboardHints = orderCountOnlyFeedback ? false : orderShowHints;
+    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback));
+    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1239,6 +1244,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return next;
     });
     setOrderFeedback([]);
+    setOrderCorrectCount(null);
     setOrderSelected(null);
   };
 
@@ -1253,6 +1259,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         return next;
       });
       setOrderFeedback([]);
+      setOrderCorrectCount(null);
       setOrderSelected(null);
     }
   };
@@ -1264,9 +1271,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
       const finisher = orderTurn === 1 ? player1 : player2;
-      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderShowHints, orderWrongGuessPenalty, orderRandomizeStart, result.elapsedMs);
-      if (orderTurn === 1) setOrderLeaderboardP1(leaderboard);
-      else setOrderLeaderboardP2(leaderboard);
+      const leaderboardHints = orderCountOnlyFeedback ? false : orderShowHints;
+      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback, result.elapsedMs);
+      if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderLeaderboardP1(leaderboard);
+      if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderLeaderboardP2(leaderboard);
       setOrderTurnNewBest(madeLeaderboard);
     } else {
       setOrderTurnNewBest(false);
@@ -1298,8 +1306,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     });
     const attempts = orderAttempts + 1;
     const solved = feedback.every(value => value === 'correct');
+    const correctCount = feedback.filter(value => value === 'correct').length;
     setOrderAttempts(attempts);
     setOrderFeedback(feedback);
+    setOrderCorrectCount(correctCount);
     if (solved) playCorrect();
     else playWrong();
     if (!solved && orderWrongGuessPenalty) {
@@ -1604,6 +1614,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         botTimerRef.current = null;
         setOrderTiles(current => [...current].sort((a, b) => a - b));
         setOrderFeedback(orderTiles.map(() => 'correct'));
+        setOrderCorrectCount(orderTiles.length);
         setOrderAttempts(attempts);
         finishAtomicOrderTurn({ solved: true, attempts, elapsedMs });
       }, BOT_DELAY_MS);
@@ -1921,6 +1932,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">On uses a normal shuffle, so starting positions give nothing away.</span>
           </div>
         )}
+        {gameMode === 'atomic-order' && (
+          <div className="rounds-select" style={{ alignItems: 'center' }}>
+            <label>Correct-position feedback: </label>
+            <button className={`round-btn ${!orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(false)}>Show tiles</button>
+            <button className={`round-btn ${orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(true)}>Count only</button>
+            <span className="gm-desc">Count only tells you how many are right without revealing which ones.</span>
+          </div>
+        )}
         {gameMode === 'element-match' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Target: </label>
@@ -2124,6 +2143,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <button className={`round-btn ${!orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(false)}>Off</button>
               <button className={`round-btn ${orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(true)}>On</button>
               <span className="gm-desc">On allows any unsolved starting layout.</span>
+            </div>
+            <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Atomic Order feedback: </label>
+              <button className={`round-btn ${!orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(false)}>Show tiles</button>
+              <button className={`round-btn ${orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(true)}>Count only</button>
+              <span className="gm-desc">Count only hides which positions are correct.</span>
             </div>
             <div className="champ-info">
               <div className="champ-games-list">
@@ -2589,8 +2614,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             {orderTiles.map((atomicNumber, index) => {
               const el = elements.find(item => item.atomicNumber === atomicNumber)!;
               const rawFeedback = orderFeedback[index];
-              // "Correct" placement always shows (confirms progress); left/right move hints are gated behind the setting.
-              const feedback = rawFeedback === 'correct' ? 'correct' : (orderShowHints ? rawFeedback : undefined);
+              // Count-only mode hides every per-tile clue until the puzzle is solved.
+              const feedback = currentResult?.solved
+                ? 'correct'
+                : orderCountOnlyFeedback
+                  ? undefined
+                  : rawFeedback === 'correct' ? 'correct' : (orderShowHints ? rawFeedback : undefined);
               return (
                 <button
                   key={atomicNumber}
@@ -2615,6 +2644,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               );
             })}
           </div>
+          {orderCountOnlyFeedback && orderCorrectCount !== null && !currentResult && (
+            <p className="atomic-order-correct-count">
+              {orderCorrectCount} of {orderTiles.length} positions correct
+            </p>
+          )}
 
           {!currentResult ? (
             <button className="start-btn" onClick={submitAtomicOrder} disabled={isBotTurn}>Check order</button>
@@ -2649,7 +2683,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           )}
           </>}
           <div className="atomic-order-leaderboard">
-            <span className="atomic-order-best-mode">{orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'} · {orderRandomizeStart ? 'Random start' : 'All misplaced'}</span>
+            <span className="atomic-order-best-mode">{orderCountOnlyFeedback ? 'Count only' : orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'} · {orderRandomizeStart ? 'Random start' : 'All misplaced'}</span>
             <div className="atomic-order-leaderboard-cols">
               <div className="atomic-order-leaderboard-col">
                 <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>
@@ -2832,13 +2866,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <div className={`battle-player ${p1Score >= p2Score ? 'winner' : ''}`}>
               <span className="bp-avatar">{player1.avatar}</span>
               <span className="bp-name">{player1.name}</span>
-              <span className="bp-score">{p1Score}{gameMode === 'element-match' ? ' pairs' : `/${rounds}`}</span>
+              <span className="bp-score">{p1Score}{gameMode === 'element-match' ? ' points' : `/${rounds}`}</span>
             </div>
             <div className="vs-divider">VS</div>
             <div className={`battle-player ${p2Score >= p1Score ? 'winner' : ''}`}>
               <span className="bp-avatar">{player2.avatar}</span>
               <span className="bp-name">{player2.name}</span>
-              <span className="bp-score">{p2Score}{gameMode === 'element-match' ? ' pairs' : `/${rounds}`}</span>
+              <span className="bp-score">{p2Score}{gameMode === 'element-match' ? ' points' : `/${rounds}`}</span>
             </div>
           </div>
         </div>

@@ -57,11 +57,13 @@ Use these instructions for all changes in this repository.
 
 - Atomic Order gives Explorer 3 tiles, Scientist 4 tiles, and Professor 5 tiles, using each player's difficulty pool.
 - Atomic Order has a saved **Randomize at start** option. When on (the default), use an ordinary unsolved shuffle so any individual tile may begin correctly; when off, use a derangement where no tile begins correctly. Do not silently merge these behaviors because guaranteed-misplaced starts can reveal exploitable information.
+- Atomic Order also has saved tile-feedback and count-only feedback modes. Count-only reports the number of exact positions after a guess but must not identify or colour the individual correct tiles until the whole puzzle is solved.
 - Keep tiles hidden until the current player presses **Start Timer**. Attempts are unlimited; completion time decides the round point. Attempts are display-only unless the product rules are deliberately changed.
 - Players may drag to reorder. Touch/click interaction is a two-tile swap: first tap selects and visibly highlights a tile, tapping it again cancels, and tapping a different tile swaps the pair.
 - After checking, green means the exact position is correct. Directional hint/penalty behavior follows the saved Atomic Order setup options.
 - Once solved, reveal atomic numbers on the tiles and lock the row so it cannot be moved again.
 - The bot must always finish but should remain beatable. Preserve clear difficulty separation and avoid unrealistically short completion times.
+- Element Match Hunt scoring is explicit: every ordinary pair is 1 point; the target pair is 2 points, and its finder receives another 2-point hunt-win bonus. Do not cap these live scores in Championship mode.
 
 ## Quiz Patterns
 

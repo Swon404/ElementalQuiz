@@ -1273,6 +1273,9 @@ body {
   }
 }
 .atomic-order-result { animation: fadeIn 0.2s ease; }
+.atomic-order-correct-count {
+  margin: -0.35rem 0 0.85rem; color: var(--gold); font-size: 1rem; font-weight: 800;
+}
 .atomic-order-new-best {
   color: var(--gold); font-weight: 800; font-size: 0.85rem;
 }
