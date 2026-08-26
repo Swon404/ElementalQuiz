@@ -4,7 +4,7 @@ import Elementor from '../components/Elementor.tsx';
 import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
-import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderLeaderboard, recordAtomicOrderTime, type AtomicOrderLeaderboardEntry } from '../engine/storage.ts';
+import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderLeaderboard, recordAtomicOrderTime, type AtomicOrderLeaderboardEntry, type AtomicOrderLevel, type AtomicOrderMultiplier } from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
@@ -294,6 +294,39 @@ type AtomicOrderRound = { p1: number[]; p2: number[] };
 type AtomicOrderFeedback = 'correct' | 'left' | 'right';
 type AtomicOrderResult = { solved: boolean; attempts: number; elapsedMs: number };
 const ATOMIC_ORDER_TILE_COUNTS: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
+const ATOMIC_ORDER_LEVELS: Record<AtomicOrderLevel, {
+  label: string;
+  description: string;
+  showHints: boolean;
+  wrongGuessPenalty: boolean;
+  randomizeStart: boolean;
+  countOnlyFeedback: boolean;
+}> = {
+  easy: {
+    label: 'Easy',
+    description: 'Direction hints · no penalty · all misplaced · show tiles',
+    showHints: true,
+    wrongGuessPenalty: false,
+    randomizeStart: false,
+    countOnlyFeedback: false,
+  },
+  medium: {
+    label: 'Medium',
+    description: 'No directions · +1s penalty · all misplaced · show tiles',
+    showHints: false,
+    wrongGuessPenalty: true,
+    randomizeStart: false,
+    countOnlyFeedback: false,
+  },
+  hard: {
+    label: 'Hard',
+    description: 'No directions · +1s penalty · random start · count only',
+    showHints: false,
+    wrongGuessPenalty: true,
+    randomizeStart: true,
+    countOnlyFeedback: true,
+  },
+};
 
 function shuffledAtomicNumbers(pool: number, count: number, randomizeStart: boolean): number[] {
   const picked = shuffleArray(elements.slice(0, pool)).slice(0, count).map(el => el.atomicNumber);
@@ -314,10 +347,10 @@ function shuffledAtomicNumbers(pool: number, count: number, randomizeStart: bool
   return [...sorted.slice(1), sorted[0]];
 }
 
-function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty, randomizeStart: boolean): AtomicOrderRound[] {
+function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty, multiplier: AtomicOrderMultiplier, randomizeStart: boolean): AtomicOrderRound[] {
   return Array.from({ length: count }, () => ({
-    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty], randomizeStart),
-    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty], randomizeStart),
+    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty] * multiplier, randomizeStart),
+    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty] * multiplier, randomizeStart),
   }));
 }
 
@@ -510,6 +543,60 @@ type ChampGameScore = {
   p2Champ: number;
 };
 
+function AtomicOrderSetupControls({
+  level,
+  multiplier,
+  onLevelChange,
+  onMultiplierChange,
+  player1Difficulty,
+  player2Difficulty,
+}: {
+  level: AtomicOrderLevel;
+  multiplier: AtomicOrderMultiplier;
+  onLevelChange: (level: AtomicOrderLevel) => void;
+  onMultiplierChange: (multiplier: AtomicOrderMultiplier) => void;
+  player1Difficulty: Difficulty;
+  player2Difficulty: Difficulty;
+}) {
+  return (
+    <div className="atomic-order-setup-controls">
+      <div className="atomic-order-preset-picker">
+        <span className="atomic-order-setting-label">Challenge:</span>
+        <div className="atomic-order-preset-grid">
+          {(Object.keys(ATOMIC_ORDER_LEVELS) as AtomicOrderLevel[]).map(option => {
+            const config = ATOMIC_ORDER_LEVELS[option];
+            return (
+              <button
+                key={option}
+                className={`atomic-order-preset-btn ${level === option ? 'selected' : ''}`}
+                onClick={() => onLevelChange(option)}
+              >
+                <strong>{config.label}</strong>
+                <span>{config.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="rounds-select atomic-order-multiplier-select">
+        <label>Tiles: </label>
+        {([1, 2, 3, 4] as AtomicOrderMultiplier[]).map(option => (
+          <button
+            key={option}
+            className={`round-btn ${multiplier === option ? 'selected' : ''}`}
+            onClick={() => onMultiplierChange(option)}
+          >
+            {option}×
+          </button>
+        ))}
+        <span className="gm-desc">
+          {ATOMIC_ORDER_TILE_COUNTS[player1Difficulty] * multiplier} for Player 1 · {ATOMIC_ORDER_TILE_COUNTS[player2Difficulty] * multiplier} for Player 2
+        </span>
+      </div>
+    </div>
+  );
+}
+
 
 
 export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: TwoPlayerScreenProps) {
@@ -607,10 +694,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderLeaderboardP1, setOrderLeaderboardP1] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderLeaderboardP2, setOrderLeaderboardP2] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
-  const [orderShowHints, setOrderShowHints] = useState(savedSettings.orderShowHints);
-  const [orderWrongGuessPenalty, setOrderWrongGuessPenalty] = useState(savedSettings.orderWrongGuessPenalty);
-  const [orderRandomizeStart, setOrderRandomizeStart] = useState(savedSettings.orderRandomizeStart);
-  const [orderCountOnlyFeedback, setOrderCountOnlyFeedback] = useState(savedSettings.orderCountOnlyFeedback);
+  const [orderChallengeLevel, setOrderChallengeLevel] = useState<AtomicOrderLevel>(savedSettings.orderChallengeLevel);
+  const [orderTileMultiplier, setOrderTileMultiplier] = useState<AtomicOrderMultiplier>(savedSettings.orderTileMultiplier);
+  const orderRules = ATOMIC_ORDER_LEVELS[orderChallengeLevel];
 
   // Championship state
   const [champStep, setChampStep] = useState(0); // index into activeChampGames
@@ -642,12 +728,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       huntTargetMode,
       huntTargetElementNum,
       huntRequiredPairs,
-      orderShowHints,
-      orderWrongGuessPenalty,
-      orderRandomizeStart,
-      orderCountOnlyFeedback,
+      orderChallengeLevel,
+      orderTileMultiplier,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderCountOnlyFeedback, orderRandomizeStart, orderShowHints, orderWrongGuessPenalty, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1214,14 +1298,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   const startAtomicOrder = (count: number = rounds) => {
-    const gameRounds = generateAtomicOrderRounds(count, player1.difficulty, player2.difficulty, orderRandomizeStart);
+    const gameRounds = generateAtomicOrderRounds(count, player1.difficulty, player2.difficulty, orderTileMultiplier, orderRules.randomizeStart);
     setOrderRounds(gameRounds);
     setOrderRoundIndex(0);
     setOrderP1Result(null);
     setOrderRoundWinner(null);
-    const leaderboardHints = orderCountOnlyFeedback ? false : orderShowHints;
-    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback));
-    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback));
+    setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderChallengeLevel, orderTileMultiplier));
+    setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderChallengeLevel, orderTileMultiplier));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1271,8 +1354,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
       const finisher = orderTurn === 1 ? player1 : player2;
-      const leaderboardHints = orderCountOnlyFeedback ? false : orderShowHints;
-      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, leaderboardHints, orderWrongGuessPenalty, orderRandomizeStart, orderCountOnlyFeedback, result.elapsedMs);
+      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderChallengeLevel, orderTileMultiplier, result.elapsedMs);
       if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderLeaderboardP1(leaderboard);
       if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderLeaderboardP2(leaderboard);
       setOrderTurnNewBest(madeLeaderboard);
@@ -1312,7 +1394,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderCorrectCount(correctCount);
     if (solved) playCorrect();
     else playWrong();
-    if (!solved && orderWrongGuessPenalty) {
+    if (!solved && orderRules.wrongGuessPenalty) {
       // Shift the clock's start time back so the 1s penalty is reflected immediately and carries into the final time.
       setOrderStartedAt(startedAt => startedAt - 1000);
     }
@@ -1345,7 +1427,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, [gameMode, orderStartedAt, orderTimerStarted, orderTurnResult, phase]);
 
   // --- Championship orchestration ---
-  const launchSubGame = useCallback((mode: GameMode) => {
+  const launchSubGame = (mode: GameMode) => {
     setGameMode(mode);
     setP1Score(0);
     setP2Score(0);
@@ -1419,8 +1501,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     } else if (mode === 'atomic-order') {
       startAtomicOrder(counts[mode]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player1.difficulty, player2.difficulty, champSize, huntTargetMode, huntTargetElementNum, matchExotic]);
+  };
 
   const startChampionship = () => {
     const games = selectedChampGames.length >= 2 ? selectedChampGames : DEFAULT_CHAMP_GAMES;
@@ -1598,16 +1679,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     }
 
     if (gameMode === 'atomic-order' && orderTurn === 2 && !orderTurnResult && orderTiles.length >= 3) {
-      const attempts = player2.difficulty === 'professor'
-        ? 1 + Math.floor(Math.random() * 4)
-        : player2.difficulty === 'scientist'
-          ? 2 + Math.floor(Math.random() * 4)
-          : 3 + Math.floor(Math.random() * 5);
-      const [minimumSeconds, extraSeconds] = player2.difficulty === 'professor'
-        ? [9, 11]
-        : player2.difficulty === 'scientist'
-          ? [14, 14]
-          : [20, 18];
+      const levelAttemptBonus = orderChallengeLevel === 'hard' ? 2 : orderChallengeLevel === 'medium' ? 1 : 0;
+      const attemptRange = Math.max(2, Math.ceil(orderTiles.length / 3) + levelAttemptBonus);
+      const attempts = 2 + Math.floor(Math.random() * attemptRange);
+      const secondsPerTile = player2.difficulty === 'professor' ? 3 : player2.difficulty === 'scientist' ? 4 : 5;
+      const levelTimeFactor = orderChallengeLevel === 'hard' ? 1.3 : orderChallengeLevel === 'medium' ? 1.15 : 1;
+      const minimumSeconds = Math.max(8, orderTiles.length * secondsPerTile * levelTimeFactor);
+      const extraSeconds = minimumSeconds * 0.6;
       const elapsedMs = Math.round((minimumSeconds + Math.random() * extraSeconds) * 1000);
       setOrderTimerStarted(true);
       botTimerRef.current = setTimeout(() => {
@@ -1644,6 +1722,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     matchFirst,
     matchLocked,
     matchTurn,
+    orderChallengeLevel,
     orderTiles,
     orderTurn,
     orderTurnResult,
@@ -1909,36 +1988,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         )}
         {gameMode === 'atomic-order' && (
-          <div className="rounds-select" style={{ alignItems: 'center' }}>
-            <label>Direction hints: </label>
-            <button className={`round-btn ${!orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(false)}>Off</button>
-            <button className={`round-btn ${orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(true)}>On</button>
-            <span className="gm-desc">Off is more of a challenge — no ← / → hints after checking.</span>
-          </div>
-        )}
-        {gameMode === 'atomic-order' && (
-          <div className="rounds-select" style={{ alignItems: 'center' }}>
-            <label>Wrong guess penalty: </label>
-            <button className={`round-btn ${!orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(false)}>Off</button>
-            <button className={`round-btn ${orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(true)}>On</button>
-            <span className="gm-desc">On adds +1s to your time for every wrong guess.</span>
-          </div>
-        )}
-        {gameMode === 'atomic-order' && (
-          <div className="rounds-select" style={{ alignItems: 'center' }}>
-            <label>Randomize at start: </label>
-            <button className={`round-btn ${!orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(false)}>Off</button>
-            <button className={`round-btn ${orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(true)}>On</button>
-            <span className="gm-desc">On uses a normal shuffle, so starting positions give nothing away.</span>
-          </div>
-        )}
-        {gameMode === 'atomic-order' && (
-          <div className="rounds-select" style={{ alignItems: 'center' }}>
-            <label>Correct-position feedback: </label>
-            <button className={`round-btn ${!orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(false)}>Show tiles</button>
-            <button className={`round-btn ${orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(true)}>Count only</button>
-            <span className="gm-desc">Count only tells you how many are right without revealing which ones.</span>
-          </div>
+          <AtomicOrderSetupControls
+            level={orderChallengeLevel}
+            multiplier={orderTileMultiplier}
+            onLevelChange={setOrderChallengeLevel}
+            onMultiplierChange={setOrderTileMultiplier}
+            player1Difficulty={player1.difficulty}
+            player2Difficulty={player2.difficulty}
+          />
         )}
         {gameMode === 'element-match' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
@@ -2127,29 +2184,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </div>
               </div>
             )}
-            <div className="rounds-select" style={{ alignItems: 'center' }}>
-              <label>Atomic Order hints: </label>
-              <button className={`round-btn ${!orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(false)}>Off</button>
-              <button className={`round-btn ${orderShowHints ? 'selected' : ''}`} onClick={() => setOrderShowHints(true)}>On</button>
-            </div>
-            <div className="rounds-select" style={{ alignItems: 'center' }}>
-              <label>Atomic Order penalty: </label>
-              <button className={`round-btn ${!orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(false)}>Off</button>
-              <button className={`round-btn ${orderWrongGuessPenalty ? 'selected' : ''}`} onClick={() => setOrderWrongGuessPenalty(true)}>On</button>
-              <span className="gm-desc">On adds +1s per wrong guess.</span>
-            </div>
-            <div className="rounds-select" style={{ alignItems: 'center' }}>
-              <label>Randomize at start: </label>
-              <button className={`round-btn ${!orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(false)}>Off</button>
-              <button className={`round-btn ${orderRandomizeStart ? 'selected' : ''}`} onClick={() => setOrderRandomizeStart(true)}>On</button>
-              <span className="gm-desc">On allows any unsolved starting layout.</span>
-            </div>
-            <div className="rounds-select" style={{ alignItems: 'center' }}>
-              <label>Atomic Order feedback: </label>
-              <button className={`round-btn ${!orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(false)}>Show tiles</button>
-              <button className={`round-btn ${orderCountOnlyFeedback ? 'selected' : ''}`} onClick={() => setOrderCountOnlyFeedback(true)}>Count only</button>
-              <span className="gm-desc">Count only hides which positions are correct.</span>
-            </div>
+            <AtomicOrderSetupControls
+              level={orderChallengeLevel}
+              multiplier={orderTileMultiplier}
+              onLevelChange={setOrderChallengeLevel}
+              onMultiplierChange={setOrderTileMultiplier}
+              player1Difficulty={player1.difficulty}
+              player2Difficulty={player2.difficulty}
+            />
             <div className="champ-info">
               <div className="champ-games-list">
                 {selectedChampGames.map(mode => (
@@ -2610,16 +2652,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           )}
           {(orderTimerStarted || currentResult) && <>
           <div className="atomic-order-direction"><span>LOWEST</span><span>→</span><span>HIGHEST</span></div>
-          <div className="atomic-order-tiles" style={{ gridTemplateColumns: `repeat(${orderTiles.length}, minmax(0, 1fr))` }}>
+          <div className="atomic-order-tiles">
             {orderTiles.map((atomicNumber, index) => {
               const el = elements.find(item => item.atomicNumber === atomicNumber)!;
               const rawFeedback = orderFeedback[index];
               // Count-only mode hides every per-tile clue until the puzzle is solved.
               const feedback = currentResult?.solved
                 ? 'correct'
-                : orderCountOnlyFeedback
+                : orderRules.countOnlyFeedback
                   ? undefined
-                  : rawFeedback === 'correct' ? 'correct' : (orderShowHints ? rawFeedback : undefined);
+                  : rawFeedback === 'correct' ? 'correct' : (orderRules.showHints ? rawFeedback : undefined);
               return (
                 <button
                   key={atomicNumber}
@@ -2644,7 +2686,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               );
             })}
           </div>
-          {orderCountOnlyFeedback && orderCorrectCount !== null && !currentResult && (
+          {orderRules.countOnlyFeedback && orderCorrectCount !== null && !currentResult && (
             <p className="atomic-order-correct-count">
               {orderCorrectCount} of {orderTiles.length} positions correct
             </p>
@@ -2683,7 +2725,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           )}
           </>}
           <div className="atomic-order-leaderboard">
-            <span className="atomic-order-best-mode">{orderCountOnlyFeedback ? 'Count only' : orderShowHints ? 'Hints on' : 'Hints off'} · {orderWrongGuessPenalty ? 'Penalty on' : 'Penalty off'} · {orderRandomizeStart ? 'Random start' : 'All misplaced'}</span>
+            <span className="atomic-order-best-mode">{ATOMIC_ORDER_LEVELS[orderChallengeLevel].label} · {orderTileMultiplier}× tiles</span>
             <div className="atomic-order-leaderboard-cols">
               <div className="atomic-order-leaderboard-col">
                 <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>

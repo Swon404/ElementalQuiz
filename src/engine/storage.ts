@@ -31,6 +31,8 @@ const TWO_PLAYER_KEY = 'elementalquiz_2p_names';
 const TWO_PLAYER_SETTINGS_KEY = 'elementalquiz_2p_settings';
 
 export type TwoPlayerNames = { name1: string; avatar1: string; name2: string; avatar2: string };
+export type AtomicOrderLevel = 'easy' | 'medium' | 'hard';
+export type AtomicOrderMultiplier = 1 | 2 | 3 | 4;
 
 export type TwoPlayerSettings = {
   player1Difficulty: Difficulty;
@@ -43,10 +45,8 @@ export type TwoPlayerSettings = {
   huntTargetMode: 'none' | 'random' | 'choose';
   huntTargetElementNum: number | null;
   huntRequiredPairs: number;
-  orderShowHints: boolean;
-  orderWrongGuessPenalty: boolean;
-  orderRandomizeStart: boolean;
-  orderCountOnlyFeedback: boolean;
+  orderChallengeLevel: AtomicOrderLevel;
+  orderTileMultiplier: AtomicOrderMultiplier;
 };
 
 const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
@@ -60,10 +60,8 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   huntTargetMode: 'none',
   huntTargetElementNum: null,
   huntRequiredPairs: 0,
-  orderShowHints: false,
-  orderWrongGuessPenalty: false,
-  orderRandomizeStart: true,
-  orderCountOnlyFeedback: false,
+  orderChallengeLevel: 'easy',
+  orderTileMultiplier: 1,
 };
 
 export function loadTwoPlayerNames(): TwoPlayerNames {
@@ -81,7 +79,42 @@ export function saveTwoPlayerNames(names: TwoPlayerNames): void {
 export function loadTwoPlayerSettings(): TwoPlayerSettings {
   try {
     const raw = localStorage.getItem(TWO_PLAYER_SETTINGS_KEY);
-    if (raw) return { ...DEFAULT_TWO_PLAYER_SETTINGS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<TwoPlayerSettings> & {
+        orderShowHints?: boolean;
+        orderWrongGuessPenalty?: boolean;
+        orderRandomizeStart?: boolean;
+        orderCountOnlyFeedback?: boolean;
+      };
+      let orderChallengeLevel = parsed.orderChallengeLevel;
+      if (!orderChallengeLevel || !(['easy', 'medium', 'hard'] as string[]).includes(orderChallengeLevel)) {
+        const legacy = {
+          showHints: parsed.orderShowHints ?? false,
+          penalty: parsed.orderWrongGuessPenalty ?? false,
+          randomStart: parsed.orderRandomizeStart ?? true,
+          countOnly: parsed.orderCountOnlyFeedback ?? false,
+        };
+        const presets: Array<[AtomicOrderLevel, typeof legacy]> = [
+          ['easy', { showHints: true, penalty: false, randomStart: false, countOnly: false }],
+          ['medium', { showHints: false, penalty: true, randomStart: false, countOnly: false }],
+          ['hard', { showHints: false, penalty: true, randomStart: true, countOnly: true }],
+        ];
+        orderChallengeLevel = presets
+          .map(([level, rules]) => ({
+            level,
+            differences: Number(rules.showHints !== legacy.showHints)
+              + Number(rules.penalty !== legacy.penalty)
+              + Number(rules.randomStart !== legacy.randomStart)
+              + Number(rules.countOnly !== legacy.countOnly),
+          }))
+          .sort((a, b) => a.differences - b.differences)[0].level;
+      }
+      const multiplier = Number(parsed.orderTileMultiplier);
+      const orderTileMultiplier: AtomicOrderMultiplier = ([1, 2, 3, 4] as number[]).includes(multiplier)
+        ? multiplier as AtomicOrderMultiplier
+        : 1;
+      return { ...DEFAULT_TWO_PLAYER_SETTINGS, ...parsed, orderChallengeLevel, orderTileMultiplier };
+    }
   } catch { /* ignore */ }
   return { ...DEFAULT_TWO_PLAYER_SETTINGS };
 }
@@ -124,12 +157,12 @@ function saveAtomicOrderTimesStore(store: AtomicOrderTimesStore): void {
   } catch { /* ignore */ }
 }
 
-function atomicOrderTimesKey(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean): string {
-  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}::${countOnlyFeedback ? 'count-only' : 'tile-feedback'}`;
+function atomicOrderTimesKey(playerName: string, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier): string {
+  return `${playerName.trim().toLowerCase() || 'player'}::${difficulty}::${level}::${multiplier}x`;
 }
 
-function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, limit: number): AtomicOrderLeaderboardEntry[] {
-  const suffix = `::${difficulty}::${showHints ? 'hints' : 'no-hints'}::${wrongGuessPenalty ? 'penalty' : 'no-penalty'}::${randomizeStart ? 'random-start' : 'misplaced-start'}::${countOnlyFeedback ? 'count-only' : 'tile-feedback'}`;
+function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier, limit: number): AtomicOrderLeaderboardEntry[] {
+  const suffix = `::${difficulty}::${level}::${multiplier}x`;
   const entries: AtomicOrderLeaderboardEntry[] = [];
   for (const key of Object.keys(store)) {
     if (!key.endsWith(suffix)) continue;
@@ -140,29 +173,29 @@ function atomicOrderLeaderboardFromStore(store: AtomicOrderTimesStore, difficult
 }
 
 /** Get a player's top 3 fastest Atomic Order times (ms) for one ruleset, fastest first. */
-export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean): number[] {
+export function getAtomicOrderBestTimes(playerName: string, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier): number[] {
   const store = loadAtomicOrderTimesStore();
-  return store[atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback)]?.times ?? [];
+  return store[atomicOrderTimesKey(playerName, difficulty, level, multiplier)]?.times ?? [];
 }
 
 /** Get the leaderboard (fastest first) across every player who has recorded a time for this ruleset. */
-export function getAtomicOrderLeaderboard(difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, limit = 5): AtomicOrderLeaderboardEntry[] {
-  return atomicOrderLeaderboardFromStore(loadAtomicOrderTimesStore(), difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback, limit);
+export function getAtomicOrderLeaderboard(difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier, limit = 5): AtomicOrderLeaderboardEntry[] {
+  return atomicOrderLeaderboardFromStore(loadAtomicOrderTimesStore(), difficulty, level, multiplier, limit);
 }
 
 /**
  * Record a new Atomic Order time, keeping only each player's fastest 3.
  * Returns the refreshed leaderboard (top 5) and whether this run made the leaderboard.
  */
-export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, showHints: boolean, wrongGuessPenalty: boolean, randomizeStart: boolean, countOnlyFeedback: boolean, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
+export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
   const store = loadAtomicOrderTimesStore();
-  const key = atomicOrderTimesKey(playerName, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback);
+  const key = atomicOrderTimesKey(playerName, difficulty, level, multiplier);
   const name = playerName.trim() || 'Player';
   const existing = store[key]?.times ?? [];
   const combined = [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3);
   store[key] = { name, times: combined };
   saveAtomicOrderTimesStore(store);
-  const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, showHints, wrongGuessPenalty, randomizeStart, countOnlyFeedback, 5);
+  const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, level, multiplier, 5);
   const madeLeaderboard = leaderboard.some(e => e.name === name && e.timeMs === elapsedMs);
   return { leaderboard, madeLeaderboard };
 }

@@ -24,7 +24,7 @@ Take turns on the same device with per-player names, avatars, and difficulty:
 - **Element Match** — Pairs memory game (8/12/16 pairs)
 - **Clue Duel** — Turn-based elimination clues with ±1 scoring and opponent steal
 - **Symbol Pick** — Pick the correct symbol from name-letter-fabricated look-alikes
-- **Atomic Order** — Race to arrange elements by atomic number with unlimited tries and Wordle-style feedback
+- **Atomic Order** — Race to arrange 3–20 elements using Easy, Medium, or Hard rules and 1×–4× tile sizes
 - **Championship** — Choose which games to include, with Quick, Standard, and Epic lengths
 
 ### 🧠 Question Variety
