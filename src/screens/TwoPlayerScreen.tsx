@@ -690,6 +690,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [orderRoundComplete, setOrderRoundComplete] = useState(false);
   const [orderStartedAt, setOrderStartedAt] = useState(0);
   const [orderTimerStarted, setOrderTimerStarted] = useState(false);
+  const [orderCountdown, setOrderCountdown] = useState<number | null>(null);
   const [orderElapsed, setOrderElapsed] = useState(0);
   const [orderLeaderboardP1, setOrderLeaderboardP1] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderLeaderboardP2, setOrderLeaderboardP2] = useState<AtomicOrderLeaderboardEntry[]>([]);
@@ -1293,6 +1294,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundComplete(false);
     setOrderStartedAt(0);
     setOrderTimerStarted(false);
+    setOrderCountdown(null);
     setOrderElapsed(0);
     setOrderTurnNewBest(false);
   };
@@ -1312,10 +1314,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   const startAtomicOrderTimer = () => {
-    if (orderTimerStarted || orderTurnResult) return;
-    setOrderStartedAt(Date.now());
-    setOrderElapsed(0);
-    setOrderTimerStarted(true);
+    if (orderTimerStarted || orderCountdown !== null || orderTurnResult) return;
+    setOrderCountdown(3);
   };
 
   const moveAtomicOrderTile = (fromIndex: number, toIndex: number) => {
@@ -1419,6 +1419,21 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setOrderRoundWinner(null);
     beginAtomicOrderTurn(orderRounds, nextRound, 1);
   };
+
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'atomic-order' || orderCountdown === null || orderTurnResult) return;
+    const timer = setTimeout(() => {
+      if (orderCountdown > 1) {
+        setOrderCountdown(count => count === null ? null : count - 1);
+        return;
+      }
+      setOrderStartedAt(Date.now());
+      setOrderElapsed(0);
+      setOrderTimerStarted(true);
+      setOrderCountdown(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [gameMode, orderCountdown, orderTurnResult, phase]);
 
   useEffect(() => {
     if (phase !== 'playing' || gameMode !== 'atomic-order' || !orderTimerStarted || orderTurnResult || !orderStartedAt) return;
@@ -2635,7 +2650,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className={`player-score-chip ${orderTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        {renderTurnBanner(orderTurn, orderTimerStarted ? `Attempt ${orderAttempts + 1}` : 'Ready to start')}
+        {renderTurnBanner(orderTurn, orderTimerStarted ? `Attempt ${orderAttempts + 1}` : orderCountdown !== null ? `Starting in ${orderCountdown}` : 'Ready to start')}
         {championshipTotalsBar}
 
         <div className="atomic-order-card">
@@ -2646,8 +2661,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <p className="atomic-order-instruction">Lowest to highest. Drag tiles, or tap two to swap them. Attempts are unlimited; fastest wins.</p>
           {!orderTimerStarted && !currentResult && (
             <div className="atomic-order-ready">
-              <p>The elements will appear when the timer starts.</p>
-              <button className="start-btn" onClick={startAtomicOrderTimer} disabled={isBotTurn}>Start Timer</button>
+              {orderCountdown !== null ? (
+                <>
+                  <p>Get ready!</p>
+                  <div key={orderCountdown} className="atomic-order-countdown" role="timer" aria-live="assertive">{orderCountdown}</div>
+                </>
+              ) : (
+                <>
+                  <p>The elements will appear after a 3-second countdown.</p>
+                  <button className="start-btn" onClick={startAtomicOrderTimer} disabled={isBotTurn}>Start Timer</button>
+                </>
+              )}
             </div>
           )}
           {(orderTimerStarted || currentResult) && <>

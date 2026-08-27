@@ -59,7 +59,7 @@ Use these instructions for all changes in this repository.
 - Base tile counts are Explorer 3, Scientist 4, and Professor 5, using each player's difficulty pool. Multiply the base by the selected multiplier, supporting up to 20 wrapping tiles.
 - Easy means direction hints on, penalty off, all tiles initially misplaced, and per-tile green feedback. Medium means directions off, +1 second per wrong guess, all tiles initially misplaced, and per-tile green feedback. Hard means directions off, +1 second per wrong guess, an ordinary randomized unsolved start, and count-only feedback.
 - Count-only reports the number of exact positions after a guess but must not identify or colour the individual correct tiles until the whole puzzle is solved.
-- Keep tiles hidden until the current player presses **Start Timer**. Attempts are unlimited; completion time decides the round point. Attempts are display-only unless the product rules are deliberately changed.
+- Keep tiles hidden while the current player presses **Start Timer** and sees the 3–2–1 countdown. Reveal the tiles and start the race clock only after the countdown finishes. Attempts are unlimited; completion time decides the round point. Attempts are display-only unless the product rules are deliberately changed.
 - Players may drag to reorder. Touch/click interaction is a two-tile swap: first tap selects and visibly highlights a tile, tapping it again cancels, and tapping a different tile swaps the pair.
 - After checking, green means the exact position is correct. Directional hint and penalty behavior follows the selected Atomic Order preset.
 - Once solved, reveal atomic numbers on the tiles and lock the row so it cannot be moved again.
