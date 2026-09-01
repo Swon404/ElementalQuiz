@@ -50,7 +50,7 @@ Use these instructions for all changes in this repository.
 - Championship games are selected during setup. Do not assume every mode is included; use `selectedChampGames` for configuration and the frozen `activeChampGames` list while a Championship is running.
 - Keep Element Match Hunt last in the default Championship order.
 - Quick, Standard, and Epic determine per-mode round counts through `CHAMP_SIZE_CONFIG`. Index counts by game mode rather than array position.
-- Persist two-player setup through `loadTwoPlayerSettings` and `saveTwoPlayerSettings` in `src/engine/storage.ts`. This includes both difficulties, human/bot mode, Championship size and selected games, rounds, Match pool, target mode, chosen target, unlock count, and Atomic Order settings.
+- Persist two-player setup through `loadTwoPlayerSettings` and `saveTwoPlayerSettings` in `src/engine/storage.ts`. This includes both difficulties, human/bot mode, Championship size and selected games, rounds, Match mode, pool, Time Trial target, Hunt target mode, chosen target, unlock count, and Atomic Order settings.
 - When adding a two-player mode, update the `GameMode` union, mode selector and setup labels, standalone launcher, Championship label/default/config, live bot-turn handling where relevant, results label, and persisted defaults.
 
 ## Atomic Order Rules
@@ -65,6 +65,8 @@ Use these instructions for all changes in this repository.
 - Once solved, reveal atomic numbers on the tiles and lock the row so it cannot be moved again.
 - The bot must always finish but should remain beatable. Preserve clear difficulty separation and avoid unrealistically short completion times.
 - Element Match Hunt scoring is explicit: every ordinary pair is 1 point; the target pair is 2 points, and its finder receives another 2-point hunt-win bonus. Do not cap these live scores in Championship mode.
+- Standalone Element Match also offers a saved **Time Trial** mode. Each player gets the same element set in a freshly shuffled private layout, starts after a 3–2–1 countdown, keeps control after misses, and stops when the selected 3, 5, 8, or all-pairs target is reached. The fastest player earns 1 point.
+- Time Trial leaderboards are separated by All/Exotic pool, board pair count, and match target. Record human finishes immediately, keep each player's fastest three, show the category Top 5, and never record bot times. Championship and its tiebreaker continue to use Hunt rules.
 
 ## Quiz Patterns
 

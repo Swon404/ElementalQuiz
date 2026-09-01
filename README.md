@@ -21,7 +21,7 @@ A fun, interactive periodic table quiz game built for kids! Learn about all 118 
 Take turns on the same device with per-player names, avatars, and difficulty:
 - **Quiz Battle** — Alternating questions, highest score wins
 - **True/False Blitz** — Rapid-fire statement judging
-- **Element Match** — Pairs memory game (8/12/16 pairs)
+- **Element Match** — Shared-board target Hunt or private-turn Time Trial with saved Top 5 leaderboards
 - **Clue Duel** — Turn-based elimination clues with ±1 scoring and opponent steal
 - **Symbol Pick** — Pick the correct symbol from name-letter-fabricated look-alikes
 - **Atomic Order** — Race to arrange 3–20 elements using Easy, Medium, or Hard rules and 1×–4× tile sizes

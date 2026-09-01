@@ -33,6 +33,9 @@ const TWO_PLAYER_SETTINGS_KEY = 'elementalquiz_2p_settings';
 export type TwoPlayerNames = { name1: string; avatar1: string; name2: string; avatar2: string };
 export type AtomicOrderLevel = 'easy' | 'medium' | 'hard';
 export type AtomicOrderMultiplier = 1 | 2 | 3 | 4;
+export type ElementMatchMode = 'hunt' | 'time-trial';
+export type ElementMatchTrialTarget = 3 | 5 | 8 | 'all';
+export type ElementMatchPool = 'all' | 'exotic';
 
 export type TwoPlayerSettings = {
   player1Difficulty: Difficulty;
@@ -42,6 +45,8 @@ export type TwoPlayerSettings = {
   champSize: 'quick' | 'standard' | 'epic';
   championshipGames: string[];
   matchExotic: boolean;
+  matchMode: ElementMatchMode;
+  matchTrialTarget: ElementMatchTrialTarget;
   huntTargetMode: 'none' | 'random' | 'choose';
   huntTargetElementNum: number | null;
   huntRequiredPairs: number;
@@ -57,6 +62,8 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   champSize: 'standard',
   championshipGames: ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match'],
   matchExotic: false,
+  matchMode: 'hunt',
+  matchTrialTarget: 5,
   huntTargetMode: 'none',
   huntTargetElementNum: null,
   huntRequiredPairs: 0,
@@ -113,7 +120,12 @@ export function loadTwoPlayerSettings(): TwoPlayerSettings {
       const orderTileMultiplier: AtomicOrderMultiplier = ([1, 2, 3, 4] as number[]).includes(multiplier)
         ? multiplier as AtomicOrderMultiplier
         : 1;
-      return { ...DEFAULT_TWO_PLAYER_SETTINGS, ...parsed, orderChallengeLevel, orderTileMultiplier };
+      const matchMode: ElementMatchMode = parsed.matchMode === 'time-trial' ? 'time-trial' : 'hunt';
+      const parsedTrialTarget = parsed.matchTrialTarget;
+      const matchTrialTarget: ElementMatchTrialTarget = parsedTrialTarget === 'all' || [3, 5, 8].includes(Number(parsedTrialTarget))
+        ? parsedTrialTarget as ElementMatchTrialTarget
+        : 5;
+      return { ...DEFAULT_TWO_PLAYER_SETTINGS, ...parsed, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier };
     }
   } catch { /* ignore */ }
   return { ...DEFAULT_TWO_PLAYER_SETTINGS };
@@ -198,6 +210,62 @@ export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty
   const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, level, multiplier, 5);
   const madeLeaderboard = leaderboard.some(e => e.name === name && e.timeMs === elapsedMs);
   return { leaderboard, madeLeaderboard };
+}
+
+/* ===== Element Match Time Trial Leaderboard (Two Player) ===== */
+
+const ELEMENT_MATCH_TRIAL_TIMES_KEY = 'elementalquiz_element_match_trial_times';
+
+type ElementMatchTrialTimesEntry = { name: string; times: number[] };
+type ElementMatchTrialTimesStore = Record<string, ElementMatchTrialTimesEntry>;
+export type ElementMatchLeaderboardEntry = { name: string; timeMs: number };
+
+function loadElementMatchTrialTimesStore(): ElementMatchTrialTimesStore {
+  try {
+    const raw = localStorage.getItem(ELEMENT_MATCH_TRIAL_TIMES_KEY);
+    if (raw) return JSON.parse(raw) as ElementMatchTrialTimesStore;
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveElementMatchTrialTimesStore(store: ElementMatchTrialTimesStore): void {
+  try {
+    localStorage.setItem(ELEMENT_MATCH_TRIAL_TIMES_KEY, JSON.stringify(store));
+  } catch { /* ignore */ }
+}
+
+function elementMatchTrialTimesKey(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget): string {
+  return `${playerName.trim().toLowerCase() || 'player'}::${pool}::${pairCount}pairs::${target}`;
+}
+
+function elementMatchTrialLeaderboardFromStore(store: ElementMatchTrialTimesStore, pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget, limit: number): ElementMatchLeaderboardEntry[] {
+  const suffix = `::${pool}::${pairCount}pairs::${target}`;
+  const entries: ElementMatchLeaderboardEntry[] = [];
+  for (const key of Object.keys(store)) {
+    if (!key.endsWith(suffix)) continue;
+    const entry = store[key];
+    for (const timeMs of entry.times) entries.push({ name: entry.name, timeMs });
+  }
+  return entries.sort((a, b) => a.timeMs - b.timeMs).slice(0, limit);
+}
+
+export function getElementMatchTrialLeaderboard(pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget, limit = 5): ElementMatchLeaderboardEntry[] {
+  return elementMatchTrialLeaderboardFromStore(loadElementMatchTrialTimesStore(), pool, pairCount, target, limit);
+}
+
+/** Record a completed human Time Trial, keeping each player's fastest three times in this category. */
+export function recordElementMatchTrialTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean } {
+  const store = loadElementMatchTrialTimesStore();
+  const key = elementMatchTrialTimesKey(playerName, pool, pairCount, target);
+  const name = playerName.trim() || 'Player';
+  const existing = store[key]?.times ?? [];
+  store[key] = { name, times: [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3) };
+  saveElementMatchTrialTimesStore(store);
+  const leaderboard = elementMatchTrialLeaderboardFromStore(store, pool, pairCount, target, 5);
+  return {
+    leaderboard,
+    madeLeaderboard: leaderboard.some(entry => entry.name === name && entry.timeMs === elapsedMs),
+  };
 }
 
 function getDefaultProgress(): PlayerProgress {

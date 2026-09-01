@@ -4,7 +4,23 @@ import Elementor from '../components/Elementor.tsx';
 import { generateQuizBattleQuiz, pickRelatableTrivia, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { elements } from '../data/elements.ts';
-import { loadTwoPlayerNames, loadTwoPlayerSettings, saveTwoPlayerNames, saveTwoPlayerSettings, getAtomicOrderLeaderboard, recordAtomicOrderTime, type AtomicOrderLeaderboardEntry, type AtomicOrderLevel, type AtomicOrderMultiplier } from '../engine/storage.ts';
+import {
+  loadTwoPlayerNames,
+  loadTwoPlayerSettings,
+  saveTwoPlayerNames,
+  saveTwoPlayerSettings,
+  getAtomicOrderLeaderboard,
+  recordAtomicOrderTime,
+  getElementMatchTrialLeaderboard,
+  recordElementMatchTrialTime,
+  type AtomicOrderLeaderboardEntry,
+  type AtomicOrderLevel,
+  type AtomicOrderMultiplier,
+  type ElementMatchLeaderboardEntry,
+  type ElementMatchMode,
+  type ElementMatchPool,
+  type ElementMatchTrialTarget,
+} from '../engine/storage.ts';
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
@@ -48,6 +64,7 @@ type TFStatement = { text: string; answer: boolean; explanation: string };
 
 // --- Element Match types ---
 type MatchCard = { id: number; text: string; elementNum: number; flipped: boolean; matched: boolean; matchedBy?: 1 | 2 };
+type MatchTrialResult = { elapsedMs: number; matches: number };
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -271,6 +288,18 @@ function generateMatchCards(pairCount: number, pool: number = 118, exotic: boole
   for (const el of picked) {
     cards.push({ id: id++, text: el.symbol, elementNum: el.atomicNumber, flipped: false, matched: false });
     cards.push({ id: id++, text: el.name, elementNum: el.atomicNumber, flipped: false, matched: false });
+  }
+  return shuffleArray(cards);
+}
+
+function generateMatchCardsForElements(elementNums: number[]): MatchCard[] {
+  const cards: MatchCard[] = [];
+  let id = 0;
+  for (const elementNum of elementNums) {
+    const el = elements.find(item => item.atomicNumber === elementNum);
+    if (!el) continue;
+    cards.push({ id: id++, text: el.symbol, elementNum, flipped: false, matched: false });
+    cards.push({ id: id++, text: el.name, elementNum, flipped: false, matched: false });
   }
   return shuffleArray(cards);
 }
@@ -640,12 +669,25 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [matchFirst, setMatchFirst] = useState<number | null>(null);
   const [matchLocked, setMatchLocked] = useState(false);
   const [matchExotic, setMatchExotic] = useState(savedSettings.matchExotic);
+  const [matchMode, setMatchMode] = useState<ElementMatchMode>(savedSettings.matchMode);
+  const [matchTrialTarget, setMatchTrialTarget] = useState<ElementMatchTrialTarget>(savedSettings.matchTrialTarget);
   const [huntTargetMode, setHuntTargetMode] = useState<'none' | 'random' | 'choose'>(savedSettings.huntTargetMode);
   const [huntTargetElementNum, setHuntTargetElementNum] = useState<number | null>(savedSettings.huntTargetElementNum);
   const [huntPickerOpen, setHuntPickerOpen] = useState(false);
   const [huntSearch, setHuntSearch] = useState('');
   const [huntFoundMessage, setHuntFoundMessage] = useState<string | null>(null);
   const [huntRequiredPairs, setHuntRequiredPairs] = useState(savedSettings.huntRequiredPairs);
+  const [matchTrialElementNums, setMatchTrialElementNums] = useState<number[]>([]);
+  const [matchTrialStartedAt, setMatchTrialStartedAt] = useState(0);
+  const [matchTrialTimerStarted, setMatchTrialTimerStarted] = useState(false);
+  const [matchTrialCountdown, setMatchTrialCountdown] = useState<number | null>(null);
+  const [matchTrialElapsed, setMatchTrialElapsed] = useState(0);
+  const [matchTrialResult, setMatchTrialResult] = useState<MatchTrialResult | null>(null);
+  const [matchTrialP1Result, setMatchTrialP1Result] = useState<MatchTrialResult | null>(null);
+  const [matchTrialWinner, setMatchTrialWinner] = useState<1 | 2 | null>(null);
+  const [matchTrialComplete, setMatchTrialComplete] = useState(false);
+  const [matchTrialLeaderboard, setMatchTrialLeaderboard] = useState<ElementMatchLeaderboardEntry[]>([]);
+  const [matchTrialNewBest, setMatchTrialNewBest] = useState(false);
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -711,6 +753,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   });
   const [activeChampGames, setActiveChampGames] = useState<GameMode[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
+  const isMatchTimeTrial = gameMode === 'element-match' && matchMode === 'time-trial' && !isChampionship && !isChampTiebreaker;
+  const matchTrialPool: ElementMatchPool = matchExotic ? 'exotic' : 'all';
+  const matchTrialGoal = matchTrialTarget === 'all' ? rounds : Math.min(matchTrialTarget, rounds);
 
   // Save names whenever they change
   useEffect(() => {
@@ -726,13 +771,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       champSize,
       championshipGames: selectedChampGames,
       matchExotic,
+      matchMode,
+      matchTrialTarget,
       huntTargetMode,
       huntTargetElementNum,
       huntRequiredPairs,
       orderChallengeLevel,
       orderTileMultiplier,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -1004,7 +1051,34 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   // --- Element Match ---
+  const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2) => {
+    setMatchCards(generateMatchCardsForElements(elementNums));
+    setMatchTurn(turn);
+    setMatchFirst(null);
+    setMatchLocked(false);
+    setMatchTrialStartedAt(0);
+    setMatchTrialTimerStarted(false);
+    setMatchTrialCountdown(null);
+    setMatchTrialElapsed(0);
+    setMatchTrialResult(null);
+    setMatchTrialNewBest(false);
+    botKnownCardsRef.current.clear();
+  };
+
   const startElementMatch = useCallback(() => {
+    if (matchMode === 'time-trial' && !isChampTiebreaker) {
+      const cards = generateMatchCards(rounds, 118, matchExotic);
+      const elementNums = Array.from(new Set(cards.map(card => card.elementNum)));
+      setMatchTrialElementNums(elementNums);
+      setMatchTrialP1Result(null);
+      setMatchTrialWinner(null);
+      setMatchTrialComplete(false);
+      setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchExotic ? 'exotic' : 'all', rounds, matchTrialTarget));
+      resetScores();
+      beginMatchTrialTurn(elementNums, 1);
+      setPhase('playing');
+      return;
+    }
     const chosenTarget = huntTargetMode === 'choose' && huntTargetElementNum
       ? huntTargetElementNum
       : null;
@@ -1022,7 +1096,51 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     botKnownCardsRef.current.clear();
     resetScores();
     setPhase('playing');
-  }, [rounds, matchExotic, huntTargetMode, huntTargetElementNum]);
+  }, [rounds, matchExotic, matchMode, matchTrialTarget, huntTargetMode, huntTargetElementNum, isChampTiebreaker]);
+
+  const startMatchTrialTimer = () => {
+    if (!isMatchTimeTrial || matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
+    setMatchTrialCountdown(3);
+  };
+
+  const finishMatchTrialTurn = (result: MatchTrialResult) => {
+    setMatchTrialElapsed(result.elapsedMs);
+    setMatchTrialTimerStarted(false);
+    setMatchTrialResult(result);
+
+    const botFinisher = matchTurn === 2 && player2Mode === 'bot';
+    if (!botFinisher) {
+      const finisher = matchTurn === 1 ? player1 : player2;
+      const recorded = recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
+      setMatchTrialLeaderboard(recorded.leaderboard);
+      setMatchTrialNewBest(recorded.madeLeaderboard);
+    } else {
+      setMatchTrialNewBest(false);
+    }
+
+    if (matchTurn === 1) {
+      setMatchTrialP1Result(result);
+      return;
+    }
+
+    const p1 = matchTrialP1Result;
+    const winner = p1 && p1.elapsedMs !== result.elapsedMs
+      ? p1.elapsedMs < result.elapsedMs ? 1 : 2
+      : null;
+    setMatchTrialWinner(winner);
+    setMatchTrialComplete(true);
+    setP1Score(winner === 1 ? 1 : 0);
+    setP2Score(winner === 2 ? 1 : 0);
+  };
+
+  const nextMatchTrialStage = () => {
+    if (matchTurn === 1) {
+      beginMatchTrialTurn(matchTrialElementNums, 2);
+      return;
+    }
+    if (!matchTrialComplete) return;
+    finishCurrentGame(matchTrialWinner === 1 ? 1 : 0, matchTrialWinner === 2 ? 1 : 0);
+  };
 
   useEffect(() => {
     for (const card of matchCards) {
@@ -1033,12 +1151,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, [matchCards]);
 
   const handleMatchFlip = (cardId: number) => {
-    if (matchLocked) return;
+    if (matchLocked || (isMatchTimeTrial && (!matchTrialTimerStarted || matchTrialResult))) return;
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
     if (
-      gameMode === 'element-match' &&
+      gameMode === 'element-match' && !isMatchTimeTrial &&
       huntTargetElementNum !== null &&
       card.elementNum === huntTargetElementNum &&
       claimedPairsBeforeFlip < huntRequiredPairs
@@ -1060,12 +1178,24 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
       if (first.elementNum === second.elementNum) {
         playCorrect();
-        const isTargetMatch = gameMode === 'element-match' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum;
+        const isTargetMatch = gameMode === 'element-match' && !isMatchTimeTrial && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum;
         const pairPoints = isTargetMatch ? HUNT_TARGET_PAIR_POINTS : 1;
         const matched = updated.map(c =>
           c.elementNum === first.elementNum ? { ...c, matched: true, matchedBy: matchTurn as 1 | 2 } : c
         );
         setMatchCards(matched);
+        if (isMatchTimeTrial) {
+          const matchedPairs = Math.floor(matched.filter(c => c.matched).length / 2);
+          setMatchFirst(null);
+          setMatchLocked(false);
+          if (matchedPairs >= matchTrialGoal) {
+            finishMatchTrialTurn({
+              matches: matchedPairs,
+              elapsedMs: Math.max(1, Date.now() - matchTrialStartedAt),
+            });
+          }
+          return;
+        }
         // Capture final scores before state update so the setTimeout closure isn't stale
         const candidateP1 = matchTurn === 1 ? p1Score + pairPoints : p1Score;
         const candidateP2 = matchTurn === 2 ? p2Score + pairPoints : p2Score;
@@ -1119,7 +1249,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           ));
           setMatchFirst(null);
           setMatchLocked(false);
-          setMatchTurn(t => t === 1 ? 2 : 1);
+          if (!isMatchTimeTrial) setMatchTurn(t => t === 1 ? 2 : 1);
         }, 1000);
       }
     }
@@ -1128,6 +1258,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   // Safety net: if all cards are matched, always end the game even if a prior callback was interrupted.
   useEffect(() => {
     if (phase !== 'playing' || gameMode !== 'element-match' || matchCards.length === 0) return;
+    if (isMatchTimeTrial) return;
     if (!matchCards.every(c => c.matched)) return;
     if (matchFinishTimerRef.current) return;
 
@@ -1139,7 +1270,36 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       matchFinishTimerRef.current = null;
       finishCurrentGame(p1Pairs, p2Pairs);
     }, finishDelay);
-  }, [gameMode, isChampionship, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
+  }, [gameMode, isChampionship, isMatchTimeTrial, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
+
+  useEffect(() => {
+    if (!isMatchTimeTrial || phase !== 'playing' || matchTrialCountdown === null || matchTrialResult) return;
+    const timer = setTimeout(() => {
+      if (matchTrialCountdown > 1) {
+        setMatchTrialCountdown(count => count === null ? null : count - 1);
+        return;
+      }
+      setMatchTrialStartedAt(Date.now());
+      setMatchTrialElapsed(0);
+      setMatchTrialTimerStarted(true);
+      setMatchTrialCountdown(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [isMatchTimeTrial, matchTrialCountdown, matchTrialResult, phase]);
+
+  useEffect(() => {
+    if (!isMatchTimeTrial || phase !== 'playing' || !matchTrialTimerStarted || matchTrialResult || !matchTrialStartedAt) return;
+    const timer = setInterval(() => setMatchTrialElapsed(Date.now() - matchTrialStartedAt), 100);
+    return () => clearInterval(timer);
+  }, [isMatchTimeTrial, matchTrialResult, matchTrialStartedAt, matchTrialTimerStarted, phase]);
+
+  useEffect(() => {
+    if (!isMatchTimeTrial || phase !== 'playing' || player2Mode !== 'bot' || matchTurn !== 2) return;
+    if (matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
+    setMatchTrialStartedAt(Date.now());
+    setMatchTrialElapsed(0);
+    setMatchTrialTimerStarted(true);
+  }, [isMatchTimeTrial, matchTrialCountdown, matchTrialResult, matchTrialTimerStarted, matchTurn, phase, player2Mode]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -1653,9 +1813,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return;
     }
 
-    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked) {
+    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked && (!isMatchTimeTrial || matchTrialTimerStarted)) {
       const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
-      const blockedElementNum = huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
+      const blockedElementNum = !isMatchTimeTrial && huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
       const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty, blockedElementNum);
       if (choiceId !== null) {
         botTimerRef.current = setTimeout(() => {
@@ -1733,9 +1893,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     botGetsCorrect,
     currentPlayer,
     gameMode,
+    isMatchTimeTrial,
     matchCards,
     matchFirst,
     matchLocked,
+    matchTrialTimerStarted,
     matchTurn,
     orderChallengeLevel,
     orderTiles,
@@ -1810,11 +1972,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         botTimerRef.current = null;
         nextAtomicOrderStage();
       }, BOT_RESULT_DELAY_MS);
+      return;
+    }
+
+    if (gameMode === 'element-match' && isMatchTimeTrial && matchTurn === 2 && matchTrialResult) {
+      botTimerRef.current = setTimeout(() => {
+        botTimerRef.current = null;
+        nextMatchTrialStage();
+      }, BOT_RESULT_DELAY_MS);
     }
   }, [
     atomAnswered,
     atomTurn,
     gameMode,
+    isMatchTimeTrial,
+    matchTrialResult,
+    matchTurn,
     orderTurn,
     orderTurnResult,
     phase,
@@ -1865,8 +2038,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             onClick={() => { setGameMode('element-match'); setRounds(12); setPhase('setup'); }}
           >
             <span className="gm-icon">🃏</span>
-            <span className="gm-name">Element Match Hunt</span>
-            <span className="gm-desc">Match pairs, or add a target hunt!</span>
+            <span className="gm-name">Element Match</span>
+            <span className="gm-desc">Play the shared Hunt or race the Time Trial!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
@@ -1913,7 +2086,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         <h2 className="setup-title">
           {gameMode === 'quiz-battle' && '⚔️ Quiz Battle'}
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
-          {gameMode === 'element-match' && '🃏 Element Match Hunt'}
+          {gameMode === 'element-match' && `🃏 Element Match ${matchMode === 'time-trial' ? 'Time Trial' : 'Hunt'}`}
           {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
           {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
           {gameMode === 'atom-quiz' && '⚛️ Atom Quiz'}
@@ -1981,9 +2154,18 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           ))}
         </div>
 
+        {gameMode === 'element-match' && (
+          <div className="rounds-select match-mode-select">
+            <label>Mode: </label>
+            <button className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button>
+            <button className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}>⏱️ Time Trial</button>
+            <span className="gm-desc">{matchMode === 'hunt' ? 'Share one board and score pairs.' : 'Take separate turns; fastest wins.'}</span>
+          </div>
+        )}
+
         {gameMode !== 'championship' && (
           <div className="rounds-select">
-            <label>{gameMode === 'element-match' ? 'Pairs: ' : 'Rounds: '}</label>
+            <label>{gameMode === 'element-match' ? (matchMode === 'time-trial' ? 'Board: ' : 'Pairs: ') : 'Rounds: '}</label>
             {(gameMode === 'element-match' ? [12, 16, 20] : gameMode === 'clue-duel' ? [4, 6, 8] : gameMode === 'atom-quiz' ? [4, 8, 12] : gameMode === 'atomic-order' ? [3, 5, 7] : gameMode === 'symbol-pick' ? [4, 6, 10] : [3, 5, 10]).map(r => (
               <button
                 key={r}
@@ -2012,7 +2194,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             player2Difficulty={player2.difficulty}
           />
         )}
-        {gameMode === 'element-match' && (
+        {gameMode === 'element-match' && matchMode === 'time-trial' && (
+          <div className="rounds-select">
+            <label>Find: </label>
+            {([3, 5, 8, 'all'] as ElementMatchTrialTarget[]).map(target => (
+              <button
+                key={target}
+                className={`round-btn ${matchTrialTarget === target ? 'selected' : ''}`}
+                onClick={() => setMatchTrialTarget(target)}
+              >
+                {target === 'all' ? `All ${rounds}` : target}
+              </button>
+            ))}
+            <span className="gm-desc">matches to stop the clock</span>
+          </div>
+        )}
+        {gameMode === 'element-match' && matchMode === 'hunt' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Target: </label>
             <button
@@ -2037,7 +2234,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </button>
           </div>
         )}
-        {gameMode === 'element-match' && huntTargetMode !== 'none' && (
+        {gameMode === 'element-match' && matchMode === 'hunt' && huntTargetMode !== 'none' && (
           <div className="rounds-select" style={{ alignItems: 'center' }}>
             <label>Unlock after: </label>
             {[0, 1, 2, 3, 4, 5].map(n => (
@@ -2052,7 +2249,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className="gm-desc">pairs</span>
           </div>
         )}
-        {gameMode === 'element-match' && huntPickerOpen && (
+        {gameMode === 'element-match' && matchMode === 'hunt' && huntPickerOpen && (
           <div className="hunt-picker">
             <input
               className="player-name-input"
@@ -2340,6 +2537,116 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   // --- PLAYING: Element Match ---
   if (phase === 'playing' && gameMode === 'element-match') {
     const cp = matchTurn === 1 ? player1 : player2;
+    if (isMatchTimeTrial) {
+      const matchedPairs = Math.floor(matchCards.filter(card => card.matched).length / 2);
+      const elapsedMs = matchTrialResult?.elapsedMs ?? matchTrialElapsed;
+      const p2Result = matchTurn === 2 ? matchTrialResult : null;
+      return (
+        <div className="element-match-playing match-trial-playing">
+          {quitOverlay}
+          <div className="match-header">
+            <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">×</button>
+            <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is matching...` : `${cp.avatar} ${cp.name}'s Time Trial`}</span>
+            <div className="match-scores match-trial-times">
+              <span>{player1.avatar} {matchTrialP1Result ? `${(matchTrialP1Result.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+              <span>vs</span>
+              <span>{p2Result ? `${(p2Result.elapsedMs / 1000).toFixed(1)}s` : '—'} {player2.avatar}</span>
+            </div>
+          </div>
+          {renderTurnBanner(matchTurn as 1 | 2, matchTrialTimerStarted ? `${matchedPairs}/${matchTrialGoal} matches` : matchTrialCountdown !== null ? `Starting in ${matchTrialCountdown}` : 'Ready to start')}
+
+          <div className="match-trial-card">
+            <div className="match-trial-heading">
+              <div>
+                <h2>Find {matchTrialGoal === rounds ? `all ${rounds}` : matchTrialGoal} matches</h2>
+                <span>{matchExotic ? 'Exotic elements' : 'All elements'} · {rounds}-pair board</span>
+              </div>
+              {(matchTrialTimerStarted || matchTrialResult) && (
+                <div className="atomic-order-big-timer">{(elapsedMs / 1000).toFixed(1)}<span>s</span></div>
+              )}
+            </div>
+
+            {!matchTrialTimerStarted && !matchTrialResult && (
+              <div className="atomic-order-ready">
+                {matchTrialCountdown !== null ? (
+                  <>
+                    <p>Get ready!</p>
+                    <div key={matchTrialCountdown} className="atomic-order-countdown" role="timer" aria-live="assertive">{matchTrialCountdown}</div>
+                  </>
+                ) : (
+                  <>
+                    <p>The cards will appear after a 3-second countdown.</p>
+                    <button className="start-btn" onClick={startMatchTrialTimer} disabled={isBotTurn}>Start Timer</button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {(matchTrialTimerStarted || matchTrialResult) && (
+              <>
+                <div className="match-trial-progress" aria-label={`${matchedPairs} of ${matchTrialGoal} matches found`}>
+                  <span style={{ width: `${Math.min(100, (matchedPairs / matchTrialGoal) * 100)}%` }} />
+                </div>
+                <p className="match-trial-progress-label">{matchedPairs} of {matchTrialGoal} matches</p>
+                <div className="match-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                  {matchCards.map(card => (
+                    <button
+                      key={card.id}
+                      className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${card.flipped && !card.matched ? (matchTurn === 1 ? 'active-p1' : 'active-p2') : ''} ${card.matched ? (matchTurn === 1 ? 'matched matched-p1' : 'matched matched-p2') : ''}`}
+                      onClick={() => handleMatchFlip(card.id)}
+                      disabled={isBotTurn || !matchTrialTimerStarted || Boolean(matchTrialResult) || card.matched || card.flipped}
+                    >
+                      <span className="match-card-inner">
+                        {(card.flipped || card.matched) ? card.text : '?'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {matchTrialResult && (
+              <div className="match-trial-result atomic-order-result">
+                <h3>✅ {matchTrialResult.matches} matches in {(matchTrialResult.elapsedMs / 1000).toFixed(1)} seconds!</h3>
+                {matchTrialNewBest && <p className="atomic-order-new-best">🎉 You cracked the Top 5 leaderboard!</p>}
+                {matchTrialComplete && (
+                  <>
+                    <div className="atomic-order-comparison">
+                      <span>{player1.avatar} {matchTrialP1Result ? `${(matchTrialP1Result.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+                      <span>{player2.avatar} {(matchTrialResult.elapsedMs / 1000).toFixed(1)}s</span>
+                    </div>
+                    <p className="atomic-order-round-winner">
+                      {matchTrialWinner === 1
+                        ? `${player1.avatar} ${player1.name} wins the point!`
+                        : matchTrialWinner === 2
+                          ? `${player2.avatar} ${player2.name} wins the point!`
+                          : 'Exact tie — no point awarded.'}
+                    </p>
+                  </>
+                )}
+                <button className="start-btn" onClick={nextMatchTrialStage} disabled={isBotTurn}>
+                  {matchTurn === 1 ? `Pass to ${player2.name} →` : 'See Results'}
+                </button>
+              </div>
+            )}
+
+            <div className="atomic-order-leaderboard match-trial-leaderboard">
+              <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · Find {matchTrialTarget === 'all' ? 'all' : matchTrialTarget}</span>
+              <span className="atomic-order-best-label">🏆 Time Trial Top 5</span>
+              {matchTrialLeaderboard.length ? (
+                <ol className="atomic-order-leaderboard-list">
+                  {matchTrialLeaderboard.map((entry, index) => (
+                    <li key={`${entry.name}-${entry.timeMs}-${index}`} className={entry.name === cp.name.trim() ? 'me' : ''}>
+                      <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
+            </div>
+          </div>
+        </div>
+      );
+    }
     const huntTarget = elements.find(e => e.atomicNumber === huntTargetElementNum);
     const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
     const targetUnlocked = claimedPairs >= huntRequiredPairs;
@@ -2911,6 +3218,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       : gameMode === 'symbol-pick' ? 'Symbol Pick'
       : gameMode === 'atom-quiz' ? 'Atom Quiz'
       : gameMode === 'atomic-order' ? 'Atomic Order'
+      : gameMode === 'element-match' && matchMode === 'time-trial' ? 'Element Match Time Trial'
       : 'Element Match Hunt';
     const tiebreakerDraw = isChampTiebreaker && !winner;
     return (
