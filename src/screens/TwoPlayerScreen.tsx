@@ -13,6 +13,8 @@ import {
   recordAtomicOrderTime,
   getElementMatchTrialLeaderboard,
   recordElementMatchTrialTime,
+  getElementMatchHuntLeaderboard,
+  recordElementMatchHuntTime,
   type AtomicOrderLeaderboardEntry,
   type AtomicOrderLevel,
   type AtomicOrderMultiplier,
@@ -545,7 +547,7 @@ const DEFAULT_CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'atom-quiz',
 const CHAMP_LABELS: Record<string, string> = {
   'quiz-battle': '⚔️ Quiz Battle',
   'tf-blitz': '✅ True or False Blitz',
-  'element-match': 'Element Match Hunt',
+  'element-match': '🃏 Element Match',
   'clue-duel': '🕵️ Clue Duel',
   'symbol-pick': '🔤 Symbol Pick',
   'atom-quiz': '⚛️ Atom Quiz',
@@ -579,6 +581,7 @@ function AtomicOrderSetupControls({
   onMultiplierChange,
   player1Difficulty,
   player2Difficulty,
+  disabled = false,
 }: {
   level: AtomicOrderLevel;
   multiplier: AtomicOrderMultiplier;
@@ -586,9 +589,10 @@ function AtomicOrderSetupControls({
   onMultiplierChange: (multiplier: AtomicOrderMultiplier) => void;
   player1Difficulty: Difficulty;
   player2Difficulty: Difficulty;
+  disabled?: boolean;
 }) {
   return (
-    <div className="atomic-order-setup-controls">
+    <div className={`atomic-order-setup-controls ${disabled ? 'controls-disabled' : ''}`}>
       <div className="atomic-order-preset-picker">
         <span className="atomic-order-setting-label">Challenge:</span>
         <div className="atomic-order-preset-grid">
@@ -599,6 +603,7 @@ function AtomicOrderSetupControls({
                 key={option}
                 className={`atomic-order-preset-btn ${level === option ? 'selected' : ''}`}
                 onClick={() => onLevelChange(option)}
+                disabled={disabled}
               >
                 <strong>{config.label}</strong>
                 <span>{config.description}</span>
@@ -614,6 +619,7 @@ function AtomicOrderSetupControls({
             key={option}
             className={`round-btn ${multiplier === option ? 'selected' : ''}`}
             onClick={() => onMultiplierChange(option)}
+            disabled={disabled}
           >
             {option}×
           </button>
@@ -677,6 +683,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [huntSearch, setHuntSearch] = useState('');
   const [huntFoundMessage, setHuntFoundMessage] = useState<string | null>(null);
   const [huntRequiredPairs, setHuntRequiredPairs] = useState(savedSettings.huntRequiredPairs);
+  const [huntStartedAt, setHuntStartedAt] = useState(0);
+  const [huntTimerStarted, setHuntTimerStarted] = useState(false);
+  const [huntCountdown, setHuntCountdown] = useState<number | null>(null);
+  const [huntElapsed, setHuntElapsed] = useState(0);
+  const [huntLeaderboard, setHuntLeaderboard] = useState<ElementMatchLeaderboardEntry[]>([]);
+  const [huntNewBest, setHuntNewBest] = useState(false);
   const [matchTrialElementNums, setMatchTrialElementNums] = useState<number[]>([]);
   const [matchTrialStartedAt, setMatchTrialStartedAt] = useState(0);
   const [matchTrialTimerStarted, setMatchTrialTimerStarted] = useState(false);
@@ -692,6 +704,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const matchFinishTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const huntRecordedRef = useRef(false);
+  const huntFinishedElapsedRef = useRef(0);
   const botKnownCardsRef = useRef<Map<number, number>>(new Map());
 
   // Clue Duel state
@@ -753,7 +767,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   });
   const [activeChampGames, setActiveChampGames] = useState<GameMode[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
-  const isMatchTimeTrial = gameMode === 'element-match' && matchMode === 'time-trial' && !isChampionship && !isChampTiebreaker;
+  const isMatchTimeTrial = gameMode === 'element-match' && matchMode === 'time-trial' && !isChampTiebreaker;
   const matchTrialPool: ElementMatchPool = matchExotic ? 'exotic' : 'all';
   const matchTrialGoal = matchTrialTarget === 'all' ? rounds : Math.min(matchTrialTarget, rounds);
 
@@ -1065,6 +1079,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     botKnownCardsRef.current.clear();
   };
 
+  const prepareHuntTimer = (pairCount: number) => {
+    setHuntStartedAt(0);
+    setHuntTimerStarted(false);
+    setHuntCountdown(null);
+    setHuntElapsed(0);
+    setHuntNewBest(false);
+    huntRecordedRef.current = false;
+    huntFinishedElapsedRef.current = 0;
+    setHuntLeaderboard(getElementMatchHuntLeaderboard(matchExotic ? 'exotic' : 'all', pairCount, huntTargetMode, huntRequiredPairs));
+  };
+
   const startElementMatch = useCallback(() => {
     if (matchMode === 'time-trial' && !isChampTiebreaker) {
       const cards = generateMatchCards(rounds, 118, matchExotic);
@@ -1093,10 +1118,23 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setMatchFirst(null);
     setMatchLocked(false);
     setHuntFoundMessage(null);
+    prepareHuntTimer(rounds);
     botKnownCardsRef.current.clear();
     resetScores();
     setPhase('playing');
-  }, [rounds, matchExotic, matchMode, matchTrialTarget, huntTargetMode, huntTargetElementNum, isChampTiebreaker]);
+  }, [rounds, matchExotic, matchMode, matchTrialTarget, huntTargetMode, huntTargetElementNum, huntRequiredPairs, isChampTiebreaker]);
+
+  const startHuntTimer = () => {
+    if (huntTimerStarted || huntCountdown !== null) return;
+    setHuntCountdown(3);
+  };
+
+  const stopHuntTimer = () => {
+    const elapsedMs = Math.max(1, Date.now() - huntStartedAt);
+    huntFinishedElapsedRef.current = elapsedMs;
+    setHuntElapsed(elapsedMs);
+    setHuntTimerStarted(false);
+  };
 
   const startMatchTrialTimer = () => {
     if (!isMatchTimeTrial || matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
@@ -1151,7 +1189,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, [matchCards]);
 
   const handleMatchFlip = (cardId: number) => {
-    if (matchLocked || (isMatchTimeTrial && (!matchTrialTimerStarted || matchTrialResult))) return;
+    if (matchLocked || (isMatchTimeTrial ? (!matchTrialTimerStarted || matchTrialResult) : !huntTimerStarted)) return;
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
@@ -1213,6 +1251,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           setHuntFoundMessage(`${hunter.avatar} ${hunter.name} found ${target?.name ?? 'the target'}: +${HUNT_TARGET_PAIR_POINTS} for the pair and +${HUNT_WIN_BONUS} for winning!`);
           setP1Score(finalP1);
           setP2Score(finalP2);
+          stopHuntTimer();
           if (!matchFinishTimerRef.current) {
             matchFinishTimerRef.current = setTimeout(() => {
               matchFinishTimerRef.current = null;
@@ -1233,6 +1272,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         }
 
         if (matched.every(c => c.matched)) {
+          stopHuntTimer();
           const finishDelay = player2Mode === 'bot' && matchTurn === 2 ? BOT_RESULT_DELAY_MS : 600;
           if (!matchFinishTimerRef.current) {
             matchFinishTimerRef.current = setTimeout(() => {
@@ -1265,6 +1305,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const p1Pairs = Math.floor(matchCards.filter(c => c.matchedBy === 1).length / 2);
     const p2Pairs = Math.floor(matchCards.filter(c => c.matchedBy === 2).length / 2);
     const finishDelay = player2Mode === 'bot' && matchTurn === 2 ? BOT_RESULT_DELAY_MS : 600;
+    stopHuntTimer();
 
     matchFinishTimerRef.current = setTimeout(() => {
       matchFinishTimerRef.current = null;
@@ -1300,6 +1341,27 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setMatchTrialElapsed(0);
     setMatchTrialTimerStarted(true);
   }, [isMatchTimeTrial, matchTrialCountdown, matchTrialResult, matchTrialTimerStarted, matchTurn, phase, player2Mode]);
+
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || huntCountdown === null) return;
+    const timer = setTimeout(() => {
+      if (huntCountdown > 1) {
+        setHuntCountdown(count => count === null ? null : count - 1);
+        return;
+      }
+      setHuntStartedAt(Date.now());
+      setHuntElapsed(0);
+      setHuntTimerStarted(true);
+      setHuntCountdown(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [gameMode, huntCountdown, isMatchTimeTrial, phase]);
+
+  useEffect(() => {
+    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || !huntTimerStarted || !huntStartedAt) return;
+    const timer = setInterval(() => setHuntElapsed(Date.now() - huntStartedAt), 100);
+    return () => clearInterval(timer);
+  }, [gameMode, huntStartedAt, huntTimerStarted, isMatchTimeTrial, phase]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -1629,6 +1691,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setPhase('playing');
     } else if (mode === 'element-match') {
       const n = counts[mode];
+      if (matchMode === 'time-trial') {
+        const cards = generateMatchCards(n, 118, matchExotic);
+        const elementNums = Array.from(new Set(cards.map(card => card.elementNum)));
+        setMatchTrialElementNums(elementNums);
+        setMatchTrialP1Result(null);
+        setMatchTrialWinner(null);
+        setMatchTrialComplete(false);
+        setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchExotic ? 'exotic' : 'all', n, matchTrialTarget));
+        setRounds(n);
+        beginMatchTrialTurn(elementNums, 1);
+        setPhase('playing');
+        return;
+      }
       const chosenTarget = huntTargetMode === 'choose' && huntTargetElementNum
         ? huntTargetElementNum
         : null;
@@ -1644,6 +1719,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setMatchFirst(null);
       setMatchLocked(false);
       setRounds(n);
+      prepareHuntTimer(n);
       setPhase('playing');
     } else if (mode === 'atom-quiz') {
       const n = counts[mode];
@@ -1696,6 +1772,20 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setP1Score(finalP1);
     setP2Score(finalP2);
 
+    if (gameMode === 'element-match' && !isMatchTimeTrial && !huntRecordedRef.current) {
+      huntRecordedRef.current = true;
+      const elapsedMs = huntFinishedElapsedRef.current || Math.max(1, Date.now() - huntStartedAt);
+      setHuntElapsed(elapsedMs);
+      setHuntTimerStarted(false);
+      const winner = finalP1 > finalP2 ? player1 : finalP2 > finalP1 ? player2 : null;
+      const winnerIsBot = winner === player2 && player2Mode === 'bot';
+      if (winner && !winnerIsBot) {
+        const recorded = recordElementMatchHuntTime(winner.name, matchExotic ? 'exotic' : 'all', rounds, huntTargetMode, huntRequiredPairs, elapsedMs);
+        setHuntLeaderboard(recorded.leaderboard);
+        setHuntNewBest(recorded.madeLeaderboard);
+      }
+    }
+
     if (isChampionship) {
       const champP1 = normalizeChampPoints(gameMode, finalP1);
       const champP2 = normalizeChampPoints(gameMode, finalP2);
@@ -1726,6 +1816,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setIsChampTiebreaker(true);
     setIsChampionship(false);
     setGameMode('element-match');
+    setMatchMode('hunt');
     setMatchCards(generateMatchCards(12, sharedPool()));
     setMatchTurn(1);
     setMatchFirst(null);
@@ -1733,6 +1824,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setP1Score(0);
     setP2Score(0);
     setRounds(12);
+    prepareHuntTimer(12);
     setPhase('playing');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player1.difficulty, player2.difficulty]);
@@ -1813,7 +1905,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       return;
     }
 
-    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked && (!isMatchTimeTrial || matchTrialTimerStarted)) {
+    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked && (isMatchTimeTrial ? matchTrialTimerStarted : huntTimerStarted)) {
       const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
       const blockedElementNum = !isMatchTimeTrial && huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
       const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty, blockedElementNum);
@@ -1904,6 +1996,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     orderTurn,
     orderTurnResult,
     huntRequiredPairs,
+    huntTimerStarted,
     huntTargetElementNum,
     p2Questions,
     phase,
@@ -2039,7 +2132,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           >
             <span className="gm-icon">🃏</span>
             <span className="gm-name">Element Match</span>
-            <span className="gm-desc">Play the shared Hunt or race the Time Trial!</span>
+            <span className="gm-desc">Play a timed shared-board Hunt or race separate Time Trial runs!</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
@@ -2080,6 +2173,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   // --- SETUP ---
   if (phase === 'setup') {
+    const championshipHasElementMatch = selectedChampGames.includes('element-match');
+    const championshipHasAtomicOrder = selectedChampGames.includes('atomic-order');
     return (
       <div className="two-player-setup">
         <button className="back-btn" onClick={() => setPhase('mode-select')}>← Back</button>
@@ -2159,7 +2254,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <label>Mode: </label>
             <button className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button>
             <button className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}>⏱️ Time Trial</button>
-            <span className="gm-desc">{matchMode === 'hunt' ? 'Share one board and score pairs.' : 'Take separate turns; fastest wins.'}</span>
+            <span className="gm-desc">{matchMode === 'hunt' ? 'Share one timed board; the winner can set a leaderboard time.' : 'Take separate turns; fastest wins.'}</span>
           </div>
         )}
 
@@ -2320,26 +2415,70 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 })}
               </div>
             </div>
+            <section className={`champ-options-group ${championshipHasElementMatch ? '' : 'disabled'}`} aria-disabled={!championshipHasElementMatch}>
+              <div className="champ-options-heading">
+                <div>
+                  <strong>Element Match options</strong>
+                  <span>{matchMode === 'hunt' ? 'Timed shared board · fastest winner joins the leaderboard' : 'Separate timed runs · fastest player wins'}</span>
+                </div>
+                <span className="champ-option-status">{championshipHasElementMatch ? 'Included' : 'Game not selected'}</span>
+              </div>
             <div className="rounds-select">
-              <label>Match pool: </label>
-              <button className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
-              <button className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
-            </div>
-            <div className="rounds-select" style={{ alignItems: 'center' }}>
-              <label>Match target: </label>
+              <label>Mode: </label>
               <button
+                disabled={!championshipHasElementMatch}
+                className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`}
+                onClick={() => setMatchMode('hunt')}
+              >
+                🏹 Hunt
+              </button>
+              <button
+                disabled={!championshipHasElementMatch}
+                className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`}
+                onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}
+              >
+                ⏱️ Time Trial
+              </button>
+            </div>
+            <div className="rounds-select">
+              <label>Element pool: </label>
+              <button disabled={!championshipHasElementMatch} className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
+              <button disabled={!championshipHasElementMatch} className={`round-btn ${matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(true)}>☢️ Exotic</button>
+            </div>
+            {matchMode === 'time-trial' && (
+              <div className="rounds-select">
+                <label>Find: </label>
+                {([3, 5, 8, 'all'] as ElementMatchTrialTarget[]).map(target => (
+                  <button
+                    key={target}
+                    disabled={!championshipHasElementMatch}
+                    className={`round-btn ${matchTrialTarget === target ? 'selected' : ''}`}
+                    onClick={() => setMatchTrialTarget(target)}
+                  >
+                    {target === 'all' ? `All ${CHAMP_SIZE_CONFIG[champSize].counts['element-match']}` : target}
+                  </button>
+                ))}
+                <span className="gm-desc">matches to stop the clock</span>
+              </div>
+            )}
+            {matchMode === 'hunt' && <div className="rounds-select" style={{ alignItems: 'center' }}>
+              <label>Hunt target: </label>
+              <button
+                disabled={!championshipHasElementMatch}
                 className={`round-btn ${huntTargetMode === 'none' ? 'selected' : ''}`}
                 onClick={() => { setHuntTargetMode('none'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
               >
                 None
               </button>
               <button
+                disabled={!championshipHasElementMatch}
                 className={`round-btn ${huntTargetMode === 'random' ? 'selected' : ''}`}
                 onClick={() => { setHuntTargetMode('random'); setHuntTargetElementNum(null); setHuntPickerOpen(false); }}
               >
                 Random
               </button>
               <button
+                disabled={!championshipHasElementMatch}
                 className={`round-btn ${huntTargetMode === 'choose' ? 'selected' : ''}`}
                 onClick={() => { setHuntTargetMode('choose'); setHuntPickerOpen(true); }}
               >
@@ -2347,23 +2486,24 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   ? `Choose: ${elements.find(e => e.atomicNumber === huntTargetElementNum)?.symbol ?? '?'}`
                   : 'Choose Element'}
               </button>
-            </div>
-            {huntTargetMode !== 'none' && (
+            </div>}
+            {matchMode === 'hunt' && huntTargetMode !== 'none' && (
               <div className="rounds-select" style={{ alignItems: 'center' }}>
-                <label>Unlock after: </label>
+                <label>Target unlocks after: </label>
                 {[0, 1, 2, 3, 4, 5].map(n => (
                   <button
                     key={n}
+                    disabled={!championshipHasElementMatch}
                     className={`round-btn ${huntRequiredPairs === n ? 'selected' : ''}`}
                     onClick={() => setHuntRequiredPairs(n)}
                   >
                     {n}
                   </button>
                 ))}
-                <span className="gm-desc">pairs</span>
+                <span className="gm-desc">matched pairs</span>
               </div>
             )}
-            {huntPickerOpen && (
+            {championshipHasElementMatch && matchMode === 'hunt' && huntPickerOpen && (
               <div className="hunt-picker">
                 <input
                   className="player-name-input"
@@ -2396,19 +2536,27 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 </div>
               </div>
             )}
-            <AtomicOrderSetupControls
-              level={orderChallengeLevel}
-              multiplier={orderTileMultiplier}
-              onLevelChange={setOrderChallengeLevel}
-              onMultiplierChange={setOrderTileMultiplier}
-              player1Difficulty={player1.difficulty}
-              player2Difficulty={player2.difficulty}
-            />
+            </section>
+            <section className={`champ-options-group ${championshipHasAtomicOrder ? '' : 'disabled'}`} aria-disabled={!championshipHasAtomicOrder}>
+              <div className="champ-options-heading">
+                <div><strong>Atomic Order options</strong><span>Challenge rules and number of tiles</span></div>
+                <span className="champ-option-status">{championshipHasAtomicOrder ? 'Included' : 'Game not selected'}</span>
+              </div>
+              <AtomicOrderSetupControls
+                level={orderChallengeLevel}
+                multiplier={orderTileMultiplier}
+                onLevelChange={setOrderChallengeLevel}
+                onMultiplierChange={setOrderTileMultiplier}
+                player1Difficulty={player1.difficulty}
+                player2Difficulty={player2.difficulty}
+                disabled={!championshipHasAtomicOrder}
+              />
+            </section>
             <div className="champ-info">
               <div className="champ-games-list">
                 {selectedChampGames.map(mode => (
                   <span key={mode} className="champ-game-chip">
-                    {CHAMP_LABELS[mode]} <strong>{CHAMP_SIZE_CONFIG[champSize].counts[mode as Exclude<GameMode, 'championship'>]}</strong> {mode === 'element-match' ? 'pairs' : 'rounds'}
+                    {CHAMP_LABELS[mode]}{mode === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''} <strong>{CHAMP_SIZE_CONFIG[champSize].counts[mode as Exclude<GameMode, 'championship'>]}</strong> {mode === 'element-match' ? 'pairs' : 'rounds'}
                   </span>
                 ))}
               </div>
@@ -2662,8 +2810,28 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <span className={`player-score-chip ${matchTurn === 2 ? 'active p2' : ''}`}>{p2Score} {player2.avatar}</span>
           </div>
         </div>
-        {renderTurnBanner(matchTurn as 1 | 2)}
+        {renderTurnBanner(matchTurn as 1 | 2, huntTimerStarted ? `${claimedPairs}/${rounds} pairs` : huntCountdown !== null ? `Starting in ${huntCountdown}` : 'Ready to start')}
         {championshipTotalsBar}
+        <div className="atomic-order-card match-hunt-timer-card">
+          {huntTimerStarted && (
+            <div className="atomic-order-big-timer">{(huntElapsed / 1000).toFixed(1)}<span>s</span></div>
+          )}
+          {!huntTimerStarted && (
+            <div className="atomic-order-ready">
+              {huntCountdown !== null ? (
+                <>
+                  <p>Get ready!</p>
+                  <div key={huntCountdown} className="atomic-order-countdown" role="timer" aria-live="assertive">{huntCountdown}</div>
+                </>
+              ) : (
+                <>
+                  <p>The cards will appear after a 3-second countdown.</p>
+                  <button className="start-btn" onClick={startHuntTimer}>Start Timer</button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         {huntTarget && (
           <div className="hunt-target-banner">
             Target: <strong>{huntTarget.name} ({huntTarget.symbol})</strong>
@@ -2677,7 +2845,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         )}
         {huntFoundMessage && <p className="hunt-found-message">{huntFoundMessage}</p>}
-        <div className="match-grid" style={{ gridTemplateColumns: `repeat(4, 1fr)` }}>
+        {huntTimerStarted && <div className="match-grid" style={{ gridTemplateColumns: `repeat(4, 1fr)` }}>
           {matchCards.map(card => {
             const matchClass = card.matched
               ? card.matchedBy === 1 ? 'matched matched-p1' : 'matched matched-p2'
@@ -2690,7 +2858,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 key={card.id}
                 className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${activeChoiceClass} ${matchClass}`}
                 onClick={() => handleMatchFlip(card.id)}
-                disabled={isBotTurn || card.matched || card.flipped}
+                disabled={!huntTimerStarted || isBotTurn || card.matched || card.flipped}
               >
                 <span className="match-card-inner">
                   {(card.flipped || card.matched)
@@ -2700,6 +2868,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               </button>
             );
           })}
+        </div>}
+        <div className="atomic-order-leaderboard match-trial-leaderboard">
+          <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · {huntTargetMode === 'none' ? 'Full board' : `${huntTargetMode === 'choose' ? 'Chosen' : 'Random'} target`}</span>
+          <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
+          {huntLeaderboard.length ? (
+            <ol className="atomic-order-leaderboard-list">
+              {huntLeaderboard.map((entry, index) => (
+                <li key={`${entry.name}-${entry.timeMs}-${index}`}>
+                  <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                </li>
+              ))}
+            </ol>
+          ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
         </div>
       </div>
     );
@@ -3105,7 +3286,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           <h2>🏆 Championship — Game {champStep + 1} of {activeChampGames.length}</h2>
         </div>
         <div className="champ-game-result">
-          <h3>{CHAMP_LABELS[justFinished]} Complete!</h3>
+          <h3>{CHAMP_LABELS[justFinished]}{justFinished === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''} Complete!</h3>
           <p>{justWinner ? `${justWinner.avatar} ${justWinner.name} wins!` : "It's a draw! 🤝"}</p>
           <div className="battle-scores">
             <div className={`battle-player ${p1Score >= p2Score ? 'winner' : ''}`}>
@@ -3122,6 +3303,21 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         </div>
 
+        {justFinished === 'element-match' && matchMode === 'hunt' && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">Completed in {(huntElapsed / 1000).toFixed(1)}s</span>
+            <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
+            {huntNewBest && <span className="atomic-order-new-best">🎉 New Top 5 time!</span>}
+            {huntLeaderboard.length > 0 && (
+              <ol className="atomic-order-leaderboard-list">
+                {huntLeaderboard.map((entry, index) => (
+                  <li key={`${entry.name}-${entry.timeMs}-${index}`}><span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span></li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+
         <div className="champ-running-total">
           <h3>Running Championship Points</h3>
           <div className="champ-total-row">
@@ -3132,7 +3328,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         </div>
 
         <button className="start-btn" onClick={nextChampGame}>
-          Next: {CHAMP_LABELS[nextGame]} →
+          Next: {CHAMP_LABELS[nextGame]}{nextGame === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''} →
         </button>
       </div>
     );
@@ -3175,7 +3371,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <tbody>
               {activeChampGames.map((g, i) => (
                 <tr key={g} className={allScores[i]?.p1Raw > allScores[i]?.p2Raw ? 'p1-won' : allScores[i]?.p2Raw > allScores[i]?.p1Raw ? 'p2-won' : ''}>
-                  <td>{CHAMP_LABELS[g]}</td>
+                  <td>{CHAMP_LABELS[g]}{g === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''}</td>
                   <td>{allScores[i] ? allScores[i].p1Raw : '-'}</td>
                   <td>{allScores[i] ? allScores[i].p2Raw : '-'}</td>
                 </tr>
@@ -3188,6 +3384,20 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </tbody>
           </table>
         </div>
+        {activeChampGames[activeChampGames.length - 1] === 'element-match' && matchMode === 'hunt' && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">Hunt completed in {(huntElapsed / 1000).toFixed(1)}s</span>
+            <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
+            {huntNewBest && <span className="atomic-order-new-best">🎉 New Top 5 time!</span>}
+            {huntLeaderboard.length > 0 && (
+              <ol className="atomic-order-leaderboard-list">
+                {huntLeaderboard.map((entry, index) => (
+                  <li key={`${entry.name}-${entry.timeMs}-${index}`}><span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span></li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
         <p>The champion has the highest total across the {activeChampGames.length} selected games.</p>
         {(rawTotalP1 !== totalP1 || rawTotalP2 !== totalP2) && (
           <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
@@ -3250,6 +3460,23 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </div>
           </div>
         </div>
+
+        {gameMode === 'element-match' && matchMode === 'hunt' && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">Completed in {(huntElapsed / 1000).toFixed(1)}s</span>
+            <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
+            {huntNewBest && <span className="atomic-order-new-best">🎉 New Top 5 time!</span>}
+            {huntLeaderboard.length ? (
+              <ol className="atomic-order-leaderboard-list">
+                {huntLeaderboard.map((entry, index) => (
+                  <li key={`${entry.name}-${entry.timeMs}-${index}`}>
+                    <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                  </li>
+                ))}
+              </ol>
+            ) : <span className="atomic-order-best-values">A draw is not added to the leaderboard.</span>}
+          </div>
+        )}
 
         <div className="result-actions">
           {isChampTiebreaker ? (

@@ -268,6 +268,61 @@ export function recordElementMatchTrialTime(playerName: string, pool: ElementMat
   };
 }
 
+/* ===== Element Match Hunt Leaderboard (Two Player) ===== */
+
+const ELEMENT_MATCH_HUNT_TIMES_KEY = 'elementalquiz_element_match_hunt_times';
+type ElementMatchHuntTarget = 'none' | 'random' | 'choose';
+
+function loadElementMatchHuntTimesStore(): ElementMatchTrialTimesStore {
+  try {
+    const raw = localStorage.getItem(ELEMENT_MATCH_HUNT_TIMES_KEY);
+    if (raw) return JSON.parse(raw) as ElementMatchTrialTimesStore;
+  } catch { /* ignore */ }
+  return {};
+}
+
+function saveElementMatchHuntTimesStore(store: ElementMatchTrialTimesStore): void {
+  try {
+    localStorage.setItem(ELEMENT_MATCH_HUNT_TIMES_KEY, JSON.stringify(store));
+  } catch { /* ignore */ }
+}
+
+function elementMatchHuntCategory(pool: ElementMatchPool, pairCount: number, target: ElementMatchHuntTarget, unlockPairs: number): string {
+  return `${pool}::${pairCount}pairs::${target}::${target === 'none' ? 0 : unlockPairs}unlock`;
+}
+
+function elementMatchHuntLeaderboardFromStore(store: ElementMatchTrialTimesStore, category: string, limit: number): ElementMatchLeaderboardEntry[] {
+  const suffix = `::${category}`;
+  const entries: ElementMatchLeaderboardEntry[] = [];
+  for (const key of Object.keys(store)) {
+    if (!key.endsWith(suffix)) continue;
+    const entry = store[key];
+    for (const timeMs of entry.times) entries.push({ name: entry.name, timeMs });
+  }
+  return entries.sort((a, b) => a.timeMs - b.timeMs).slice(0, limit);
+}
+
+export function getElementMatchHuntLeaderboard(pool: ElementMatchPool, pairCount: number, target: ElementMatchHuntTarget, unlockPairs: number, limit = 5): ElementMatchLeaderboardEntry[] {
+  const category = elementMatchHuntCategory(pool, pairCount, target, unlockPairs);
+  return elementMatchHuntLeaderboardFromStore(loadElementMatchHuntTimesStore(), category, limit);
+}
+
+/** Record the winning player's completion time, keeping their fastest three in this Hunt category. */
+export function recordElementMatchHuntTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchHuntTarget, unlockPairs: number, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean } {
+  const store = loadElementMatchHuntTimesStore();
+  const category = elementMatchHuntCategory(pool, pairCount, target, unlockPairs);
+  const name = playerName.trim() || 'Player';
+  const key = `${name.toLowerCase()}::${category}`;
+  const existing = store[key]?.times ?? [];
+  store[key] = { name, times: [...existing, elapsedMs].sort((a, b) => a - b).slice(0, 3) };
+  saveElementMatchHuntTimesStore(store);
+  const leaderboard = elementMatchHuntLeaderboardFromStore(store, category, 5);
+  return {
+    leaderboard,
+    madeLeaderboard: leaderboard.some(entry => entry.name === name && entry.timeMs === elapsedMs),
+  };
+}
+
 function getDefaultProgress(): PlayerProgress {
   return {
     totalEP: 0,

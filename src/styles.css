@@ -683,6 +683,10 @@ body {
 }
 
 .round-btn.selected { border-color: var(--accent); background: rgba(233,69,96,0.15); }
+.round-btn:disabled,
+.atomic-order-preset-btn:disabled {
+  cursor: not-allowed;
+}
 
 .pass-device {
   display: flex;
@@ -1240,6 +1244,7 @@ body {
   text-align: center;
 }
 .atomic-order-card h2 { margin: 0 0 0.35rem; }
+.match-hunt-timer-card { margin: 0.75rem 0; }
 .atomic-order-big-timer {
   font-size: 2.8rem; font-weight: 900; line-height: 1; margin: 0.2rem 0 0.6rem;
   color: var(--accent-glow); font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
@@ -1392,6 +1397,27 @@ body {
 .champ-game-toggle.selected {
   color: var(--text-primary); border-color: #f9ca24; background: rgba(249,202,36,0.16);
 }
+.champ-options-group {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  margin: 0.5rem 0; padding: 0.85rem;
+  border: 1px solid rgba(255,255,255,0.14); border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.025);
+  transition: opacity 0.2s, border-color 0.2s;
+}
+.champ-options-group.disabled { opacity: 0.42; border-color: rgba(255,255,255,0.08); }
+.champ-options-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  color: var(--text-primary);
+}
+.champ-options-heading > div { display: flex; flex-direction: column; gap: 0.15rem; }
+.champ-options-heading strong { font-size: 0.95rem; }
+.champ-options-heading div span { color: var(--text-secondary); font-size: 0.75rem; }
+.champ-option-status {
+  flex: 0 0 auto; padding: 0.2rem 0.5rem; border-radius: 999px;
+  background: rgba(249,202,36,0.14); color: #f9ca24; font-size: 0.7rem; font-weight: 700;
+}
+.champ-options-group.disabled .champ-option-status { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
+.champ-options-group .atomic-order-setup-controls { margin: 0; }
 .champ-info-footer {
   text-align: center; font-size: 0.78rem; color: var(--text-secondary);
   margin: 0; opacity: 0.8;
