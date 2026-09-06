@@ -1,10 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { speakText } from '../engine/tts.ts';
 import { playCorrect, playWrong, playCollect } from '../engine/sounds.ts';
+import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
 
 interface ExoticQuizScreenProps {
   onBack: () => void;
+  playerId: string;
+  playerName: string;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -251,31 +254,45 @@ function generateExoticQuestions(count: number): ExoticQuestion[] {
   return pool.slice(0, Math.min(count, pool.length)).map(fn => fn());
 }
 
-export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
+export default function ExoticQuizScreen({ onBack, playerId, playerName }: ExoticQuizScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [questions, setQuestions] = useState<ExoticQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [score, setScore] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
   const [streak, setStreak] = useState(0);
   const [answered, setAnswered] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [hintUsed, setHintUsed] = useState(false);       // hint used on this question
   const [eliminated, setEliminated] = useState<Set<number>>(new Set()); // indices eliminated by hint
   const [retrying, setRetrying] = useState(false);        // in retry-after-hint mode
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [newBestId, setNewBestId] = useState<string | null>(null);
+  const startedAtRef = useRef(0);
 
   const questionCount = 12;
+  const configKey = buildGameConfigKey('quiz-battle', 'exotic', {
+    questions: questionCount,
+    hintRule: 'after-wrong-eliminate-two-half-point',
+  });
 
   const startQuiz = useCallback(() => {
     setQuestions(generateExoticQuestions(questionCount));
     setCurrentQ(0);
     setScore(0);
+    setCorrectCount(0);
     setStreak(0);
     setAnswered(null);
     setHintUsed(false);
     setEliminated(new Set());
     setRetrying(false);
+    setElapsedMs(0);
+    setNewBestId(null);
+    setLeaderboard(getGameLeaderboard('quiz-battle', 'exotic', configKey, 'solo'));
+    startedAtRef.current = Date.now();
     setPhase('playing');
-  }, []);
+  }, [configKey]);
 
   const handleAnswer = (idx: number) => {
     if (answered !== null) return;
@@ -284,6 +301,7 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     if (idx === q.correctIndex) {
       playCorrect();
       setScore(s => s + (hintUsed ? 0.5 : 1));
+      setCorrectCount(count => count + 1);
       setStreak(s => s + 1);
     } else {
       playWrong();
@@ -309,6 +327,26 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
 
   const nextQuestion = () => {
     if (currentQ + 1 >= questions.length) {
+      const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
+      const recorded = recordCompletedGameResult({
+        rulesVersion: 1,
+        gameId: 'quiz-battle',
+        variantId: 'exotic',
+        configKey,
+        format: 'solo',
+        participant: { id: playerId, name: playerName, kind: playerId.startsWith('guest:') ? 'guest' : 'profile' },
+        metrics: {
+          score,
+          normalizedScore: Math.round((score / questions.length) * 100),
+          correct: correctCount,
+          total: questions.length,
+          elapsedMs: completedElapsedMs,
+        },
+      });
+      const updated = getGameLeaderboard('quiz-battle', 'exotic', configKey, 'solo');
+      setElapsedMs(completedElapsedMs);
+      setLeaderboard(updated);
+      setNewBestId(recorded && updated.some(entry => entry.id === recorded.id) ? recorded.id : null);
       setPhase('result');
       if (score >= questions.length * 0.7) playCollect();
     } else {
@@ -324,7 +362,7 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     return (
       <div className="quiz-setup">
         <button className="back-btn" onClick={onBack}>&larr; Back</button>
-        <h2 className="setup-title">&#9762; Exotic Elements</h2>
+        <h2 className="setup-title">⚔️ Quiz Battle — Exotic</h2>
         <Elementor expression="greeting" message="Welcome to the Exotic Elements quiz! We'll explore synthetic, superheavy, and unstable elements that push the boundaries of science!" />
         <button className="start-btn" onClick={startQuiz}>Start Quiz!</button>
       </div>
@@ -426,15 +464,21 @@ export default function ExoticQuizScreen({ onBack }: ExoticQuizScreenProps) {
     <div className="quiz-result">
       <Elementor expression={pct >= 80 ? 'celebrate' : pct >= 50 ? 'correct' : 'hint'} message={resultMsg} />
       <div className="result-card">
-        <h2>Exotic Elements Complete!</h2>
+        <h2>Quiz Battle — Exotic Complete!</h2>
         <div className="result-stats">
           <p className="result-score">{displayScore} / {questions.length}</p>
           <p className="result-pct">{pct}%</p>
         </div>
       </div>
+      <div className="atomic-order-leaderboard match-trial-leaderboard">
+        <span className="atomic-order-best-mode">Exotic · {questionCount} questions · {(elapsedMs / 1000).toFixed(1)}s · hint retry for half points</span>
+        <span className="atomic-order-best-label">🏆 Quiz Battle Exotic Top 10</span>
+        {newBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+        {leaderboard.length ? <ol className="atomic-order-leaderboard-list">{leaderboard.map(entry => <li key={entry.id} className={entry.id === newBestId ? 'me' : ''}><span>{entry.participant.name} · {entry.metrics.score}/{entry.metrics.total}</span><span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span></li>)}</ol> : <span className="atomic-order-best-values">No scores yet — set the first!</span>}
+      </div>
       <div className="result-actions">
         <button className="start-btn" onClick={startQuiz}>Play Again</button>
-        <button className="back-btn" onClick={onBack}>Back to Menu</button>
+        <button className="back-btn" onClick={onBack}>Back to Games</button>
       </div>
     </div>
   );

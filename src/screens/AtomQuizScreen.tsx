@@ -1,10 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { speakText } from '../engine/tts.ts';
 import { playCorrect, playWrong, playCollect } from '../engine/sounds.ts';
+import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
 
 interface AtomQuizScreenProps {
   onBack: () => void;
+  playerId: string;
+  playerName: string;
+  championshipRunId?: string;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -414,7 +418,7 @@ export function generateAtomQuestions(count: number): AtomQuestion[] {
   return pool.slice(0, Math.min(count, pool.length)).map(fn => fn());
 }
 
-export default function AtomQuizScreen({ onBack }: AtomQuizScreenProps) {
+export default function AtomQuizScreen({ onBack, playerId, playerName, championshipRunId }: AtomQuizScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [questions, setQuestions] = useState<AtomQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
@@ -422,8 +426,13 @@ export default function AtomQuizScreen({ onBack }: AtomQuizScreenProps) {
   const [streak, setStreak] = useState(0);
   const [answered, setAnswered] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [newBestId, setNewBestId] = useState<string | null>(null);
+  const startedAtRef = useRef(0);
 
   const questionCount = 12;
+  const configKey = buildGameConfigKey('atom-quiz', 'classic', { questions: questionCount });
 
   const startQuiz = useCallback(() => {
     setQuestions(generateAtomQuestions(questionCount));
@@ -431,8 +440,12 @@ export default function AtomQuizScreen({ onBack }: AtomQuizScreenProps) {
     setScore(0);
     setStreak(0);
     setAnswered(null);
+    setElapsedMs(0);
+    setNewBestId(null);
+    setLeaderboard(getGameLeaderboard('atom-quiz', 'classic', configKey, 'solo'));
+    startedAtRef.current = Date.now();
     setPhase('playing');
-  }, []);
+  }, [configKey]);
 
   const handleAnswer = (idx: number) => {
     if (answered !== null) return;
@@ -450,6 +463,27 @@ export default function AtomQuizScreen({ onBack }: AtomQuizScreenProps) {
 
   const nextQuestion = () => {
     if (currentQ + 1 >= questions.length) {
+      const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
+      const recorded = recordCompletedGameResult({
+        rulesVersion: 1,
+        gameId: 'atom-quiz',
+        variantId: 'classic',
+        configKey,
+        format: 'solo',
+        participant: { id: playerId, name: playerName, kind: playerId.startsWith('guest:') ? 'guest' : 'profile' },
+        championshipRunId,
+        metrics: {
+          score,
+          normalizedScore: Math.round((score / questions.length) * 100),
+          correct: score,
+          total: questions.length,
+          elapsedMs: completedElapsedMs,
+        },
+      });
+      const updated = getGameLeaderboard('atom-quiz', 'classic', configKey, 'solo');
+      setElapsedMs(completedElapsedMs);
+      setLeaderboard(updated);
+      setNewBestId(recorded && updated.some(entry => entry.id === recorded.id) ? recorded.id : null);
       setPhase('result');
       if (score >= questions.length * 0.7) playCollect();
     } else {
@@ -551,9 +585,16 @@ export default function AtomQuizScreen({ onBack }: AtomQuizScreenProps) {
           </div>
         </div>
       </div>
+      <div className="atomic-order-leaderboard match-trial-leaderboard">
+        <span className="atomic-order-best-mode">{questionCount} questions · {(elapsedMs / 1000).toFixed(1)}s</span>
+        <span className="atomic-order-best-label">🏆 Atom Quiz Top 10</span>
+        {newBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+        {leaderboard.length ? <ol className="atomic-order-leaderboard-list">{leaderboard.map(entry => <li key={entry.id} className={entry.id === newBestId ? 'me' : ''}><span>{entry.participant.name} · {entry.metrics.score}/{entry.metrics.total}</span><span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span></li>)}</ol> : <span className="atomic-order-best-values">No scores yet — set the first!</span>}
+      </div>
       <div className="result-actions">
-        <button className="start-btn" onClick={startQuiz}>Play Again</button>
-        <button className="back-btn" onClick={onBack}>Home</button>
+        {championshipRunId
+          ? <button className="start-btn" onClick={onBack}>Continue Championship</button>
+          : <><button className="start-btn" onClick={startQuiz}>Play Again</button><button className="back-btn" onClick={onBack}>Back to Games</button></>}
       </div>
     </div>
   );

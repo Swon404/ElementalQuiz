@@ -5,12 +5,17 @@ import HomeScreen from './screens/HomeScreen.tsx';
 import QuizScreen from './screens/QuizScreen.tsx';
 import TwoPlayerScreen from './screens/TwoPlayerScreen.tsx';
 import ExploreScreen from './screens/ExploreScreen.tsx';
-import MemoryGameScreen from './screens/MemoryGameScreen.tsx';
 import ElementOrderScreen from './screens/ElementOrderScreen.tsx';
 import AtomQuizScreen from './screens/AtomQuizScreen.tsx';
 import ExoticQuizScreen from './screens/ExoticQuizScreen.tsx';
 import ElementLabScreen from './screens/ElementLabScreen.tsx';
 import SymbolPickScreen from './screens/SymbolPickScreen.tsx';
+import SoloTrueFalseScreen from './screens/SoloTrueFalseScreen.tsx';
+import SoloClueDuelScreen from './screens/SoloClueDuelScreen.tsx';
+import SoloElementMatchScreen from './screens/SoloElementMatchScreen.tsx';
+import GameHubScreen from './screens/GameHubScreen.tsx';
+import SoloChampionshipScreen from './screens/SoloChampionshipScreen.tsx';
+import type { GameId, PlayerFormat } from './games/catalog.ts';
 import {
   loadProgress, saveProgress, collectElement, addQuizResult,
   loadProfiles, createProfile, deleteProfile, resetProfile, setActiveProfileId, getActiveProfileId,
@@ -18,7 +23,19 @@ import {
 } from './engine/storage.ts';
 import type { Difficulty } from './engine/scoring.ts';
 
-type Screen = 'intro' | 'profile' | 'home' | 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger' | 'two-player' | 'two-player-champ' | 'explore' | 'memory-game' | 'element-order' | 'atom-quiz' | 'exotic-quiz' | 'element-lab' | 'symbol-pick';
+type QuizBattleScreen = 'quiz-battle-classic' | 'quiz-battle-sprint' | 'quiz-battle-deep-dive' | 'quiz-battle-showdown';
+type Screen = 'intro' | 'profile' | 'home' | 'play' | QuizBattleScreen | 'two-player' | 'two-player-champ' | 'solo-champ' | 'explore' | 'atomic-order' | 'atom-quiz' | 'quiz-battle-exotic' | 'element-lab' | 'symbol-pick' | 'solo-tf-blitz' | 'solo-clue-duel' | 'solo-element-match';
+
+const QUIZ_BATTLE_SCREENS: Record<QuizBattleScreen, 'classic' | 'sprint' | 'deep-dive' | 'showdown'> = {
+  'quiz-battle-classic': 'classic',
+  'quiz-battle-sprint': 'sprint',
+  'quiz-battle-deep-dive': 'deep-dive',
+  'quiz-battle-showdown': 'showdown',
+};
+
+function isQuizBattleScreen(screen: Screen): screen is QuizBattleScreen {
+  return screen in QUIZ_BATTLE_SCREENS;
+}
 
 const INTRO_SEEN_KEY = 'elementalquiz_intro_seen';
 
@@ -33,6 +50,8 @@ export default function App() {
   const [progress, setProgress] = useState<PlayerProgress>(loadProgress);
   const [profiles, setProfiles] = useState<PlayerProfile[]>(loadProfiles);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [versusLaunch, setVersusLaunch] = useState<{ gameId: GameId; format: Exclude<PlayerFormat, 'solo'> }>({ gameId: 'quiz-battle', format: 'versus-human' });
+  const [championshipFormat, setChampionshipFormat] = useState<Exclude<PlayerFormat, 'solo'>>('versus-human');
   const [activeProfileName, setActiveProfileName] = useState<string>(() => {
     const id = getActiveProfileId();
     if (id) {
@@ -113,13 +132,48 @@ export default function App() {
       saveProgress(updated);
       return updated;
     });
-    setScreen('home');
+    setScreen(screen === 'quiz-battle-deep-dive' ? 'explore' : 'play');
   }, [screen]);
 
   const handleIntroDone = useCallback(() => {
     localStorage.setItem(INTRO_SEEN_KEY, '1');
     setProfiles(loadProfiles());
     setScreen('profile');
+  }, []);
+
+  const handleLaunchGame = useCallback((gameId: GameId, format: PlayerFormat) => {
+    if (format !== 'solo') {
+      setVersusLaunch({ gameId, format });
+      setScreen('two-player');
+      return;
+    }
+    const soloRoutes: Record<GameId, Screen> = {
+      'quiz-battle': 'quiz-battle-classic',
+      'tf-blitz': 'solo-tf-blitz',
+      'element-match': 'solo-element-match',
+      'clue-duel': 'solo-clue-duel',
+      'symbol-pick': 'symbol-pick',
+      'atomic-order': 'atomic-order',
+      'atom-quiz': 'atom-quiz',
+    };
+    setScreen(soloRoutes[gameId]);
+  }, []);
+
+  const handleLaunchChampionship = useCallback((format: PlayerFormat) => {
+    if (format === 'solo') {
+      setScreen('solo-champ');
+      return;
+    }
+    setChampionshipFormat(format);
+    setScreen('two-player-champ');
+  }, []);
+
+  const handleLaunchQuizVariant = useCallback((variant: 'sprint' | 'showdown') => {
+    const routes: Record<typeof variant, Screen> = {
+      sprint: 'quiz-battle-sprint',
+      showdown: 'quiz-battle-showdown',
+    };
+    setScreen(routes[variant]);
   }, []);
 
   return (
@@ -159,50 +213,111 @@ export default function App() {
           )}
         </>
       )}
-      {(screen === 'quick-quiz' || screen === 'sprint' || screen === 'deep-dive' || screen === 'which-is-bigger') && (
-        <QuizScreen
-          mode={screen}
-          progress={progress}
-          onComplete={handleQuizComplete}
+      {screen === 'play' && (
+        <GameHubScreen
           onBack={() => setScreen('home')}
+          onLaunchGame={handleLaunchGame}
+          onLaunchChampionship={handleLaunchChampionship}
+          onLaunchQuizVariant={handleLaunchQuizVariant}
+        />
+      )}
+      {isQuizBattleScreen(screen) && (
+        <QuizScreen
+          mode={QUIZ_BATTLE_SCREENS[screen]}
+          progress={progress}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+          onComplete={handleQuizComplete}
+          onBack={() => setScreen(screen === 'quiz-battle-deep-dive' ? 'explore' : 'play')}
         />
       )}
       {screen === 'two-player' && (
         <TwoPlayerScreen
+          initialMode={versusLaunch.gameId}
+          initialPlayer2Mode={versusLaunch.format === 'versus-bot' ? 'bot' : 'human'}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player 1'}
           onComplete={() => setScreen('home')}
-          onBack={() => setScreen('home')}
+          onBack={() => setScreen('play')}
         />
       )}
       {screen === 'two-player-champ' && (
         <TwoPlayerScreen
           initialMode="championship"
+          initialPlayer2Mode={championshipFormat === 'versus-bot' ? 'bot' : 'human'}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player 1'}
           onComplete={() => setScreen('home')}
-          onBack={() => setScreen('home')}
+          onBack={() => setScreen('play')}
+        />
+      )}
+      {screen === 'solo-champ' && (
+        <SoloChampionshipScreen
+          progress={progress}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+          onBack={() => setScreen('play')}
         />
       )}
       {screen === 'explore' && (
         <ExploreScreen
           progress={progress}
           onBack={() => setScreen('home')}
+          onDeepDive={() => setScreen('quiz-battle-deep-dive')}
+          onExoticElements={() => setScreen('quiz-battle-exotic')}
         />
       )}
-      {screen === 'memory-game' && (
-        <MemoryGameScreen onBack={() => setScreen('home')} />
-      )}
-      {screen === 'element-order' && (
-        <ElementOrderScreen onBack={() => setScreen('home')} />
+      {screen === 'atomic-order' && (
+        <ElementOrderScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
       )}
       {screen === 'atom-quiz' && (
-        <AtomQuizScreen onBack={() => setScreen('home')} />
+        <AtomQuizScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
       )}
-      {screen === 'exotic-quiz' && (
-        <ExoticQuizScreen onBack={() => setScreen('home')} />
+      {screen === 'quiz-battle-exotic' && (
+        <ExoticQuizScreen
+          onBack={() => setScreen('explore')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
       )}
       {screen === 'element-lab' && (
         <ElementLabScreen onBack={() => setScreen('home')} playerName={activeProfileName} />
       )}
       {screen === 'symbol-pick' && (
-        <SymbolPickScreen onBack={() => setScreen('home')} />
+        <SymbolPickScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
+      )}
+      {screen === 'solo-tf-blitz' && (
+        <SoloTrueFalseScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
+      )}
+      {screen === 'solo-clue-duel' && (
+        <SoloClueDuelScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
+      )}
+      {screen === 'solo-element-match' && (
+        <SoloElementMatchScreen
+          onBack={() => setScreen('play')}
+          playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`}
+          playerName={activeProfileName || 'Player'}
+        />
       )}
     </div>
   );

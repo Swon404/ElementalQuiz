@@ -6,26 +6,34 @@ A fun, interactive periodic table quiz game built for kids! Learn about all 118 
 
 ## Features
 
-### 🎮 Single-Player Modes
-- **Quick Quiz** — Randomised mixed-category questions
-- **Deep Dive** — Pick any of the 118 elements and get quizzed specifically on that element
-- **Atom Quiz** — Identify elements from a live atom model (protons/neutrons/electrons)
-- **Exotic Quiz** — Hard-mode questions on rare and synthetic elements
-- **Symbol Pick** — Pick the correct chemical symbol from look-alike distractors
-- **Element Order** — Drag elements into atomic-number order against the clock
-- **Memory Game** — Match element-name and symbol pairs (8/12/16 pairs)
-- **Element Lab** — Invent your own custom element and add it to your collection
-- **Explore** — Browse the full interactive periodic table and tap any element for details
+### 🎮 Unified games
 
-### 👥 Two-Player Modes
-Take turns on the same device with per-player names, avatars, and difficulty:
-- **Quiz Battle** — Alternating questions, highest score wins
-- **True/False Blitz** — Rapid-fire statement judging
-- **Element Match** — Shared-board target Hunt or private-turn Time Trial with saved Top 5 leaderboards
-- **Clue Duel** — Turn-based elimination clues with ±1 scoring and opponent steal
-- **Symbol Pick** — Pick the correct symbol from name-letter-fabricated look-alikes
-- **Atomic Order** — Race to arrange 3–20 elements using Easy, Medium, or Hard rules and 1×–4× tile sizes
-- **Championship** — Choose which games to include, with Quick, Standard, and Epic lengths
+Choose **Solo**, **2 Players**, or **Player vs Bot**, then play the same seven-game catalogue:
+
+- **Quiz Battle** — Element questions with Classic, Sprint, and Showdown variants
+- **True or False Blitz** — Decide whether element statements are true before the timer expires
+- **Element Match** — Timed Hunt and Time Trial boards; this is the preserved multiplayer-first matching game
+- **Clue Duel** — Identify elements from progressively clearer clues
+- **Symbol Pick** — Pick the correct chemical symbol from close look-alikes
+- **Atomic Order** — Arrange elements using Easy, Medium, or Hard rules and 1×–4× tile sizes
+- **Atom Quiz** — Questions about atomic structure, forces, radiation, and related science
+
+Every compatible configuration has its own leaderboard category. Bots participate in sessions but are never added to human leaderboards.
+
+### 🏆 Championship
+
+- Choose an ordered combination of the same seven games
+- Quick, Standard, and Epic lengths
+- Solo, 2 Players, and Player vs Bot formats
+- Solo Championships reuse the normal Solo games, update each game's leaderboard, and use equal-weight normalized scores
+- Equal game weighting: 100 points for a win, 50 each for a draw, and 0 for a loss
+- Individual game leaderboards update after each leg
+- Exact game/rules combinations have separate Championship leaderboards
+
+### 🔍 Explore and Create
+
+- **Explore** — Browse the periodic table, open element details, study one element in Deep Dive, or learn about rare and radioactive Exotic Elements
+- **Element Lab** — Invent custom elements and retain them in the player collection
 
 ### 🧠 Question Variety
 12+ question categories with multiple generators each:
@@ -120,20 +128,31 @@ src/
 │   └── comparisonData.ts   # Real-world size/mass comparisons
 ├── engine/
 │   ├── questionGenerator.ts  # Question generation logic
+│   ├── gameResults.ts        # Generic game and Championship leaderboards
 │   ├── scoring.ts            # EP, ranks & difficulty config
 │   ├── sounds.ts             # SFX
 │   ├── storage.ts            # Profile, progress & custom-element persistence
 │   └── tts.ts                # Optional text-to-speech
+├── games/              # Canonical catalogue and shared game engines
+│   ├── catalog.ts
+│   ├── atomicOrder.ts
+│   ├── clueDuel.ts
+│   ├── elementMatch.ts
+│   ├── symbolPick.ts
+│   └── trueFalse.ts
 ├── screens/
 │   ├── HomeScreen.tsx
 │   ├── IntroScreen.tsx
 │   ├── ProfileScreen.tsx
-│   ├── QuizScreen.tsx          # Quick + Deep Dive
+│   ├── GameHubScreen.tsx       # Shared game and player-format catalogue
+│   ├── QuizScreen.tsx          # Quiz Battle content variants
 │   ├── AtomQuizScreen.tsx
 │   ├── ExoticQuizScreen.tsx
 │   ├── SymbolPickScreen.tsx
-│   ├── ElementOrderScreen.tsx
-│   ├── MemoryGameScreen.tsx
+│   ├── ElementOrderScreen.tsx  # Canonical Atomic Order Solo UI
+│   ├── SoloClueDuelScreen.tsx
+│   ├── SoloElementMatchScreen.tsx
+│   ├── SoloTrueFalseScreen.tsx
 │   ├── ElementLabScreen.tsx
 │   ├── TwoPlayerScreen.tsx     # All 2-player modes + Championship
 │   └── ExploreScreen.tsx

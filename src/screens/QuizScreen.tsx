@@ -1,18 +1,22 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
-import { generateQuiz, generateDeepDiveQuiz, generateComparisonQuiz, type Question } from '../engine/questionGenerator.ts';
+import { generateQuizBattleQuiz, generateDeepDiveQuiz, generateComparisonQuiz, type Question } from '../engine/questionGenerator.ts';
 import { DIFFICULTY_CONFIG, type Difficulty, getRank, getNextRank } from '../engine/scoring.ts';
 import { speakText } from '../engine/tts.ts';
 import { playRankUp, playCollect } from '../engine/sounds.ts';
 import { elements } from '../data/elements.ts';
 import type { PlayerProgress } from '../engine/storage.ts';
+import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
 
 interface QuizScreenProps {
-  mode: 'quick-quiz' | 'sprint' | 'deep-dive' | 'which-is-bigger';
+  mode: 'classic' | 'sprint' | 'deep-dive' | 'showdown';
   progress: PlayerProgress;
   onComplete: (earned: number, correct: number, total: number, collected: number[], difficulty: Difficulty) => void;
   onBack: () => void;
+  playerId: string;
+  playerName: string;
+  championshipRunId?: string;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -30,7 +34,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   'actinide': '#a67abd',
 };
 
-export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizScreenProps) {
+export default function QuizScreen({ mode, progress, onComplete, onBack, playerId, playerName, championshipRunId }: QuizScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [difficulty, setDifficulty] = useState<Difficulty>('explorer');
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -41,12 +45,25 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
   const [collectedInSession, setCollectedInSession] = useState<number[]>([]);
   const [selectedElement, setSelectedElement] = useState<number | null>(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [newBestId, setNewBestId] = useState<string | null>(null);
+  const startedAtRef = useRef(0);
+
+  const variantId = mode;
+  const expectedQuestionCount = mode === 'sprint' ? 50 : mode === 'deep-dive' ? 8 : 10;
+  const configKey = buildGameConfigKey('quiz-battle', variantId, {
+    difficulty,
+    questions: expectedQuestionCount,
+    selectedElement: mode === 'deep-dive' ? selectedElement : null,
+    timed: mode === 'sprint',
+  });
 
   const startQuiz = useCallback(() => {
     let count = 10;
     if (mode === 'sprint') count = 50;
     if (mode === 'deep-dive') count = 8;
-    if (mode === 'which-is-bigger') count = 10;
+    if (mode === 'showdown') count = 10;
 
     let qs: Question[];
     if (mode === 'deep-dive') {
@@ -59,10 +76,10 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
         el = elements[Math.floor(Math.random() * poolSize)];
       }
       qs = generateDeepDiveQuiz(el, difficulty, count);
-    } else if (mode === 'which-is-bigger') {
+    } else if (mode === 'showdown') {
       qs = generateComparisonQuiz(difficulty, count);
     } else {
-      qs = generateQuiz(difficulty, count);
+      qs = generateQuizBattleQuiz(difficulty, count);
     }
 
     setQuestions(qs);
@@ -71,8 +88,12 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     setCorrectCount(0);
     setStreak(0);
     setCollectedInSession([]);
+    setElapsedMs(0);
+    setNewBestId(null);
+    setLeaderboard(getGameLeaderboard('quiz-battle', variantId, configKey, 'solo'));
+    startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [difficulty, mode, selectedElement]);
+  }, [configKey, difficulty, mode, selectedElement, variantId]);
 
   const handleAnswer = useCallback((correct: boolean, points: number, elementNum: number) => {
     setScore(s => s + points);
@@ -87,6 +108,29 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     }
 
     if (currentQ + 1 >= questions.length) {
+      const finalScore = score + points;
+      const finalCorrect = correctCount + (correct ? 1 : 0);
+      const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
+      const recorded = recordCompletedGameResult({
+        rulesVersion: 1,
+        gameId: 'quiz-battle',
+        variantId,
+        configKey,
+        format: 'solo',
+        participant: { id: playerId, name: playerName, kind: playerId.startsWith('guest:') ? 'guest' : 'profile' },
+        championshipRunId,
+        metrics: {
+          score: finalScore,
+          normalizedScore: Math.round((finalCorrect / questions.length) * 100),
+          correct: finalCorrect,
+          total: questions.length,
+          elapsedMs: completedElapsedMs,
+        },
+      });
+      const updated = getGameLeaderboard('quiz-battle', variantId, configKey, 'solo');
+      setElapsedMs(completedElapsedMs);
+      setLeaderboard(updated);
+      setNewBestId(recorded && updated.some(entry => entry.id === recorded.id) ? recorded.id : null);
       setPhase('result');
       // Play result sound: rank up check vs collection sound
       const wouldRankUp = getRank(progress.totalEP + score + points).name !== getRank(progress.totalEP).name;
@@ -95,7 +139,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
     } else {
       setCurrentQ(q => q + 1);
     }
-  }, [currentQ, questions.length, progress.elementsCollected, collectedInSession]);
+  }, [collectedInSession, configKey, correctCount, currentQ, playerId, playerName, progress.elementsCollected, questions.length, score, variantId]);
 
   const finishQuiz = () => {
     onComplete(score, correctCount, questions.length, collectedInSession, difficulty);
@@ -103,13 +147,13 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
 
   if (phase === 'setup') {
     const isDeepDive = mode === 'deep-dive';
-    const isComparison = mode === 'which-is-bigger';
+    const isComparison = mode === 'showdown';
     return (
       <div className="quiz-setup">
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">
-          {mode === 'quick-quiz' && '⚡ Quick Quiz'}
-          {mode === 'sprint' && '⏱️ Element Sprint'}
+          {mode === 'classic' && '⚔️ Quiz Battle — Classic'}
+          {mode === 'sprint' && '⚔️ Quiz Battle — Sprint'}
           {isDeepDive && '🔬 Element Deep Dive'}
           {isComparison && '💥 Element Showdown'}
         </h2>
@@ -225,7 +269,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
         />
         <button className="tts-btn tts-btn-small" onClick={() => speakText(resultMsg)} title="Read aloud">🔊</button>
 
-        <div className="result-card">
+      <div className="result-card">
           <h2>Quiz Complete!</h2>
           <div className="result-stats">
             <div className="result-stat">
@@ -258,8 +302,15 @@ export default function QuizScreen({ mode, progress, onComplete, onBack }: QuizS
           )}
         </div>
 
+        <div className="atomic-order-leaderboard match-trial-leaderboard">
+          <span className="atomic-order-best-mode">{DIFFICULTY_CONFIG[difficulty].label} · {variantId} · {(elapsedMs / 1000).toFixed(1)}s</span>
+          <span className="atomic-order-best-label">🏆 Quiz Battle Top 10</span>
+          {newBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+          {leaderboard.length ? <ol className="atomic-order-leaderboard-list">{leaderboard.map(entry => <li key={entry.id} className={entry.id === newBestId ? 'me' : ''}><span>{entry.participant.name} · {entry.metrics.score} pts · {entry.metrics.correct}/{entry.metrics.total}</span><span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span></li>)}</ol> : <span className="atomic-order-best-values">No scores yet — set the first!</span>}
+        </div>
+
         <div className="result-actions">
-          <button className="start-btn" onClick={finishQuiz}>Continue</button>
+          <button className="start-btn" onClick={finishQuiz}>{championshipRunId ? 'Continue Championship' : 'Continue'}</button>
         </div>
       </div>
     );

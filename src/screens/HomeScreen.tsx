@@ -62,7 +62,7 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
   const [voices, setVoices] = useState<{ name: string; lang: string }[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string | null>(null);
   const [rate, setRate] = useState(getSpeechRate);
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(['quizzes']));
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
 
   const toggleGroup = (id: string) => {
     setOpenGroups(prev => {
@@ -152,83 +152,31 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
       </div>
 
       <nav className="home-menu">
-        <button className="menu-btn primary" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player-champ')}>
-          <span className="menu-icon">🏆</span>
-          <span className="menu-label">2 Player Championship</span>
-          <span className="menu-desc">Choose your games — straight to the championship!</span>
+        <button className="menu-btn primary" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', marginBottom: '0.5rem' }} onClick={() => onNavigate('play')}>
+          <span className="menu-icon">🎮</span>
+          <span className="menu-label">Play Games</span>
+          <span className="menu-desc">Choose Solo, 2 Players, or Player vs Bot — then pick from the same seven games.</span>
         </button>
 
-        <button className="menu-btn two-player" style={{ marginBottom: '0.5rem' }} onClick={() => onNavigate('two-player')}>
-          <span className="menu-icon">👥</span>
-          <span className="menu-label">2 Player Mode</span>
-          <span className="menu-desc">Pick any game — Quiz Battle, Clue Duel & more!</span>
-        </button>
-
-        <MenuGroup id="quizzes" icon="⚡" label="Solo Quizzes" open={openGroups.has('quizzes')} onToggle={toggleGroup}>
-          <button className="menu-btn primary" onClick={() => onNavigate('quick-quiz')}>
-            <span className="menu-icon">⚡</span>
-            <span className="menu-label">Quick Quiz</span>
-            <span className="menu-desc">10 questions, pick your level</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('sprint')}>
-            <span className="menu-icon">⏱️</span>
-            <span className="menu-label">Element Sprint</span>
-            <span className="menu-desc">Race against the clock!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('deep-dive')}>
+        <MenuGroup id="explore" icon="🔍" label="Explore" open={openGroups.has('explore')} onToggle={toggleGroup}>
+          <button className="menu-btn" onClick={() => onNavigate('quiz-battle-deep-dive')}>
             <span className="menu-icon">🔬</span>
             <span className="menu-label">Element Deep Dive</span>
-            <span className="menu-desc">Master one element at a time</span>
+            <span className="menu-desc">Choose one element, study it, and test your knowledge</span>
           </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('atom-quiz')}>
-            <span className="menu-icon">⚛️</span>
-            <span className="menu-label">Atom Quiz</span>
-            <span className="menu-desc">Learn how atoms work — structure, forces & fun facts!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('exotic-quiz')}>
+          <button className="menu-btn" onClick={() => onNavigate('quiz-battle-exotic')}>
             <span className="menu-icon">☢️</span>
             <span className="menu-label">Exotic Elements</span>
-            <span className="menu-desc">Explore synthetic, superheavy & unstable elements!</span>
+            <span className="menu-desc">Learn about rare and radioactive elements with helpful hints</span>
           </button>
-        </MenuGroup>
-
-        <MenuGroup id="brain-games" icon="🧠" label="Brain Games" open={openGroups.has('brain-games')} onToggle={toggleGroup}>
-          <button className="menu-btn" onClick={() => onNavigate('memory-game')}>
-            <span className="menu-icon">🃏</span>
-            <span className="menu-label">Element Memory</span>
-            <span className="menu-desc">Match symbols to names — test your memory!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('symbol-pick')}>
-            <span className="menu-icon">🔤</span>
-            <span className="menu-label">Symbol Pick</span>
-            <span className="menu-desc">Pick the correct symbol from similar look-alikes!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('element-order')}>
-            <span className="menu-icon">📊</span>
-            <span className="menu-label">Element Order</span>
-            <span className="menu-desc">Put elements in order by atomic number!</span>
-          </button>
-
-          <button className="menu-btn" onClick={() => onNavigate('which-is-bigger')}>
-            <span className="menu-icon">💥</span>
-            <span className="menu-label">Element Showdown</span>
-            <span className="menu-desc">Which element wins? Heaviest, priciest, scariest!</span>
-          </button>
-        </MenuGroup>
-
-        <MenuGroup id="explore" icon="🔍" label="Explore & Create" open={openGroups.has('explore')} onToggle={toggleGroup}>
           <button className="menu-btn" onClick={() => onNavigate('explore')}>
             <span className="menu-icon">🗂️</span>
             <span className="menu-label">Periodic Table</span>
             <span className="menu-desc">Explore & learn about every element</span>
           </button>
+        </MenuGroup>
 
+        <MenuGroup id="create" icon="🧪" label="Create" open={openGroups.has('create')} onToggle={toggleGroup}>
           <button className="menu-btn" onClick={() => onNavigate('element-lab')}>
             <span className="menu-icon">🧪</span>
             <span className="menu-label">Element Lab</span>

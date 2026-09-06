@@ -26,14 +26,40 @@ import {
 import { playCorrect, playWrong } from '../engine/sounds.ts';
 import { speakText } from '../engine/tts.ts';
 import { generateAtomQuestions, type AtomQuestion } from './AtomQuizScreen.tsx';
+import { GAME_CATALOG, GAME_IDS, GAME_LIST, type ChampionshipSize, type GameId } from '../games/catalog.ts';
+import { generateSymbolRounds, type SymbolRound } from '../games/symbolPick.ts';
+import { generateMatchCards, generateMatchCardsForElements, type MatchCard, type MatchTrialResult } from '../games/elementMatch.ts';
+import {
+  ATOMIC_ORDER_LEVELS,
+  ATOMIC_ORDER_TILE_COUNTS,
+  generateAtomicOrderRounds,
+  type AtomicOrderFeedback,
+  type AtomicOrderResult,
+  type AtomicOrderRound,
+} from '../games/atomicOrder.ts';
+import { generateClueRounds as generateSnapRounds, type ClueRound as SnapRound } from '../games/clueDuel.ts';
+import { generateTrueFalseStatements, type TrueFalseStatement } from '../games/trueFalse.ts';
+import {
+  buildGameConfigKey,
+  buildChampionshipCombinationKey,
+  getChampionshipLeaderboard,
+  getGameLeaderboard,
+  recordCompletedChampionshipResult,
+  recordCompletedGameResult,
+  type ChampionshipLeaderboardEntry,
+  type LeaderboardEntry,
+} from '../engine/gameResults.ts';
 
 interface TwoPlayerScreenProps {
   onComplete: () => void;
   onBack: () => void;
-  initialMode?: 'championship';
+  initialMode?: GameId | 'championship';
+  initialPlayer2Mode?: 'human' | 'bot';
+  playerId: string;
+  playerName: string;
 }
 
-type GameMode = 'quiz-battle' | 'tf-blitz' | 'element-match' | 'clue-duel' | 'symbol-pick' | 'atom-quiz' | 'atomic-order' | 'championship';
+type GameMode = GameId | 'championship';
 type Phase = 'mode-select' | 'setup' | 'playing' | 'result' | 'champ-between' | 'champ-result';
 
 type PlayerConfig = {
@@ -48,6 +74,7 @@ const AVATARS = ['⚛️', '🧪', '🔬', '💎', '🌟', '🚀', '🔮', '🌈
 
 const BOT_DELAY_MS = 2000;
 const BOT_RESULT_DELAY_MS = 1800;
+const MATCH_MISMATCH_DELAY_MS = 180;
 const HUNT_TARGET_PAIR_POINTS = 2;
 const HUNT_WIN_BONUS = 2;
 const BOT_ACCURACY: Record<Difficulty, number> = {
@@ -62,11 +89,7 @@ const BOT_MATCH_ACCURACY: Record<Difficulty, number> = {
 };
 
 // --- True or False types ---
-type TFStatement = { text: string; answer: boolean; explanation: string };
-
-// --- Element Match types ---
-type MatchCard = { id: number; text: string; elementNum: number; flipped: boolean; matched: boolean; matchedBy?: 1 | 2 };
-type MatchTrialResult = { elapsedMs: number; matches: number };
+type LegacyTFStatement = { text: string; answer: boolean; explanation: string };
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -90,9 +113,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   'actinide': 'an actinide',
 };
 
-function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
+function generateLegacyTFStatements(count: number, pool: number = 36): LegacyTFStatement[] {
+  // Keep the existing call shape while all supported modes move to the canonical generator.
+  if (count >= 0 && pool >= 0) return generateTrueFalseStatements(count, pool);
+
   const poolElements = shuffleArray(elements.slice(0, pool));
-  const statements: TFStatement[] = [];
+  const statements: LegacyTFStatement[] = [];
 
   for (let i = 0; i < count && i < poolElements.length; i++) {
     const el = poolElements[i];
@@ -279,292 +305,23 @@ function generateTFStatements(count: number, pool: number = 36): TFStatement[] {
   return statements;
 }
 
-function generateMatchCards(pairCount: number, pool: number = 118, exotic: boolean = false, requiredElementNum?: number | null): MatchCard[] {
-  const source = exotic ? elements.filter(e => e.atomicNumber >= 84) : elements.slice(0, pool);
-  const required = requiredElementNum ? elements.find(e => e.atomicNumber === requiredElementNum) : null;
-  const picked = required
-    ? [required, ...shuffleArray(source.filter(e => e.atomicNumber !== required.atomicNumber)).slice(0, pairCount - 1)]
-    : shuffleArray(source).slice(0, pairCount);
-  const cards: MatchCard[] = [];
-  let id = 0;
-  for (const el of picked) {
-    cards.push({ id: id++, text: el.symbol, elementNum: el.atomicNumber, flipped: false, matched: false });
-    cards.push({ id: id++, text: el.name, elementNum: el.atomicNumber, flipped: false, matched: false });
-  }
-  return shuffleArray(cards);
-}
-
-function generateMatchCardsForElements(elementNums: number[]): MatchCard[] {
-  const cards: MatchCard[] = [];
-  let id = 0;
-  for (const elementNum of elementNums) {
-    const el = elements.find(item => item.atomicNumber === elementNum);
-    if (!el) continue;
-    cards.push({ id: id++, text: el.symbol, elementNum, flipped: false, matched: false });
-    cards.push({ id: id++, text: el.name, elementNum, flipped: false, matched: false });
-  }
-  return shuffleArray(cards);
-}
-
-// --- Element Snap types ---
-type SnapRound = {
-  clues: string[];        // 5 progressive clues, vague → obvious
-  correctName: string;
-  choices: string[];       // 8 element names
-};
-
-// --- Symbol Pick types ---
-type SymbolRound = {
-  elementName: string;
-  correctSymbol: string;
-  choices: string[];
-};
-
-// --- Atomic Order types ---
-type AtomicOrderRound = { p1: number[]; p2: number[] };
-type AtomicOrderFeedback = 'correct' | 'left' | 'right';
-type AtomicOrderResult = { solved: boolean; attempts: number; elapsedMs: number };
-const ATOMIC_ORDER_TILE_COUNTS: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
-const ATOMIC_ORDER_LEVELS: Record<AtomicOrderLevel, {
-  label: string;
-  description: string;
-  showHints: boolean;
-  wrongGuessPenalty: boolean;
-  randomizeStart: boolean;
-  countOnlyFeedback: boolean;
-}> = {
-  easy: {
-    label: 'Easy',
-    description: 'Direction hints · no penalty · all misplaced · show tiles',
-    showHints: true,
-    wrongGuessPenalty: false,
-    randomizeStart: false,
-    countOnlyFeedback: false,
-  },
-  medium: {
-    label: 'Medium',
-    description: 'No directions · +1s penalty · all misplaced · show tiles',
-    showHints: false,
-    wrongGuessPenalty: true,
-    randomizeStart: false,
-    countOnlyFeedback: false,
-  },
-  hard: {
-    label: 'Hard',
-    description: 'No directions · +1s penalty · random start · count only',
-    showHints: false,
-    wrongGuessPenalty: true,
-    randomizeStart: true,
-    countOnlyFeedback: true,
-  },
-};
-
-function shuffledAtomicNumbers(pool: number, count: number, randomizeStart: boolean): number[] {
-  const picked = shuffleArray(elements.slice(0, pool)).slice(0, count).map(el => el.atomicNumber);
-  const sorted = [...picked].sort((a, b) => a - b);
-  if (randomizeStart) {
-    // Use an ordinary shuffle, only rejecting the already-complete order.
-    // Unlike the challenge start, individual tiles are allowed to begin correctly.
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const shuffled = shuffleArray(sorted);
-      if (shuffled.some((value, index) => value !== sorted[index])) return shuffled;
-    }
-  }
-  for (let attempt = 0; attempt < 50; attempt++) {
-    const shuffled = shuffleArray(sorted);
-    if (shuffled.every((value, index) => value !== sorted[index])) return shuffled;
-  }
-  // A one-place rotation is a guaranteed fallback derangement.
-  return [...sorted.slice(1), sorted[0]];
-}
-
-function generateAtomicOrderRounds(count: number, p1Difficulty: Difficulty, p2Difficulty: Difficulty, multiplier: AtomicOrderMultiplier, randomizeStart: boolean): AtomicOrderRound[] {
-  return Array.from({ length: count }, () => ({
-    p1: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p1Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p1Difficulty] * multiplier, randomizeStart),
-    p2: shuffledAtomicNumbers(DIFFICULTY_CONFIG[p2Difficulty].elementPool, ATOMIC_ORDER_TILE_COUNTS[p2Difficulty] * multiplier, randomizeStart),
-  }));
-}
-
-/** Pick distractor symbols that look very similar to the correct one.
- *  Prioritises same-first-letter, same-length, real-symbol, and name-letter look-alikes.
- */
-function pickSimilarSymbols(correctSymbol: string, elementName: string, count: number): string[] {
-  const firstU = correctSymbol[0].toUpperCase();
-  const firstL = firstU.toLowerCase();
-  const correctLower = correctSymbol.toLowerCase();
-  const nameLetters: string[] = [];
-  const nameSeen = new Set<string>();
-  for (const ch of elementName.toLowerCase()) {
-    if (ch >= 'a' && ch <= 'z' && ch !== firstL && !nameSeen.has(ch)) {
-      nameSeen.add(ch);
-      nameLetters.push(ch);
-    }
-  }
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(c => c !== firstL);
-  const realSymbols = elements.map(e => e.symbol);
-
-  const candidates = new Set<string>();
-
-  // Real symbols that start the same are the hardest distractors.
-  for (const s of realSymbols) {
-    if (s !== correctSymbol && s[0] === firstU) candidates.add(s);
-  }
-
-  // Plausible fake symbols made from the element name.
-  for (const l of nameLetters) candidates.add(firstU + l);
-  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l);
-
-  // One-letter symbols are especially tricky when mixed with real same-first two-letter symbols.
-  if (correctSymbol.length === 1) {
-    for (const s of realSymbols) {
-      if (s.length === 2 && s[0] === firstU && s !== correctSymbol) candidates.add(s);
-    }
-  }
-
-  // Nearby alphabet second letters create slips like Ca/Cb/Cd/Ce.
-  if (correctSymbol.length === 2) {
-    const secondCode = correctSymbol[1].toLowerCase().charCodeAt(0);
-    for (let offset = -3; offset <= 3; offset++) {
-      const code = secondCode + offset;
-      if (code >= 97 && code <= 122 && code !== secondCode) {
-        candidates.add(firstU + String.fromCharCode(code));
-      }
-    }
-  }
-
-  candidates.delete(correctSymbol);
-
-  const scored = Array.from(candidates).map(s => {
-    let score = 0;
-    if (s[0] === firstU) score += 10;
-    if (realSymbols.includes(s)) score += 5;
-    if (s.length === correctSymbol.length) score += 4;
-    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 4;
-    const cSet = new Set(correctSymbol.toLowerCase());
-    for (const ch of s.toLowerCase()) if (cSet.has(ch)) score += 1;
-    let samePositions = 0;
-    for (let i = 0; i < Math.min(s.length, correctSymbol.length); i++) {
-      if (s[i].toLowerCase() === correctLower[i]) samePositions++;
-    }
-    score += samePositions * 3;
-    return { s, score, r: Math.random() };
-  });
-  scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-
-  const picked: string[] = [];
-  const used = new Set<string>();
-  for (const { s } of scored) {
-    if (!used.has(s) && s !== correctSymbol) {
-      used.add(s);
-      picked.push(s);
-      if (picked.length >= count) break;
-    }
-  }
-
-  // Last-resort fill still favours real symbols before random fakes.
-  for (const s of shuffleArray(realSymbols)) {
-    if (picked.length >= count) break;
-    if (!used.has(s) && s !== correctSymbol) {
-      used.add(s);
-      picked.push(s);
-    }
-  }
-
-  return picked.slice(0, count);
-}
-
-function generateSymbolRounds(count: number, pool: number = 118): SymbolRound[] {
-  const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
-  return picked.map(el => {
-    const distractors = pickSimilarSymbols(el.symbol, el.name, 9); // 9 distractors + correct = 10 choices
-    const choices = shuffleArray([el.symbol, ...distractors]);
-    return { elementName: el.name, correctSymbol: el.symbol, choices };
-  });
-}
-
-function generateSnapRounds(count: number, pool: number = 118): SnapRound[] {
-  const poolElements = shuffleArray(elements.slice(0, pool));
-  const rounds: SnapRound[] = [];
-  for (let i = 0; i < count && i < poolElements.length; i++) {
-    const el = poolElements[i];
-    const catLabel = CATEGORY_LABELS[el.category] || el.category;
-
-    // Helper: remove the element name from a string so clues don't give it away
-    const scrub = (s: string) => {
-      const esc = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      // Remove exact element name
-      let result = s.replace(new RegExp(esc(el.name), 'gi'), '???');
-      // Remove exact symbol as a standalone token
-      result = result.replace(new RegExp(`\\b${esc(el.symbol)}\\b`, 'g'), '??');
-      // Also scrub words derived from the element name (e.g. "California" for "Californium")
-      if (el.name.length >= 7) {
-        const prefixLen = Math.max(5, Math.floor(el.name.length * 0.65));
-        const prefix = esc(el.name.slice(0, prefixLen));
-        result = result.replace(new RegExp(`\\b${prefix}\\w*`, 'gi'), '???');
-      }
-      return result;
-    };
-
-    // 5 clues: vague → obvious
-    const relatable = pickRelatableTrivia(el);
-    const factPool = shuffleArray([el.funFact, ...(el.additionalFacts ?? []), relatable?.explanation].filter((fact): fact is string => Boolean(fact)));
-    const earlyClues = shuffleArray([
-      relatable ? `Real-life clue: ${scrub(relatable.question)}` : null,
-      factPool[1] ? scrub(factPool[1]) : null,
-      el.obtainedFrom ? `I can be obtained from: ${scrub(el.obtainedFrom)}.` : null,
-      el.compounds.length > 0 ? `One compound connected with me is ${scrub(el.compounds[0])}.` : null,
-      el.uses.length > 0 ? `People use me for: ${scrub(el.uses[Math.floor(Math.random() * el.uses.length)])}.` : null,
-    ].filter((clue): clue is string => Boolean(clue)));
-
-    const clues: string[] = [
-      // Clue 1 — fun fact (scrubbed so name doesn't appear)
-      scrub(factPool[0] || `This element is ${catLabel}.`),
-      // Clue 2 — a real-world use (relatable!)
-      earlyClues[0] ?? (el.uses && el.uses.length > 0
-        ? `One of my real-world uses is: ${scrub(el.uses[0])}.`
-        : `I'm ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`),
-      // Clue 3 — what type + state
-      `I'm classified as ${catLabel} and I'm a ${el.stateAtRoomTemp} at room temperature.`,
-      // Clue 4 — atomic number (can count on the periodic table!)
-      `I have ${el.atomicNumber} protons — that's my atomic number on the periodic table.`,
-      // Clue 5 — almost a giveaway
-      `My symbol is "${el.symbol}" and my atomic mass is ${el.atomicMass}.`,
-    ];
-
-    // 8 choices: correct + 7 distractors from similar elements
-    const sameCat = elements.filter(e => e.category === el.category && e.name !== el.name);
-    const others = elements.filter(e => e.category !== el.category && e.name !== el.name);
-    const distractorPool = shuffleArray([...sameCat.slice(0, 4), ...others]).slice(0, 7);
-    const choices = shuffleArray([el.name, ...distractorPool.map(e => e.name)]);
-
-    rounds.push({ clues, correctName: el.name, choices });
-  }
-  return rounds;
-}
+// TODO: remove this historical implementation after saved-game migration is finalized.
+void generateLegacyTFStatements;
 
 // --- Championship config ---
-const DEFAULT_CHAMP_GAMES: GameMode[] = ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match'];
-const CHAMP_LABELS: Record<string, string> = {
-  'quiz-battle': '⚔️ Quiz Battle',
-  'tf-blitz': '✅ True or False Blitz',
-  'element-match': '🃏 Element Match',
-  'clue-duel': '🕵️ Clue Duel',
-  'symbol-pick': '🔤 Symbol Pick',
-  'atom-quiz': '⚛️ Atom Quiz',
-  'atomic-order': '🔢 Atomic Order',
-};
+const DEFAULT_CHAMP_GAMES: GameId[] = [...GAME_IDS];
+const CHAMP_LABELS: Record<GameId, string> = Object.fromEntries(
+  GAME_LIST.map(game => [game.id, `${game.icon} ${game.label}`]),
+) as Record<GameId, string>;
 
-type ChampSize = 'quick' | 'standard' | 'epic';
-const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: Record<Exclude<GameMode, 'championship'>, number> }> = {
-  quick: { label: 'Quick', desc: 'Short games', counts: {
-    'quiz-battle': 3, 'tf-blitz': 3, 'element-match': 12, 'atom-quiz': 4, 'clue-duel': 4, 'symbol-pick': 4, 'atomic-order': 3,
-  } },
-  standard: { label: 'Standard', desc: 'Medium games', counts: {
-    'quiz-battle': 5, 'tf-blitz': 5, 'element-match': 16, 'atom-quiz': 8, 'clue-duel': 6, 'symbol-pick': 6, 'atomic-order': 5,
-  } },
-  epic: { label: 'Epic', desc: 'Long games', counts: {
-    'quiz-battle': 8, 'tf-blitz': 8, 'element-match': 20, 'atom-quiz': 12, 'clue-duel': 8, 'symbol-pick': 8, 'atomic-order': 7,
-  } },
+type ChampSize = ChampionshipSize;
+const champCounts = (size: ChampSize): Record<GameId, number> => Object.fromEntries(
+  GAME_LIST.map(game => [game.id, game.championshipCounts[size]]),
+) as Record<GameId, number>;
+const CHAMP_SIZE_CONFIG: Record<ChampSize, { label: string; desc: string; counts: Record<GameId, number> }> = {
+  quick: { label: 'Quick', desc: 'Short games', counts: champCounts('quick') },
+  standard: { label: 'Standard', desc: 'Medium games', counts: champCounts('standard') },
+  epic: { label: 'Epic', desc: 'Long games', counts: champCounts('epic') },
 };
 
 type ChampGameScore = {
@@ -634,7 +391,7 @@ function AtomicOrderSetupControls({
 
 
 
-export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: TwoPlayerScreenProps) {
+export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initialPlayer2Mode, playerId, playerName }: TwoPlayerScreenProps) {
   const [savedSettings] = useState(loadTwoPlayerSettings);
   const [phase, setPhase] = useState<Phase>(initialMode ? 'setup' : 'mode-select');
   const [gameMode, setGameMode] = useState<GameMode>(initialMode ?? 'championship');
@@ -645,11 +402,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const saved = loadTwoPlayerNames();
   const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: savedSettings.player1Difficulty, avatar: saved.avatar1 });
   const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: savedSettings.player2Difficulty, avatar: saved.avatar2 });
-  const [player2Mode, setPlayer2Mode] = useState<Player2Mode>(savedSettings.player2Mode);
+  const [player2Mode, setPlayer2Mode] = useState<Player2Mode>(initialPlayer2Mode ?? savedSettings.player2Mode);
 
   // Shared scores
   const [p1Score, setP1Score] = useState(0);
   const [p2Score, setP2Score] = useState(0);
+  const [genericLeaderboard, setGenericLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [genericLeaderboardBestId, setGenericLeaderboardBestId] = useState<string | null>(null);
+  const [championshipLeaderboard, setChampionshipLeaderboard] = useState<ChampionshipLeaderboardEntry[]>([]);
+  const [championshipLeaderboardBestId, setChampionshipLeaderboardBestId] = useState<string | null>(null);
 
   // Quiz Battle state
   const [currentPlayer, setCurrentPlayer] = useState(1);
@@ -661,7 +422,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [p2Streak, setP2Streak] = useState(0);
 
   // True or False Blitz state
-  const [tfStatements, setTfStatements] = useState<TFStatement[]>([]);
+  const [tfStatements, setTfStatements] = useState<TrueFalseStatement[]>([]);
   const [tfIndex, setTfIndex] = useState(0);
   const [tfTurn, setTfTurn] = useState(1);
   const [tfAnswered, setTfAnswered] = useState<boolean | null>(null);
@@ -677,6 +438,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [matchExotic, setMatchExotic] = useState(savedSettings.matchExotic);
   const [matchMode, setMatchMode] = useState<ElementMatchMode>(savedSettings.matchMode);
   const [matchTrialTarget, setMatchTrialTarget] = useState<ElementMatchTrialTarget>(savedSettings.matchTrialTarget);
+  const [huntTimed, setHuntTimed] = useState(savedSettings.huntTimed);
   const [huntTargetMode, setHuntTargetMode] = useState<'none' | 'random' | 'choose'>(savedSettings.huntTargetMode);
   const [huntTargetElementNum, setHuntTargetElementNum] = useState<number | null>(savedSettings.huntTargetElementNum);
   const [huntPickerOpen, setHuntPickerOpen] = useState(false);
@@ -703,6 +465,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const gameStartedAtRef = useRef(0);
+  const genericResultRecordedRef = useRef(false);
+  const championshipRunIdRef = useRef('');
+  const championshipCombinationKeyRef = useRef('');
+  const championshipStartedAtRef = useRef(0);
   const matchFinishTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const huntRecordedRef = useRef(false);
   const huntFinishedElapsedRef = useRef(0);
@@ -761,11 +528,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const [isChampionship, setIsChampionship] = useState(false);
   const [isChampTiebreaker, setIsChampTiebreaker] = useState(false);
   const [champSize, setChampSize] = useState<ChampSize>(savedSettings.champSize);
-  const [selectedChampGames, setSelectedChampGames] = useState<GameMode[]>(() => {
-    const valid = savedSettings.championshipGames.filter((mode): mode is GameMode => DEFAULT_CHAMP_GAMES.includes(mode as GameMode));
+  const [selectedChampGames, setSelectedChampGames] = useState<GameId[]>(() => {
+    const valid = savedSettings.championshipGames.filter((mode): mode is GameId => DEFAULT_CHAMP_GAMES.includes(mode as GameId));
     return valid.length >= 2 ? valid : DEFAULT_CHAMP_GAMES;
   });
-  const [activeChampGames, setActiveChampGames] = useState<GameMode[]>(selectedChampGames);
+  const [activeChampGames, setActiveChampGames] = useState<GameId[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
   const isMatchTimeTrial = gameMode === 'element-match' && matchMode === 'time-trial' && !isChampTiebreaker;
   const matchTrialPool: ElementMatchPool = matchExotic ? 'exotic' : 'all';
@@ -787,13 +554,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       matchExotic,
       matchMode,
       matchTrialTarget,
+      huntTimed,
       huntTargetMode,
       huntTargetElementNum,
       huntRequiredPairs,
       orderChallengeLevel,
       orderTileMultiplier,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, matchExotic, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, huntTimed, matchExotic, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -802,8 +570,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     prevPhaseRef.current = phase;
   }, [phase]);
 
-  const normalizeChampPoints = useCallback((_mode: GameMode, score: number) => {
-    return score;
+  useEffect(() => {
+    if (phase !== 'playing') return;
+    gameStartedAtRef.current = Date.now();
+    genericResultRecordedRef.current = false;
+  }, [gameMode, phase]);
+
+  const normalizeChampPoints = useCallback((playerOneScore: number, playerTwoScore: number) => {
+    if (playerOneScore === playerTwoScore) return { p1: 50, p2: 50 };
+    return playerOneScore > playerTwoScore ? { p1: 100, p2: 0 } : { p1: 0, p2: 100 };
   }, []);
 
   const committedChampTotals = champScores.reduce((totals, game) => {
@@ -814,8 +589,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, { p1: 0, p2: 0 });
 
   const liveChampTotals = {
-    p1: committedChampTotals.p1 + (isChampionship && phase === 'playing' ? normalizeChampPoints(gameMode, p1Score) : 0),
-    p2: committedChampTotals.p2 + (isChampionship && phase === 'playing' ? normalizeChampPoints(gameMode, p2Score) : 0),
+    p1: committedChampTotals.p1 + (isChampionship && phase === 'playing' ? normalizeChampPoints(p1Score, p2Score).p1 : 0),
+    p2: committedChampTotals.p2 + (isChampionship && phase === 'playing' ? normalizeChampPoints(p1Score, p2Score).p2 : 0),
   };
 
   const championshipTotalsBar = isChampionship && phase === 'playing' ? (
@@ -834,11 +609,18 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const quitToMenu = () => {
     setShowQuitConfirm(false);
-    setPhase('mode-select');
+    if (initialMode) onBack();
+    else setPhase('mode-select');
   };
 
   // Shared pool size for content-neutral games: use the easier player's pool so both can compete
   const sharedPool = () => Math.min(DIFFICULTY_CONFIG[player1.difficulty].elementPool, DIFFICULTY_CONFIG[player2.difficulty].elementPool);
+  const currentPlayerFormat = () => player2Mode === 'bot' ? 'versus-bot' as const : 'versus-human' as const;
+  const participantForTurn = (turn: 1 | 2) => turn === 1
+    ? { id: playerId, name: player1.name || playerName, kind: playerId.startsWith('guest:') ? 'guest' as const : 'profile' as const }
+    : player2Mode === 'bot'
+      ? { id: 'bot:elementor', name: player2.name, kind: 'bot' as const }
+      : { id: `guest:versus:${player2.name.trim().toLowerCase() || 'player-2'}`, name: player2.name, kind: 'guest' as const };
 
   // --- Quiz Battle ---
   const startQuizBattle = useCallback(() => {
@@ -1017,7 +799,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, []);
 
   const startTFBlitz = useCallback(() => {
-    setTfStatements(generateTFStatements(rounds * 2, sharedPool()));
+    setTfStatements(generateTrueFalseStatements(rounds * 2, sharedPool()));
     setTfIndex(0);
     setTfTurn(1);
     setTfAnswered(null);
@@ -1080,14 +862,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   };
 
   const prepareHuntTimer = (pairCount: number) => {
-    setHuntStartedAt(0);
-    setHuntTimerStarted(false);
+    setHuntStartedAt(huntTimed ? 0 : Date.now());
+    setHuntTimerStarted(!huntTimed);
     setHuntCountdown(null);
     setHuntElapsed(0);
     setHuntNewBest(false);
     huntRecordedRef.current = false;
     huntFinishedElapsedRef.current = 0;
-    setHuntLeaderboard(getElementMatchHuntLeaderboard(matchExotic ? 'exotic' : 'all', pairCount, huntTargetMode, huntRequiredPairs));
+    setHuntLeaderboard(huntTimed ? getElementMatchHuntLeaderboard(matchExotic ? 'exotic' : 'all', pairCount, huntTargetMode, huntRequiredPairs) : []);
   };
 
   const startElementMatch = useCallback(() => {
@@ -1122,10 +904,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     botKnownCardsRef.current.clear();
     resetScores();
     setPhase('playing');
-  }, [rounds, matchExotic, matchMode, matchTrialTarget, huntTargetMode, huntTargetElementNum, huntRequiredPairs, isChampTiebreaker]);
+  }, [rounds, matchExotic, matchMode, matchTrialTarget, huntTargetMode, huntTargetElementNum, huntRequiredPairs, huntTimed, isChampTiebreaker]);
 
   const startHuntTimer = () => {
-    if (huntTimerStarted || huntCountdown !== null) return;
+    if (!huntTimed || huntTimerStarted || huntCountdown !== null) return;
     setHuntCountdown(3);
   };
 
@@ -1147,6 +929,26 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setMatchTrialResult(result);
 
     const botFinisher = matchTurn === 2 && player2Mode === 'bot';
+    recordCompletedGameResult({
+      rulesVersion: 1,
+      championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
+      gameId: 'element-match',
+      variantId: 'time-trial',
+      configKey: buildGameConfigKey('element-match', 'time-trial', {
+        pool: matchTrialPool,
+        pairs: rounds,
+        target: matchTrialTarget,
+      }),
+      format: currentPlayerFormat(),
+      participant: participantForTurn(matchTurn as 1 | 2),
+      metrics: {
+        score: result.matches,
+        normalizedScore: matchTrialGoal ? Math.round((result.matches / matchTrialGoal) * 100) : 0,
+        correct: result.matches,
+        total: matchTrialGoal,
+        elapsedMs: result.elapsedMs,
+      },
+    });
     if (!botFinisher) {
       const finisher = matchTurn === 1 ? player1 : player2;
       const recorded = recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
@@ -1290,7 +1092,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           setMatchFirst(null);
           setMatchLocked(false);
           if (!isMatchTimeTrial) setMatchTurn(t => t === 1 ? 2 : 1);
-        }, 1000);
+        }, MATCH_MISMATCH_DELAY_MS);
       }
     }
   };
@@ -1358,10 +1160,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   }, [gameMode, huntCountdown, isMatchTimeTrial, phase]);
 
   useEffect(() => {
-    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || !huntTimerStarted || !huntStartedAt) return;
+    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || !huntTimed || !huntTimerStarted || !huntStartedAt) return;
     const timer = setInterval(() => setHuntElapsed(Date.now() - huntStartedAt), 100);
     return () => clearInterval(timer);
-  }, [gameMode, huntStartedAt, huntTimerStarted, isMatchTimeTrial, phase]);
+  }, [gameMode, huntStartedAt, huntTimed, huntTimerStarted, isMatchTimeTrial, phase]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -1440,6 +1242,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setSymbolTurn(1);
     setSymbolAnswered(null);
     if (!isChampionship) resetScores();
+    gameStartedAtRef.current = Date.now();
+    genericResultRecordedRef.current = false;
     setPhase('playing');
   }, [rounds, isChampionship]);
 
@@ -1572,10 +1376,31 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
   const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
     setOrderTurnResult(result);
 
+    const finisher = orderTurn === 1 ? player1 : player2;
+    recordCompletedGameResult({
+      rulesVersion: 1,
+      championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
+      gameId: 'atomic-order',
+      variantId: 'arrange',
+      configKey: buildGameConfigKey('atomic-order', 'arrange', {
+        difficulty: finisher.difficulty,
+        challenge: orderChallengeLevel,
+        multiplier: orderTileMultiplier,
+        tiles: ATOMIC_ORDER_TILE_COUNTS[finisher.difficulty] * orderTileMultiplier,
+      }),
+      format: currentPlayerFormat(),
+      participant: participantForTurn(orderTurn),
+      metrics: {
+        score: result.solved ? 1 : 0,
+        normalizedScore: result.solved ? 100 : 0,
+        elapsedMs: result.elapsedMs,
+        attempts: result.attempts,
+      },
+    });
+
     // Bot times are simulated for pacing, not a genuine result — skip the leaderboard for bot turns.
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
     if (!isBotFinisher) {
-      const finisher = orderTurn === 1 ? player1 : player2;
       const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderChallengeLevel, orderTileMultiplier, result.elapsedMs);
       if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderLeaderboardP1(leaderboard);
       if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderLeaderboardP2(leaderboard);
@@ -1682,7 +1507,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setPhase('playing');
     } else if (mode === 'tf-blitz') {
       const n = counts[mode];
-      setTfStatements(generateTFStatements(n * 2, sharedPool()));
+      setTfStatements(generateTrueFalseStatements(n * 2, sharedPool()));
       setTfIndex(0);
       setTfTurn(1);
       setTfAnswered(null);
@@ -1748,6 +1573,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setSymbolTurn(1);
       setSymbolAnswered(null);
       setRounds(n);
+      gameStartedAtRef.current = Date.now();
+      genericResultRecordedRef.current = false;
       setPhase('playing');
     } else if (mode === 'atomic-order') {
       startAtomicOrder(counts[mode]);
@@ -1756,6 +1583,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
 
   const startChampionship = () => {
     const games = selectedChampGames.length >= 2 ? selectedChampGames : DEFAULT_CHAMP_GAMES;
+    const format = currentPlayerFormat();
+    const combinationKey = buildChampionshipCombinationKey({
+      format,
+      size: champSize,
+      playerOneDifficulty: player1.difficulty,
+      playerTwoDifficulty: player2.difficulty,
+      orderedGames: games.map(game => `${game}:${game === 'element-match' ? matchMode : GAME_CATALOG[game].variants[0]}`),
+      elementMatchRules: JSON.stringify({ matchExotic, matchTrialTarget, huntTimed, huntTargetMode, huntTargetElementNum, huntRequiredPairs }),
+      atomicOrderRules: JSON.stringify({ orderChallengeLevel, orderTileMultiplier }),
+      rulesVersion: 1,
+    });
+    championshipRunIdRef.current = `champ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+    championshipCombinationKeyRef.current = combinationKey;
+    championshipStartedAtRef.current = Date.now();
+    setChampionshipLeaderboard(getChampionshipLeaderboard(combinationKey));
+    setChampionshipLeaderboardBestId(null);
     setIsChampionship(true);
     setActiveChampGames(games);
     setChampStep(0);
@@ -1772,6 +1615,72 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     setP1Score(finalP1);
     setP2Score(finalP2);
 
+    const genericScoreGame = gameMode === 'quiz-battle'
+      || gameMode === 'tf-blitz'
+      || gameMode === 'clue-duel'
+      || gameMode === 'symbol-pick'
+      || gameMode === 'atom-quiz';
+    if (genericScoreGame && !genericResultRecordedRef.current) {
+      genericResultRecordedRef.current = true;
+      const format = player2Mode === 'bot' ? 'versus-bot' : 'versus-human';
+      const alternatingTotal = gameMode === 'tf-blitz'
+        ? tfStatements.length
+        : gameMode === 'symbol-pick'
+          ? symbolRounds.length
+          : gameMode === 'atom-quiz'
+            ? atomQuestions.length
+            : 0;
+      const playerOneTotal = alternatingTotal ? Math.ceil(alternatingTotal / 2) : rounds;
+      const playerTwoTotal = alternatingTotal ? Math.floor(alternatingTotal / 2) : rounds;
+      const configKey = buildGameConfigKey(gameMode, 'classic', {
+        pool: sharedPool(),
+        rounds,
+        totalQuestions: alternatingTotal || rounds * 2,
+        playerOneDifficulty: player1.difficulty,
+        playerTwoDifficulty: player2.difficulty,
+        timeLimitSeconds: gameMode === 'tf-blitz' ? TF_SECONDS : null,
+      });
+      const elapsedMs = Math.max(1, Date.now() - gameStartedAtRef.current);
+      const playerOneResult = recordCompletedGameResult({
+        rulesVersion: 1,
+        championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
+        gameId: gameMode,
+        variantId: 'classic',
+        configKey,
+        format,
+        participant: { id: playerId, name: player1.name || playerName, kind: playerId.startsWith('guest:') ? 'guest' : 'profile' },
+        metrics: {
+          score: finalP1,
+          normalizedScore: playerOneTotal ? Math.round((finalP1 / playerOneTotal) * 100) : 0,
+          correct: finalP1,
+          total: playerOneTotal,
+          elapsedMs,
+        },
+      });
+      const playerTwoResult = recordCompletedGameResult({
+        rulesVersion: 1,
+        championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
+        gameId: gameMode,
+        variantId: 'classic',
+        configKey,
+        format,
+        participant: player2Mode === 'bot'
+          ? { id: 'bot:elementor', name: player2.name, kind: 'bot' }
+          : { id: `guest:versus:${player2.name.trim().toLowerCase() || 'player-2'}`, name: player2.name, kind: 'guest' },
+        metrics: {
+          score: finalP2,
+          normalizedScore: playerTwoTotal ? Math.round((finalP2 / playerTwoTotal) * 100) : 0,
+          correct: finalP2,
+          total: playerTwoTotal,
+          elapsedMs,
+        },
+      });
+      const updatedLeaderboard = getGameLeaderboard(gameMode, 'classic', configKey, format);
+      setGenericLeaderboard(updatedLeaderboard);
+      const newResultIds = [playerOneResult?.id, playerTwoResult?.id].filter(Boolean);
+      setGenericLeaderboardBestId(updatedLeaderboard.find(entry => newResultIds.includes(entry.id))?.id ?? null);
+    }
+
     if (gameMode === 'element-match' && !isMatchTimeTrial && !huntRecordedRef.current) {
       huntRecordedRef.current = true;
       const elapsedMs = huntFinishedElapsedRef.current || Math.max(1, Date.now() - huntStartedAt);
@@ -1779,24 +1688,80 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
       setHuntTimerStarted(false);
       const winner = finalP1 > finalP2 ? player1 : finalP2 > finalP1 ? player2 : null;
       const winnerIsBot = winner === player2 && player2Mode === 'bot';
-      if (winner && !winnerIsBot) {
+      if (huntTimed && winner && !winnerIsBot) {
         const recorded = recordElementMatchHuntTime(winner.name, matchExotic ? 'exotic' : 'all', rounds, huntTargetMode, huntRequiredPairs, elapsedMs);
         setHuntLeaderboard(recorded.leaderboard);
         setHuntNewBest(recorded.madeLeaderboard);
       }
+      const winnerTurn = finalP1 > finalP2 ? 1 : finalP2 > finalP1 ? 2 : null;
+      if (winnerTurn) {
+        const winnerScore = winnerTurn === 1 ? finalP1 : finalP2;
+        recordCompletedGameResult({
+          rulesVersion: 1,
+          championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
+          gameId: 'element-match',
+          variantId: 'hunt',
+          configKey: buildGameConfigKey('element-match', 'hunt', {
+            pool: matchExotic ? 'exotic' : 'all',
+            pairs: rounds,
+            targetMode: huntTargetMode,
+            targetElement: huntTargetMode === 'choose' ? huntTargetElementNum : null,
+            unlockAfterPairs: huntRequiredPairs,
+            timed: huntTimed,
+          }),
+          format: currentPlayerFormat(),
+          participant: participantForTurn(winnerTurn),
+          metrics: {
+            score: winnerScore,
+            normalizedScore: Math.round((winnerScore / Math.max(1, rounds + HUNT_WIN_BONUS + HUNT_TARGET_PAIR_POINTS - 1)) * 100),
+            elapsedMs,
+          },
+        });
+      }
     }
 
     if (isChampionship) {
-      const champP1 = normalizeChampPoints(gameMode, finalP1);
-      const champP2 = normalizeChampPoints(gameMode, finalP2);
-      // Save this game's raw scores — they carry over directly as championship points
-      setChampScores(prev => [...prev, {
+      const normalized = normalizeChampPoints(finalP1, finalP2);
+      const completedScores = [...champScores, {
         p1Raw: finalP1,
         p2Raw: finalP2,
-        p1Champ: champP1,
-        p2Champ: champP2,
-      }]);
+        p1Champ: normalized.p1,
+        p2Champ: normalized.p2,
+      }];
+      setChampScores(completedScores);
       if (champStep + 1 >= activeChampGames.length) {
+        const elapsedMs = Math.max(1, Date.now() - championshipStartedAtRef.current);
+        const combinationKey = championshipCombinationKeyRef.current;
+        const totals = completedScores.reduce((sum, score) => ({
+          p1: sum.p1 + score.p1Champ,
+          p2: sum.p2 + score.p2Champ,
+        }), { p1: 0, p2: 0 });
+        const p1Result = recordCompletedChampionshipResult({
+          rulesVersion: 1,
+          runId: championshipRunIdRef.current,
+          combinationKey,
+          format: currentPlayerFormat(),
+          participant: participantForTurn(1),
+          championshipPoints: totals.p1,
+          gamesWon: completedScores.filter(score => score.p1Raw > score.p2Raw).length,
+          gamesDrawn: completedScores.filter(score => score.p1Raw === score.p2Raw).length,
+          elapsedMs,
+        });
+        const p2Result = recordCompletedChampionshipResult({
+          rulesVersion: 1,
+          runId: championshipRunIdRef.current,
+          combinationKey,
+          format: currentPlayerFormat(),
+          participant: participantForTurn(2),
+          championshipPoints: totals.p2,
+          gamesWon: completedScores.filter(score => score.p2Raw > score.p1Raw).length,
+          gamesDrawn: completedScores.filter(score => score.p1Raw === score.p2Raw).length,
+          elapsedMs,
+        });
+        const updatedLeaderboard = getChampionshipLeaderboard(combinationKey);
+        setChampionshipLeaderboard(updatedLeaderboard);
+        const newIds = [p1Result?.id, p2Result?.id].filter(Boolean);
+        setChampionshipLeaderboardBestId(updatedLeaderboard.find(entry => newIds.includes(entry.id))?.id ?? null);
         setPhase('champ-result');
       } else {
         setPhase('champ-between');
@@ -2114,57 +2079,57 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             className={`game-mode-btn ${gameMode === 'quiz-battle' ? 'selected' : ''}`}
             onClick={() => { setGameMode('quiz-battle'); setRounds(3); setPhase('setup'); }}
           >
-            <span className="gm-icon">⚔️</span>
-            <span className="gm-name">Quiz Battle</span>
-            <span className="gm-desc">Take turns answering — most correct wins!</span>
+            <span className="gm-icon">{GAME_CATALOG['quiz-battle'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['quiz-battle'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['quiz-battle'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'tf-blitz' ? 'selected' : ''}`}
             onClick={() => { setGameMode('tf-blitz'); setPhase('setup'); }}
           >
-            <span className="gm-icon">✅</span>
-            <span className="gm-name">True or False Blitz</span>
-            <span className="gm-desc">Is it true? Is it false? Take turns deciding!</span>
+            <span className="gm-icon">{GAME_CATALOG['tf-blitz'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['tf-blitz'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['tf-blitz'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'element-match' ? 'selected' : ''}`}
             onClick={() => { setGameMode('element-match'); setRounds(12); setPhase('setup'); }}
           >
-            <span className="gm-icon">🃏</span>
-            <span className="gm-name">Element Match</span>
-            <span className="gm-desc">Play a timed shared-board Hunt or race separate Time Trial runs!</span>
+            <span className="gm-icon">{GAME_CATALOG['element-match'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['element-match'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['element-match'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'clue-duel' ? 'selected' : ''}`}
             onClick={() => { setGameMode('clue-duel'); setPhase('setup'); }}
           >
-            <span className="gm-icon">🕵️</span>
-            <span className="gm-name">Clue Duel</span>
-            <span className="gm-desc">Take turns — guess the element from a clue, or pass!</span>
+            <span className="gm-icon">{GAME_CATALOG['clue-duel'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['clue-duel'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['clue-duel'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'symbol-pick' ? 'selected' : ''}`}
             onClick={() => { setGameMode('symbol-pick'); setPhase('setup'); }}
           >
-            <span className="gm-icon">🔤</span>
-            <span className="gm-name">Symbol Pick</span>
-            <span className="gm-desc">Pick the correct symbol from look-alikes!</span>
+            <span className="gm-icon">{GAME_CATALOG['symbol-pick'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['symbol-pick'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['symbol-pick'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'atomic-order' ? 'selected' : ''}`}
             onClick={() => { setGameMode('atomic-order'); setRounds(5); setPhase('setup'); }}
           >
-            <span className="gm-icon">🔢</span>
-            <span className="gm-name">Atomic Order</span>
-            <span className="gm-desc">Race to order elements — unlimited tries!</span>
+            <span className="gm-icon">{GAME_CATALOG['atomic-order'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['atomic-order'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['atomic-order'].description}</span>
           </button>
           <button
             className={`game-mode-btn ${gameMode === 'atom-quiz' ? 'selected' : ''}`}
             onClick={() => { setGameMode('atom-quiz'); setPhase('setup'); }}
           >
-            <span className="gm-icon">⚛️</span>
-            <span className="gm-name">Atom Quiz</span>
-            <span className="gm-desc">Take turns answering atomic structure questions!</span>
+            <span className="gm-icon">{GAME_CATALOG['atom-quiz'].icon}</span>
+            <span className="gm-name">{GAME_CATALOG['atom-quiz'].label}</span>
+            <span className="gm-desc">{GAME_CATALOG['atom-quiz'].description}</span>
           </button>
         </div>
       </div>
@@ -2177,7 +2142,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
     const championshipHasAtomicOrder = selectedChampGames.includes('atomic-order');
     return (
       <div className="two-player-setup">
-        <button className="back-btn" onClick={() => setPhase('mode-select')}>← Back</button>
+        <button className="back-btn" onClick={() => initialMode ? onBack() : setPhase('mode-select')}>← Back</button>
         <h2 className="setup-title">
           {gameMode === 'quiz-battle' && '⚔️ Quiz Battle'}
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
@@ -2254,7 +2219,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             <label>Mode: </label>
             <button className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button>
             <button className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}>⏱️ Time Trial</button>
-            <span className="gm-desc">{matchMode === 'hunt' ? 'Share one timed board; the winner can set a leaderboard time.' : 'Take separate turns; fastest wins.'}</span>
+            <span className="gm-desc">{matchMode === 'hunt' ? (huntTimed ? 'Share one timed board; the winner can set a leaderboard time.' : 'Share one relaxed board; highest score wins.') : 'Take separate turns; fastest wins.'}</span>
+          </div>
+        )}
+        {gameMode === 'element-match' && matchMode === 'hunt' && (
+          <div className="rounds-select">
+            <label>Timer: </label>
+            <button className={`round-btn ${!huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(false)}>Off</button>
+            <button className={`round-btn ${huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(true)}>On</button>
+            <span className="gm-desc">Turn on for the timed Hunt leaderboard</span>
           </div>
         )}
 
@@ -2419,7 +2392,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               <div className="champ-options-heading">
                 <div>
                   <strong>Element Match options</strong>
-                  <span>{matchMode === 'hunt' ? 'Timed shared board · fastest winner joins the leaderboard' : 'Separate timed runs · fastest player wins'}</span>
+                  <span>{matchMode === 'hunt' ? (huntTimed ? 'Timed shared board · fastest winner joins the leaderboard' : 'Relaxed shared board · highest score wins') : 'Separate timed runs · fastest player wins'}</span>
                 </div>
                 <span className="champ-option-status">{championshipHasElementMatch ? 'Included' : 'Game not selected'}</span>
               </div>
@@ -2440,6 +2413,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 ⏱️ Time Trial
               </button>
             </div>
+            {matchMode === 'hunt' && (
+              <div className="rounds-select">
+                <label>Timer: </label>
+                <button disabled={!championshipHasElementMatch} className={`round-btn ${!huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(false)}>Off</button>
+                <button disabled={!championshipHasElementMatch} className={`round-btn ${huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(true)}>On</button>
+                <span className="gm-desc">Turn on for the timed Hunt leaderboard</span>
+              </div>
+            )}
             <div className="rounds-select">
               <label>Element pool: </label>
               <button disabled={!championshipHasElementMatch} className={`round-btn ${!matchExotic ? 'selected' : ''}`} onClick={() => setMatchExotic(false)}>⚗️ All</button>
@@ -2560,7 +2541,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                   </span>
                 ))}
               </div>
-              <p className="champ-info-footer">{selectedChampGames.length} games selected — scores add up across the Championship.</p>
+              <p className="champ-info-footer">{selectedChampGames.length} games selected — each game awards 100 points for a win or 50 each for a draw.</p>
             </div>
           </>
         )}
@@ -2812,7 +2793,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         </div>
         {renderTurnBanner(matchTurn as 1 | 2, huntTimerStarted ? `${claimedPairs}/${rounds} pairs` : huntCountdown !== null ? `Starting in ${huntCountdown}` : 'Ready to start')}
         {championshipTotalsBar}
-        <div className="atomic-order-card match-hunt-timer-card">
+        {huntTimed && <div className="atomic-order-card match-hunt-timer-card">
           {huntTimerStarted && (
             <div className="atomic-order-big-timer">{(huntElapsed / 1000).toFixed(1)}<span>s</span></div>
           )}
@@ -2831,7 +2812,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               )}
             </div>
           )}
-        </div>
+        </div>}
         {huntTarget && (
           <div className="hunt-target-banner">
             Target: <strong>{huntTarget.name} ({huntTarget.symbol})</strong>
@@ -2869,7 +2850,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             );
           })}
         </div>}
-        <div className="atomic-order-leaderboard match-trial-leaderboard">
+        {huntTimed && <div className="atomic-order-leaderboard match-trial-leaderboard">
           <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · {huntTargetMode === 'none' ? 'Full board' : `${huntTargetMode === 'choose' ? 'Chosen' : 'Random'} target`}</span>
           <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
           {huntLeaderboard.length ? (
@@ -2881,7 +2862,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
               ))}
             </ol>
           ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
-        </div>
+        </div>}
       </div>
     );
   }
@@ -3303,7 +3284,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         </div>
 
-        {justFinished === 'element-match' && matchMode === 'hunt' && (
+        {justFinished === 'element-match' && matchMode === 'hunt' && huntTimed && (
           <div className="atomic-order-leaderboard match-trial-leaderboard">
             <span className="atomic-order-best-mode">Completed in {(huntElapsed / 1000).toFixed(1)}s</span>
             <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
@@ -3318,13 +3299,29 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         )}
 
+        {genericLeaderboard.length > 0 && gameMode !== 'element-match' && gameMode !== 'atomic-order' && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">{player2Mode === 'bot' ? 'Player vs Bot' : '2 Players'} · {rounds} rounds</span>
+            <span className="atomic-order-best-label">🏆 {GAME_CATALOG[justFinished].label} Top 10</span>
+            {genericLeaderboardBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+            <ol className="atomic-order-leaderboard-list">
+              {genericLeaderboard.map(entry => (
+                <li key={entry.id} className={entry.id === genericLeaderboardBestId ? 'me' : ''}>
+                  <span>{entry.participant.name} · {entry.metrics.score}/{entry.metrics.total}</span>
+                  <span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
         <div className="champ-running-total">
           <h3>Running Championship Points</h3>
           <div className="champ-total-row">
             <span>{player1.avatar} {player1.name}: <strong>{totalP1}</strong></span>
             <span>{player2.avatar} {player2.name}: <strong>{totalP2}</strong></span>
           </div>
-          <p>Total points are the sum of all scores across all games.</p>
+          <p>Each game awards 100 points for a win, 50 each for a draw, and 0 for a loss.</p>
         </div>
 
         <button className="start-btn" onClick={nextChampGame}>
@@ -3384,7 +3381,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
             </tbody>
           </table>
         </div>
-        {activeChampGames[activeChampGames.length - 1] === 'element-match' && matchMode === 'hunt' && (
+        {activeChampGames[activeChampGames.length - 1] === 'element-match' && matchMode === 'hunt' && huntTimed && (
           <div className="atomic-order-leaderboard match-trial-leaderboard">
             <span className="atomic-order-best-mode">Hunt completed in {(huntElapsed / 1000).toFixed(1)}s</span>
             <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
@@ -3396,6 +3393,21 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
                 ))}
               </ol>
             )}
+          </div>
+        )}
+        {championshipLeaderboard.length > 0 && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">{champSize} · {player2Mode === 'bot' ? 'Player vs Bot' : '2 Players'} · exact game combination</span>
+            <span className="atomic-order-best-label">🏆 Championship Top 10</span>
+            {championshipLeaderboardBestId && <span className="atomic-order-new-best">🎉 New Championship best!</span>}
+            <ol className="atomic-order-leaderboard-list">
+              {championshipLeaderboard.map(entry => (
+                <li key={entry.id} className={entry.id === championshipLeaderboardBestId ? 'me' : ''}>
+                  <span>{entry.participant.name} · {entry.championshipPoints} pts · {entry.gamesWon} wins</span>
+                  <span>{(entry.elapsedMs / 1000).toFixed(1)}s</span>
+                </li>
+              ))}
+            </ol>
           </div>
         )}
         <p>The champion has the highest total across the {activeChampGames.length} selected games.</p>
@@ -3411,7 +3423,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
         )}
         <div className="result-actions">
           <button className="start-btn" onClick={() => { setIsChampionship(false); startChampionship(); }}>Play Again!</button>
-          <button className="back-btn" onClick={() => { setIsChampionship(false); setPhase('mode-select'); }}>Change Game</button>
+          <button className="back-btn" onClick={() => { setIsChampionship(false); if (initialMode) onBack(); else setPhase('mode-select'); }}>Change Game</button>
           <button className="back-btn" onClick={onComplete}>Home</button>
         </div>
       </div>
@@ -3461,7 +3473,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         </div>
 
-        {gameMode === 'element-match' && matchMode === 'hunt' && (
+        {gameMode === 'element-match' && matchMode === 'hunt' && huntTimed && (
           <div className="atomic-order-leaderboard match-trial-leaderboard">
             <span className="atomic-order-best-mode">Completed in {(huntElapsed / 1000).toFixed(1)}s</span>
             <span className="atomic-order-best-label">🏆 Hunt Fastest Winners</span>
@@ -3478,6 +3490,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           </div>
         )}
 
+        {genericLeaderboard.length > 0 && gameMode !== 'element-match' && gameMode !== 'atomic-order' && (
+          <div className="atomic-order-leaderboard match-trial-leaderboard">
+            <span className="atomic-order-best-mode">{player2Mode === 'bot' ? 'Player vs Bot' : '2 Players'} · {rounds} rounds</span>
+            <span className="atomic-order-best-label">🏆 {modeLabel} Top 10</span>
+            {genericLeaderboardBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+            <ol className="atomic-order-leaderboard-list">
+              {genericLeaderboard.map(entry => (
+                <li key={entry.id} className={entry.id === genericLeaderboardBestId ? 'me' : ''}>
+                  <span>{entry.participant.name} · {entry.metrics.score}/{entry.metrics.total}</span>
+                  <span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
         <div className="result-actions">
           {isChampTiebreaker ? (
             <>
@@ -3488,7 +3516,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode }: Two
           ) : (
             <>
               <button className="start-btn" onClick={startGame}>Rematch!</button>
-              <button className="back-btn" onClick={() => setPhase('mode-select')}>Change Game</button>
+              <button className="back-btn" onClick={() => initialMode ? onBack() : setPhase('mode-select')}>Change Game</button>
               <button className="back-btn" onClick={onComplete}>Home</button>
             </>
           )}

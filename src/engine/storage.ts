@@ -47,6 +47,7 @@ export type TwoPlayerSettings = {
   matchExotic: boolean;
   matchMode: ElementMatchMode;
   matchTrialTarget: ElementMatchTrialTarget;
+  huntTimed: boolean;
   huntTargetMode: 'none' | 'random' | 'choose';
   huntTargetElementNum: number | null;
   huntRequiredPairs: number;
@@ -64,6 +65,7 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   matchExotic: false,
   matchMode: 'hunt',
   matchTrialTarget: 5,
+  huntTimed: false,
   huntTargetMode: 'none',
   huntTargetElementNum: null,
   huntRequiredPairs: 0,

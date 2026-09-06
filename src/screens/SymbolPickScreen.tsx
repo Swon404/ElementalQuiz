@@ -1,101 +1,30 @@
 import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
-import { elements } from '../data/elements.ts';
 import { playCorrect, playWrong, playCollect } from '../engine/sounds.ts';
+import { generateSymbolRounds, type SymbolRound } from '../games/symbolPick.ts';
+import {
+  buildGameConfigKey,
+  getGameLeaderboard,
+  recordCompletedGameResult,
+  type LeaderboardEntry,
+} from '../engine/gameResults.ts';
 
 interface SymbolPickScreenProps {
   onBack: () => void;
+  playerId: string;
+  playerName: string;
+  championshipRunId?: string;
 }
-
-type SymbolRound = {
-  elementName: string;
-  correctSymbol: string;
-  choices: string[];
-};
 
 type Phase = 'setup' | 'playing' | 'result';
 
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+const SYMBOL_RULES = {
+  easy: { pool: 20, distractors: 4 },
+  medium: { pool: 50, distractors: 5 },
+  hard: { pool: 118, distractors: 6 },
+} as const;
 
-function pickSimilarSymbols(correctSymbol: string, elementName: string, count: number): string[] {
-  const firstU = correctSymbol[0].toUpperCase();
-  const firstL = firstU.toLowerCase();
-  // Letters from the element's name (unique, lowercase, excluding first letter)
-  const nameLetters: string[] = [];
-  const nameSeen = new Set<string>();
-  for (const ch of elementName.toLowerCase()) {
-    if (ch >= 'a' && ch <= 'z' && ch !== firstL && !nameSeen.has(ch)) {
-      nameSeen.add(ch);
-      nameLetters.push(ch);
-    }
-  }
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('').filter(c => c !== firstL);
-
-  // Build candidates: fabricated 2-letter forms starting with correct first letter
-  const candidates = new Set<string>();
-  for (const l of nameLetters) candidates.add(firstU + l); // name-based
-  for (const l of shuffleArray(alphabet)) candidates.add(firstU + l); // fill
-
-  // Also pull in real same-first-letter symbols (harder when they exist)
-  for (const s of elements.map(e => e.symbol)) {
-    if (s !== correctSymbol && s[0] === firstU) candidates.add(s);
-  }
-
-  // Sprinkle a few completely unrelated real symbols for noise if count is large
-  const unrelated = elements.map(e => e.symbol).filter(s => s[0] !== firstU && s !== correctSymbol);
-  const noise = shuffleArray(unrelated).slice(0, Math.max(0, Math.min(2, count - 3)));
-
-  candidates.delete(correctSymbol);
-
-  // Score: prefer name-letter fakes, then other 2-letter fakes starting same letter, then real same-first, then noise
-  const scored = Array.from(candidates).map(s => {
-    let score = 0;
-    if (s[0] === firstU) score += 5;
-    if (s.length === 2 && nameLetters.includes(s[1]?.toLowerCase() ?? '')) score += 6;
-    if (s.length === correctSymbol.length) score += 2;
-    // shared letters with correct
-    const cSet = new Set(correctSymbol.toLowerCase());
-    for (const ch of s.toLowerCase()) if (cSet.has(ch)) score += 1;
-    return { s, score, r: Math.random() };
-  });
-  scored.sort((a, b) => (b.score - a.score) || (a.r - b.r));
-
-  const top = scored.slice(0, Math.max(count + 1, count * 2)).map(x => x.s);
-  const picked: string[] = [];
-  const used = new Set<string>();
-  // Guarantee at least half come from top-scored look-alikes
-  for (const s of shuffleArray(top)) {
-    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); if (picked.length >= count - noise.length) break; }
-  }
-  // Add noise at the end
-  for (const s of noise) {
-    if (!used.has(s) && s !== correctSymbol && picked.length < count) { used.add(s); picked.push(s); }
-  }
-  // Top-up if short
-  for (const s of shuffleArray(top)) {
-    if (picked.length >= count) break;
-    if (!used.has(s) && s !== correctSymbol) { used.add(s); picked.push(s); }
-  }
-  return picked.slice(0, count);
-}
-
-function generateRounds(count: number, pool: number, distractors: number): SymbolRound[] {
-  const picked = shuffleArray(elements.slice(0, pool)).slice(0, count);
-  return picked.map(el => {
-    const ds = pickSimilarSymbols(el.symbol, el.name, distractors);
-    const choices = shuffleArray([el.symbol, ...ds]);
-    return { elementName: el.name, correctSymbol: el.symbol, choices };
-  });
-}
-
-export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
+export default function SymbolPickScreen({ onBack, playerId, playerName, championshipRunId }: SymbolPickScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [rounds, setRounds] = useState<SymbolRound[]>([]);
@@ -103,19 +32,30 @@ export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
   const [answered, setAnswered] = useState<number | null>(null);
   const [score, setScore] = useState(0);
   const [showExit, setShowExit] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [newBest, setNewBest] = useState(false);
   const total = 10;
-  const startedRef = useRef(false);
+  const startedAtRef = useRef(0);
+
+  const configKey = buildGameConfigKey('symbol-pick', 'classic', {
+    difficulty,
+    rounds: total,
+    choices: SYMBOL_RULES[difficulty].distractors + 1,
+  });
 
   const startGame = useCallback(() => {
-    const pool = difficulty === 'easy' ? 20 : difficulty === 'medium' ? 50 : 118;
-    const distractors = difficulty === 'easy' ? 4 : difficulty === 'medium' ? 5 : 6;
-    setRounds(generateRounds(total, pool, distractors));
+    const { pool, distractors } = SYMBOL_RULES[difficulty];
+    setRounds(generateSymbolRounds(total, pool, distractors));
     setIdx(0);
     setAnswered(null);
     setScore(0);
+    setElapsedMs(0);
+    setNewBest(false);
+    setLeaderboard(getGameLeaderboard('symbol-pick', 'classic', configKey, 'solo'));
+    startedAtRef.current = Date.now();
     setPhase('playing');
-    startedRef.current = true;
-  }, [difficulty]);
+  }, [configKey, difficulty]);
 
   const handleAnswer = (choiceIdx: number) => {
     if (answered !== null) return;
@@ -128,6 +68,27 @@ export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
 
   const next = () => {
     if (idx + 1 >= rounds.length) {
+      const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
+      const recorded = recordCompletedGameResult({
+        rulesVersion: 1,
+        gameId: 'symbol-pick',
+        variantId: 'classic',
+        configKey,
+        format: 'solo',
+        participant: { id: playerId, name: playerName, kind: playerId.startsWith('guest:') ? 'guest' : 'profile' },
+        championshipRunId,
+        metrics: {
+          score,
+          normalizedScore: Math.round((score / rounds.length) * 100),
+          correct: score,
+          total: rounds.length,
+          elapsedMs: completedElapsedMs,
+        },
+      });
+      const updatedLeaderboard = getGameLeaderboard('symbol-pick', 'classic', configKey, 'solo');
+      setElapsedMs(completedElapsedMs);
+      setLeaderboard(updatedLeaderboard);
+      setNewBest(Boolean(recorded && updatedLeaderboard.some(entry => entry.id === recorded.id)));
       playCollect();
       setPhase('result');
     } else {
@@ -246,9 +207,25 @@ export default function SymbolPickScreen({ onBack }: SymbolPickScreenProps) {
           </div>
         </div>
       </div>
+      <div className="atomic-order-leaderboard match-trial-leaderboard">
+        <span className="atomic-order-best-mode">{difficulty} · {rounds.length} rounds · {(elapsedMs / 1000).toFixed(1)}s</span>
+        <span className="atomic-order-best-label">🏆 Symbol Pick Top 10</span>
+        {newBest && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}
+        {leaderboard.length ? (
+          <ol className="atomic-order-leaderboard-list">
+            {leaderboard.map(entry => (
+              <li key={entry.id} className={entry.participant.id === playerId ? 'me' : ''}>
+                <span>{entry.participant.name} · {entry.metrics.score}/{entry.metrics.total}</span>
+                <span>{entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
+              </li>
+            ))}
+          </ol>
+        ) : <span className="atomic-order-best-values">No scores yet — set the first!</span>}
+      </div>
       <div className="result-actions">
-        <button className="start-btn" onClick={startGame}>Play Again</button>
-        <button className="back-btn" onClick={onBack}>Home</button>
+        {championshipRunId
+          ? <button className="start-btn" onClick={onBack}>Continue Championship</button>
+          : <><button className="start-btn" onClick={startGame}>Play Again</button><button className="back-btn" onClick={onBack}>Back to Games</button></>}
       </div>
     </div>
   );

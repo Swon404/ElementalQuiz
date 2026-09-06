@@ -8,16 +8,32 @@ import type { PlayerProgress, CustomElement } from '../engine/storage.ts';
 interface ExploreScreenProps {
   progress: PlayerProgress;
   onBack: () => void;
+  onDeepDive: () => void;
+  onExoticElements: () => void;
 }
 
-export default function ExploreScreen({ progress, onBack }: ExploreScreenProps) {
+export default function ExploreScreen({ progress, onBack, onDeepDive, onExoticElements }: ExploreScreenProps) {
   const [selectedElement, setSelectedElement] = useState<number | null>(null);
   const [selectedCustom, setSelectedCustom] = useState<CustomElement | null>(null);
 
   return (
     <div className="explore-screen">
       <button className="back-btn" onClick={onBack}>← Back</button>
-      <h2 className="explore-title">🔍 Periodic Table Explorer</h2>
+      <h2 className="explore-title">🔍 Explore Elements</h2>
+      <p className="explore-subtitle">Study one element in depth or browse the whole periodic table.</p>
+
+      <button className="explore-deep-dive" onClick={onDeepDive}>
+        <span className="gm-icon">🔬</span>
+        <span><strong>Element Deep Dive</strong><small>Choose an element, learn its facts, then test what you remember.</small></span>
+        <span aria-hidden="true">›</span>
+      </button>
+      <button className="explore-deep-dive explore-exotic" onClick={onExoticElements}>
+        <span className="gm-icon">☢️</span>
+        <span><strong>Exotic Elements</strong><small>Explore rare and radioactive elements with hints and half-point retries.</small></span>
+        <span aria-hidden="true">›</span>
+      </button>
+
+      <h3 className="explore-section-title">🗂️ Periodic Table</h3>
       <p className="explore-subtitle">Tap any element to learn about it!</p>
 
       <PeriodicTable
