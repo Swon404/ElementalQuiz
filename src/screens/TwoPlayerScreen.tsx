@@ -462,6 +462,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const [matchTrialComplete, setMatchTrialComplete] = useState(false);
   const [matchTrialLeaderboard, setMatchTrialLeaderboard] = useState<ElementMatchLeaderboardEntry[]>([]);
   const [matchTrialNewBest, setMatchTrialNewBest] = useState(false);
+  const matchTrialTurnRef = useRef<1 | 2>(1);
 
   const lockTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const botTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -848,6 +849,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Element Match ---
   const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2) => {
+    matchTrialTurnRef.current = turn;
     setMatchCards(generateMatchCardsForElements(elementNums));
     setMatchTurn(turn);
     setMatchFirst(null);
@@ -924,11 +926,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const finishMatchTrialTurn = (result: MatchTrialResult) => {
+    const completedTurn = matchTrialTurnRef.current;
     setMatchTrialElapsed(result.elapsedMs);
     setMatchTrialTimerStarted(false);
     setMatchTrialResult(result);
 
-    const botFinisher = matchTurn === 2 && player2Mode === 'bot';
+    const botFinisher = completedTurn === 2 && player2Mode === 'bot';
     recordCompletedGameResult({
       rulesVersion: 1,
       championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
@@ -940,7 +943,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         target: matchTrialTarget,
       }),
       format: currentPlayerFormat(),
-      participant: participantForTurn(matchTurn as 1 | 2),
+      participant: participantForTurn(completedTurn),
       metrics: {
         score: result.matches,
         normalizedScore: matchTrialGoal ? Math.round((result.matches / matchTrialGoal) * 100) : 0,
@@ -950,7 +953,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       },
     });
     if (!botFinisher) {
-      const finisher = matchTurn === 1 ? player1 : player2;
+      const finisher = completedTurn === 1 ? player1 : player2;
       const recorded = recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
       setMatchTrialLeaderboard(recorded.leaderboard);
       setMatchTrialNewBest(recorded.madeLeaderboard);
@@ -958,7 +961,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setMatchTrialNewBest(false);
     }
 
-    if (matchTurn === 1) {
+    if (completedTurn === 1) {
       setMatchTrialP1Result(result);
       return;
     }
@@ -974,11 +977,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextMatchTrialStage = () => {
-    if (matchTurn === 1) {
+    if (matchTrialTurnRef.current === 1) {
       beginMatchTrialTurn(matchTrialElementNums, 2);
       return;
     }
-    if (!matchTrialComplete) return;
+    if (!matchTrialComplete || !matchTrialP1Result) return;
     finishCurrentGame(matchTrialWinner === 1 ? 1 : 0, matchTrialWinner === 2 ? 1 : 0);
   };
 
@@ -1612,6 +1615,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const finishCurrentGame = (finalP1: number = p1Score, finalP2: number = p2Score) => {
+    // A Time Trial Championship leg is only valid after both players have run the board.
+    // This also protects against a stale auto-advance callback from closing it after Player 1.
+    if (isMatchTimeTrial && (!matchTrialP1Result || !matchTrialComplete || matchTrialTurnRef.current !== 2)) return;
+
     setP1Score(finalP1);
     setP2Score(finalP2);
 
