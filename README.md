@@ -25,8 +25,8 @@ Every compatible configuration has its own leaderboard category. Bots participat
 - Choose an ordered combination of the same seven games
 - Quick, Standard, and Epic lengths
 - Solo, 2 Players, and Player vs Bot formats
-- Solo Championships reuse the normal Solo games, update each game's leaderboard, and use equal-weight normalized scores
-- Equal game weighting: 100 points for a win, 50 each for a draw, and 0 for a loss
+- Championships total the points earned in each match without normalization
+- Championship Element Match Time Trials use the Atomic Order round count as their match target and a board three times that size; Hunt keeps its existing board sizes
 - Individual game leaderboards update after each leg
 - Exact game/rules combinations have separate Championship leaderboards
 

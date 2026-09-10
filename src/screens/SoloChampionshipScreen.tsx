@@ -53,7 +53,6 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const [matchMode, setMatchMode] = useState<ElementMatchMode>('hunt');
   const [matchPool, setMatchPool] = useState<ElementMatchPool>('all');
   const [matchPairs, setMatchPairs] = useState(12);
-  const [matchTrialTarget, setMatchTrialTarget] = useState<ElementMatchTrialTarget>(5);
   const [huntTimed, setHuntTimed] = useState(false);
   const [huntTargetMode, setHuntTargetMode] = useState<HuntTargetMode>('none');
   const [huntChosenTarget, setHuntChosenTarget] = useState(1);
@@ -61,6 +60,9 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const [atomicDifficulty, setAtomicDifficulty] = useState<Difficulty>('explorer');
   const [atomicChallenge, setAtomicChallenge] = useState<AtomicOrderLevel>('easy');
   const [atomicMultiplier, setAtomicMultiplier] = useState<AtomicOrderMultiplier>(1);
+
+  const championshipTimeTrialMatches = GAME_CATALOG['atomic-order'].championshipCounts.standard;
+  const championshipTimeTrialBoardPairs = championshipTimeTrialMatches * 3;
 
   const currentGame = activeGames[gameIndex];
   const toggleGame = (gameId: GameId) => {
@@ -85,19 +87,16 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
 
   const finishChampionship = (results: CompletedGameResult[]) => {
     const groupedResults = activeGames.map(gameId => results.filter(result => result.gameId === gameId));
-    const score = Math.round(groupedResults.reduce((sum, gameResults) => {
-      if (!gameResults.length) return sum;
-      return sum + gameResults.reduce((gameSum, result) => gameSum + result.metrics.normalizedScore, 0) / gameResults.length;
-    }, 0));
+    const score = results.reduce((sum, result) => sum + result.metrics.score, 0);
     const combinationKey = buildChampionshipCombinationKey({
       format: 'solo',
       size: 'standard',
       games: activeGames,
       gameConfigurations: groupedResults.map(gameResults => gameResults[0]?.configKey ?? 'missing'),
-      rulesVersion: 1,
+      rulesVersion: 2,
     });
     const recorded = recordCompletedChampionshipResult({
-      rulesVersion: 1,
+      rulesVersion: 2,
       runId,
       combinationKey,
       format: 'solo',
@@ -170,9 +169,9 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
           <div className="round-select"><span>Mode:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => setMatchMode('time-trial')}>⏱️ Time Trial</button></div>
           {matchMode === 'hunt' && <div className="round-select"><span>Timer:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${!huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(false)}>Off</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(true)}>On</button><span className="gm-desc">Turn on for the timed Hunt leaderboard</span></div>}
           <div className="round-select"><span>Element pool:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'all' ? 'selected' : ''}`} onClick={() => setMatchPool('all')}>⚗️ All</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'exotic' ? 'selected' : ''}`} onClick={() => { setMatchPool('exotic'); if (huntChosenTarget < 84) setHuntChosenTarget(84); }}>☢️ Exotic</button></div>
-          <div className="round-select"><span>Pairs:</span>{[12, 16, 20].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPairs === count ? 'selected' : ''}`} onClick={() => setMatchPairs(count)}>{count}</button>)}</div>
+          {matchMode === 'hunt' && <div className="round-select"><span>Pairs:</span>{[12, 16, 20].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPairs === count ? 'selected' : ''}`} onClick={() => setMatchPairs(count)}>{count}</button>)}</div>}
           {matchMode === 'time-trial' ? (
-            <div className="round-select"><span>Find:</span>{([3, 5, 8, 'all'] as ElementMatchTrialTarget[]).map(target => <button key={target} disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchTrialTarget === target ? 'selected' : ''}`} onClick={() => setMatchTrialTarget(target)}>{target === 'all' ? `All ${matchPairs}` : target}</button>)}<span className="gm-desc">matches to stop the clock</span></div>
+            <div className="round-select"><span>Time Trial:</span><span className="gm-desc">Find {championshipTimeTrialMatches} matches on a {championshipTimeTrialBoardPairs}-pair board</span></div>
           ) : (
             <>
               <div className="round-select"><span>Hunt target:</span>{(['none', 'random', 'choose'] as HuntTargetMode[]).map(target => <button key={target} disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTargetMode === target ? 'selected' : ''}`} onClick={() => setHuntTargetMode(target)}>{target[0].toUpperCase() + target.slice(1)}</button>)}</div>
@@ -193,7 +192,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
         </section>
         <div className="champ-info">
           <div className="champ-games-list">{selectedGames.map(gameId => <span key={gameId} className="champ-game-chip">{GAME_CATALOG[gameId].icon} {GAME_CATALOG[gameId].label}</span>)}</div>
-          <p className="champ-info-footer">{selectedGames.length} games selected — each game contributes up to 100 points.</p>
+          <p className="champ-info-footer">{selectedGames.length} games selected — championship totals are the points earned in each match.</p>
         </div>
         <button className="start-btn" disabled={selectedGames.length < 2} onClick={startChampionship}>Start Solo Championship</button>
       </div>
@@ -212,7 +211,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
           <span className="atomic-order-best-label">Game breakdown</span>
           <ol className="atomic-order-leaderboard-list">{activeGames.map(gameId => {
             const results = finalResults.filter(result => result.gameId === gameId);
-            const score = results.length ? Math.round(results.reduce((sum, result) => sum + result.metrics.normalizedScore, 0) / results.length) : 0;
+            const score = results.reduce((sum, result) => sum + result.metrics.score, 0);
             return <li key={gameId}><span>{GAME_CATALOG[gameId].icon} {GAME_CATALOG[gameId].label}</span><span>{score} pts</span></li>;
           })}</ol>
         </div>
@@ -232,7 +231,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
       <div className="champ-game-banner">🏆 Solo Championship · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
       {currentGame === 'quiz-battle' && <QuizScreen mode="classic" progress={progress} onComplete={() => completeCurrentLeg()} {...sharedProps} />}
       {currentGame === 'tf-blitz' && <SoloTrueFalseScreen {...sharedProps} />}
-      {currentGame === 'element-match' && <SoloElementMatchScreen initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchPairs, trialTarget: matchTrialTarget, huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}
+      {currentGame === 'element-match' && <SoloElementMatchScreen initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}
       {currentGame === 'clue-duel' && <SoloClueDuelScreen {...sharedProps} />}
       {currentGame === 'symbol-pick' && <SymbolPickScreen {...sharedProps} />}
       {currentGame === 'atomic-order' && <ElementOrderScreen initialOptions={{ difficulty: atomicDifficulty, challenge: atomicChallenge, multiplier: atomicMultiplier }} {...sharedProps} />}

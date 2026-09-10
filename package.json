@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:questions": "node scripts/audit-questions.mjs",
     "preview": "vite preview"
   },
   "devDependencies": {

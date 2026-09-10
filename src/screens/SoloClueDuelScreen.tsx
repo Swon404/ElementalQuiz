@@ -3,6 +3,7 @@ import Elementor from '../components/Elementor.tsx';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
 import { playCollect, playCorrect, playWrong } from '../engine/sounds.ts';
+import { speakText } from '../engine/tts.ts';
 import { generateClueRounds, type ClueRound } from '../games/clueDuel.ts';
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -167,6 +168,9 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
         {roundComplete && (
           <div className="snap-result-feedback">
             <p className={`snap-verdict ${roundWon ? 'correct' : 'wrong'}`}>{roundWon ? '🎉 Correct!' : 'The answer was'} <strong>{round.correctName}</strong>.</p>
+            <p className="quiz-explanation">{round.explanation}</p>
+            {round.extraFact && <p><strong>Fun fact:</strong> {round.extraFact}</p>}
+            <button className="tts-btn tts-btn-small" onClick={() => speakText(`${round.correctName}. ${round.explanation}${round.extraFact ? ` Fun fact: ${round.extraFact}` : ''}`)} title="Read explanation aloud">🔊</button>
             <button className="start-btn" onClick={nextRound}>{roundIndex + 1 >= rounds.length ? 'See Results' : 'Next →'}</button>
           </div>
         )}

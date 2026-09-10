@@ -577,11 +577,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     genericResultRecordedRef.current = false;
   }, [gameMode, phase]);
 
-  const normalizeChampPoints = useCallback((playerOneScore: number, playerTwoScore: number) => {
-    if (playerOneScore === playerTwoScore) return { p1: 50, p2: 50 };
-    return playerOneScore > playerTwoScore ? { p1: 100, p2: 0 } : { p1: 0, p2: 100 };
-  }, []);
-
   const committedChampTotals = champScores.reduce((totals, game) => {
     return {
       p1: totals.p1 + game.p1Champ,
@@ -590,8 +585,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   }, { p1: 0, p2: 0 });
 
   const liveChampTotals = {
-    p1: committedChampTotals.p1 + (isChampionship && phase === 'playing' ? normalizeChampPoints(p1Score, p2Score).p1 : 0),
-    p2: committedChampTotals.p2 + (isChampionship && phase === 'playing' ? normalizeChampPoints(p1Score, p2Score).p2 : 0),
+    p1: committedChampTotals.p1 + (isChampionship && phase === 'playing' ? p1Score : 0),
+    p2: committedChampTotals.p2 + (isChampionship && phase === 'playing' ? p2Score : 0),
   };
 
   const championshipTotalsBar = isChampionship && phase === 'playing' ? (
@@ -1184,16 +1179,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const handleClueNext = () => {
     if (snapAnswered !== null) return;
     if (snapFirstWrongBy !== null) {
-      // Second player declining their bonus chance — move on
-      nextSnapRound();
+      // A skipped attempt still gets an answer and explanation before continuing.
+      setSnapAnswered(-1);
       return;
     }
     if (snapClueIdx < 4) {
       setSnapClueIdx(c => c + 1);
       setSnapTurn(t => (t === 1 ? 2 : 1));
     } else {
-      // All clues visible, passing — end round with no score change
-      nextSnapRound();
+      // All clues visible: reveal the answer without awarding a point.
+      setSnapAnswered(-1);
     }
   };
 
@@ -1520,14 +1515,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     } else if (mode === 'element-match') {
       const n = counts[mode];
       if (matchMode === 'time-trial') {
-        const cards = generateMatchCards(n, 118, matchExotic);
+        const requiredMatches = counts['atomic-order'];
+        const boardPairs = requiredMatches * 3;
+        const cards = generateMatchCards(boardPairs, 118, matchExotic);
         const elementNums = Array.from(new Set(cards.map(card => card.elementNum)));
+        setMatchTrialTarget(requiredMatches as ElementMatchTrialTarget);
         setMatchTrialElementNums(elementNums);
         setMatchTrialP1Result(null);
         setMatchTrialWinner(null);
         setMatchTrialComplete(false);
-        setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchExotic ? 'exotic' : 'all', n, matchTrialTarget));
-        setRounds(n);
+        setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchExotic ? 'exotic' : 'all', boardPairs, requiredMatches as ElementMatchTrialTarget));
+        setRounds(boardPairs);
         beginMatchTrialTurn(elementNums, 1);
         setPhase('playing');
         return;
@@ -1593,9 +1591,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       playerOneDifficulty: player1.difficulty,
       playerTwoDifficulty: player2.difficulty,
       orderedGames: games.map(game => `${game}:${game === 'element-match' ? matchMode : GAME_CATALOG[game].variants[0]}`),
-      elementMatchRules: JSON.stringify({ matchExotic, matchTrialTarget, huntTimed, huntTargetMode, huntTargetElementNum, huntRequiredPairs }),
+      elementMatchRules: JSON.stringify(matchMode === 'time-trial'
+        ? {
+            matchExotic,
+            requiredMatches: CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'],
+            boardPairs: CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'] * 3,
+          }
+        : { matchExotic, huntTimed, huntTargetMode, huntTargetElementNum, huntRequiredPairs }),
       atomicOrderRules: JSON.stringify({ orderChallengeLevel, orderTileMultiplier }),
-      rulesVersion: 1,
+      rulesVersion: 2,
     });
     championshipRunIdRef.current = `champ-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
     championshipCombinationKeyRef.current = combinationKey;
@@ -1728,12 +1732,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     }
 
     if (isChampionship) {
-      const normalized = normalizeChampPoints(finalP1, finalP2);
       const completedScores = [...champScores, {
         p1Raw: finalP1,
         p2Raw: finalP2,
-        p1Champ: normalized.p1,
-        p2Champ: normalized.p2,
+        p1Champ: finalP1,
+        p2Champ: finalP2,
       }];
       setChampScores(completedScores);
       if (champStep + 1 >= activeChampGames.length) {
@@ -1744,7 +1747,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           p2: sum.p2 + score.p2Champ,
         }), { p1: 0, p2: 0 });
         const p1Result = recordCompletedChampionshipResult({
-          rulesVersion: 1,
+          rulesVersion: 2,
           runId: championshipRunIdRef.current,
           combinationKey,
           format: currentPlayerFormat(),
@@ -1755,7 +1758,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           elapsedMs,
         });
         const p2Result = recordCompletedChampionshipResult({
-          rulesVersion: 1,
+          rulesVersion: 2,
           runId: championshipRunIdRef.current,
           combinationKey,
           format: currentPlayerFormat(),
@@ -2016,21 +2019,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       return;
     }
 
-    if (gameMode === 'atom-quiz' && atomTurn === 2 && atomAnswered !== null) {
-      botTimerRef.current = setTimeout(() => {
-        botTimerRef.current = null;
-        nextAtomRound();
-      }, BOT_RESULT_DELAY_MS);
-      return;
-    }
-
-    if (gameMode === 'clue-duel' && snapTurn === 2 && snapAnswered !== null) {
-      botTimerRef.current = setTimeout(() => {
-        botTimerRef.current = null;
-        nextSnapRound();
-      }, BOT_RESULT_DELAY_MS);
-      return;
-    }
+    // Quiz, Clue Duel and Atom Quiz explanations wait for the reader's Next click.
 
     if (gameMode === 'atomic-order' && orderTurn === 2 && orderTurnResult) {
       botTimerRef.current = setTimeout(() => {
@@ -2435,18 +2424,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             </div>
             {matchMode === 'time-trial' && (
               <div className="rounds-select">
-                <label>Find: </label>
-                {([3, 5, 8, 'all'] as ElementMatchTrialTarget[]).map(target => (
-                  <button
-                    key={target}
-                    disabled={!championshipHasElementMatch}
-                    className={`round-btn ${matchTrialTarget === target ? 'selected' : ''}`}
-                    onClick={() => setMatchTrialTarget(target)}
-                  >
-                    {target === 'all' ? `All ${CHAMP_SIZE_CONFIG[champSize].counts['element-match']}` : target}
-                  </button>
-                ))}
-                <span className="gm-desc">matches to stop the clock</span>
+                <label>Time Trial: </label>
+                <span className="gm-desc">
+                  Find {CHAMP_SIZE_CONFIG[champSize].counts['atomic-order']} matches on a {CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'] * 3}-pair board
+                </span>
               </div>
             )}
             {matchMode === 'hunt' && <div className="rounds-select" style={{ alignItems: 'center' }}>
@@ -2544,11 +2525,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               <div className="champ-games-list">
                 {selectedChampGames.map(mode => (
                   <span key={mode} className="champ-game-chip">
-                    {CHAMP_LABELS[mode]}{mode === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''} <strong>{CHAMP_SIZE_CONFIG[champSize].counts[mode as Exclude<GameMode, 'championship'>]}</strong> {mode === 'element-match' ? 'pairs' : 'rounds'}
+                    {CHAMP_LABELS[mode]}{mode === 'element-match' ? ` ${matchMode === 'hunt' ? 'Hunt' : 'Time Trial'}` : ''}{mode === 'element-match' && matchMode === 'time-trial'
+                      ? <> <strong>{CHAMP_SIZE_CONFIG[champSize].counts['atomic-order']}</strong> matches · {CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'] * 3} pairs</>
+                      : <> <strong>{CHAMP_SIZE_CONFIG[champSize].counts[mode as Exclude<GameMode, 'championship'>]}</strong> {mode === 'element-match' ? 'pairs' : 'rounds'}</>}
                   </span>
                 ))}
               </div>
-              <p className="champ-info-footer">{selectedChampGames.length} games selected — each game awards 100 points for a win or 50 each for a draw.</p>
+              <p className="champ-info-footer">{selectedChampGames.length} games selected — championship totals are the points earned in each match.</p>
             </div>
           </>
         )}
@@ -2946,10 +2929,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             </div>
             <button className="start-btn" onClick={handleClueNext} disabled={isBotTurn}>
               {snapFirstWrongBy !== null
-                ? 'Skip bonus — next element →'
+                ? 'Skip bonus — reveal answer'
                 : snapClueIdx < 4
                   ? `Next clue (pass to ${otherPlayer.avatar} ${otherPlayer.name})`
-                  : 'Skip element →'}
+                  : 'Reveal answer'}
             </button>
           </>
         )}
@@ -2960,7 +2943,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               <p className="snap-verdict correct">🎉 Correct! +1 to {activePlayer.avatar} {activePlayer.name}!</p>
             ) : (
               <div style={{ background: '#ff3b3b22', border: '2px solid var(--danger)', borderRadius: 14, padding: '0.8rem 1.2rem', marginBottom: '0.8rem' }}>
-                <p className="snap-verdict wrong" style={{ margin: 0, fontSize: '1.6rem' }}>❌ Both wrong!</p>
+                <p className="snap-verdict wrong" style={{ margin: 0, fontSize: '1.6rem' }}>{snapAnswered === -1 ? 'Answer revealed' : 'Not quite this time'}</p>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.4rem' }}>
                   <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>It was <strong style={{ fontSize: '1.3rem' }}>{round.correctName}</strong></p>
                   <button className="tts-btn tts-btn-small" onClick={() => speakText(`The answer was ${round.correctName}`)} title="Read aloud">🔊</button>
@@ -2968,7 +2951,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                 <p style={{ margin: '0.3rem 0 0', color: 'var(--text-muted, #888)', fontSize: '0.9rem' }}>No points this round.</p>
               </div>
             )}
-            <button className="start-btn" onClick={nextSnapRound} disabled={isBotTurn}>
+            {isCorrect && <p><strong>{round.correctName}</strong></p>}
+            <div className="quiz-explanation">
+              <p>{round.explanation}</p>
+              {round.extraFact && <p><strong>Fun fact:</strong> {round.extraFact}</p>}
+              <button className="tts-btn tts-btn-small" onClick={() => speakText(`${round.correctName}. ${round.explanation}${round.extraFact ? ` Fun fact: ${round.extraFact}` : ''}`)} title="Read explanation aloud">🔊</button>
+            </div>
+            <button className="start-btn" onClick={nextSnapRound}>
               {snapIndex + 1 >= snapRounds.length ? 'See Results' : 'Next Element →'}
             </button>
           </div>
@@ -3094,9 +3083,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               : <p className="snap-verdict wrong">😬 Nope! The answer was: <strong>{q.choices[q.correctIndex]}</strong></p>}
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', margin: '0 1rem 0.75rem' }}>
               <p style={{ flex: 1, margin: 0, textAlign: 'center', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{q.explanation}</p>
-              <button className="tts-btn tts-btn-small" onClick={() => speakText(q.explanation)} title="Read explanation aloud">🔊</button>
+              <button className="tts-btn tts-btn-small" onClick={() => speakText(`${q.explanation}${q.extraFact ? ` Fun fact: ${q.extraFact}` : ''}`)} title="Read explanation aloud">🔊</button>
             </div>
-            <button className="start-btn" onClick={nextAtomRound} disabled={isBotTurn}>
+            {q.extraFact && <p><strong>Fun fact:</strong> {q.extraFact}</p>}
+            <button className="start-btn" onClick={nextAtomRound}>
               {atomIndex + 1 >= atomQuestions.length ? 'See Results' : 'Next →'}
             </button>
           </div>
@@ -3328,7 +3318,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             <span>{player1.avatar} {player1.name}: <strong>{totalP1}</strong></span>
             <span>{player2.avatar} {player2.name}: <strong>{totalP2}</strong></span>
           </div>
-          <p>Each game awards 100 points for a win, 50 each for a draw, and 0 for a loss.</p>
+          <p>These totals are the points earned in each completed match.</p>
         </div>
 
         <button className="start-btn" onClick={nextChampGame}>
@@ -3342,19 +3332,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   if (phase === 'champ-result') {
     // champScores already includes the final game (pushed in finishCurrentGame)
     const allScores = champScores;
-    const rawTotalP1 = allScores.reduce((s, g) => s + g.p1Raw, 0);
-    const rawTotalP2 = allScores.reduce((s, g) => s + g.p2Raw, 0);
     const totalP1 = allScores.reduce((s, g) => s + g.p1Champ, 0);
     const totalP2 = allScores.reduce((s, g) => s + g.p2Champ, 0);
     const champWinner = totalP1 > totalP2
       ? player1
       : totalP2 > totalP1
         ? player2
-        : rawTotalP1 > rawTotalP2
-          ? player1
-          : rawTotalP2 > rawTotalP1
-            ? player2
-            : null;
+        : null;
     return (
       <div className="champ-result">
         <Elementor
@@ -3418,11 +3402,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           </div>
         )}
         <p>The champion has the highest total across the {activeChampGames.length} selected games.</p>
-        {(rawTotalP1 !== totalP1 || rawTotalP2 !== totalP2) && (
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '-0.5rem' }}>
-            Raw totals were {rawTotalP1} vs {rawTotalP2}. Championship scoring rules were applied.
-          </p>
-        )}
         {!champWinner && (
           <button className="start-btn" style={{ marginBottom: '0.75rem' }} onClick={startChampTiebreaker}>
             🃏 Tiebreaker — 12-Card Memory Match!

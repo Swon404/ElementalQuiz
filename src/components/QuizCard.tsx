@@ -190,9 +190,11 @@ export default function QuizCard({
 
       {showResult && (
         <div className="quiz-explanation">
+          <p><strong>{selected === question.correctIndex ? 'Correct: ' : 'Answer: '}{question.choices[question.correctIndex]}</strong></p>
           <p>{question.explanation}</p>
+          {question.extraFact && <p><strong>Fun fact:</strong> {question.extraFact}</p>}
           {'speechSynthesis' in window && (
-            <button className="tts-btn tts-btn-small" onClick={() => speakText(question.explanation)} title="Read explanation aloud">
+            <button className="tts-btn tts-btn-small" onClick={() => speakText(`${question.explanation}${question.extraFact ? ` Fun fact: ${question.extraFact}` : ''}`)} title="Read explanation aloud">
               🔊
             </button>
           )}

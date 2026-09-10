@@ -1,6 +1,9 @@
 import { elements, type Element } from '../data/elements.ts';
+import { focusedExplanation } from './questionFeedback.ts';
+import { addExtraFacts, pickExtraFact } from './extraFacts.ts';
+import { MORE_TRIVIA } from '../data/moreTrivia.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from './scoring.ts';
-import { comparisonData, DANGER_LABELS, formatPrice } from '../data/comparisonData.ts';
+import { comparisonData } from '../data/comparisonData.ts';
 
 export type QuestionCategory =
   | 'symbol-name'
@@ -25,36 +28,9 @@ export type Question = {
   correctIndex: number;
   element: Element;
   explanation: string;
+  extraFact?: string;
   hint?: string;
 };
-
-/** Pick a random fact from additionalFacts (or fall back to funFact) */
-function randomFact(el: Element): string {
-  if (el.additionalFacts && el.additionalFacts.length > 0) {
-    return el.additionalFacts[Math.floor(Math.random() * el.additionalFacts.length)];
-  }
-  return el.funFact;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/** Replace element name/symbol in text with blanks (global, case-insensitive) */
-function blankOutElement(text: string, el: Element): string {
-  // Replace full name first (case-insensitive, global)
-  let result = text.replace(new RegExp(escapeRegExp(el.name), 'gi'), '______');
-  // Replace symbol (word-boundary to avoid matching partial words)
-  result = result.replace(new RegExp(`\\b${escapeRegExp(el.symbol)}\\b`, 'g'), '__');
-  // Replace words that start with a long-enough prefix of the element name
-  // to catch variants like "California" for "Californium".
-  if (el.name.length >= 7) {
-    const prefixLen = Math.max(5, Math.floor(el.name.length * 0.65));
-    const prefix = escapeRegExp(el.name.slice(0, prefixLen));
-    result = result.replace(new RegExp(`\\b${prefix}\\w*`, 'gi'), '______');
-  }
-  return result;
-}
 
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
@@ -75,30 +51,6 @@ function normalizeForComparison(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function allFacts(el: Element): string[] {
-  const facts = [
-    ...(el.additionalFacts ?? []),
-    el.funFact,
-  ]
-    .map(f => f.trim())
-    .filter(f => f.length > 0);
-  return Array.from(new Set(facts));
-}
-
-function randomKnownFact(el: Element): string {
-  const facts = allFacts(el);
-  return facts[Math.floor(Math.random() * facts.length)] ?? el.funFact;
-}
-
-function pickExtraFacts(el: Element, count: number, avoidText: string): string[] {
-  const avoid = normalizeForComparison(avoidText);
-  const candidates = allFacts(el).filter(f => {
-    const normalized = normalizeForComparison(f);
-    return normalized.length > 0 && !avoid.includes(normalized);
-  });
-  return shuffleArray(candidates).slice(0, count);
-}
-
 function elementNameChoices(el: Element, pool: Element[], count: number): string[] {
   const sameCategory = shuffleArray(pool.filter(e => e.category === el.category && e.atomicNumber !== el.atomicNumber));
   const otherCategories = shuffleArray(pool.filter(e => e.category !== el.category && e.atomicNumber !== el.atomicNumber));
@@ -106,13 +58,12 @@ function elementNameChoices(el: Element, pool: Element[], count: number): string
 }
 
 function enrichQuestion(question: Question): Question {
-  const baseExplanation = question.explanation.trim();
-  const extraFacts = pickExtraFacts(question.element, 2, baseExplanation);
-  const parts = [baseExplanation, ...extraFacts];
-
+  const explanation = focusedExplanation(question);
   return {
     ...question,
-    explanation: parts.join(' '),
+    questionText: question.questionText.replace(/\b(GROUP|PERIOD|DENSEST|RAREST|BIGGEST|HIGHEST)\b/g, word => word.toLowerCase()),
+    explanation,
+    extraFact: pickExtraFact(`${question.questionText} ${explanation}`),
   };
 }
 
@@ -180,6 +131,7 @@ export type RelatableTopic =
   | 'symbol-origin';
 
 export type RelatableTrivia = {
+  clue: string;
   topic: RelatableTopic;
   question: string;
   explanation: string;
@@ -191,13 +143,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'space',
       question: 'Which element makes up most of the Sun and other stars?',
-      explanation: 'Hydrogen is the main fuel of stars. In the Sun, hydrogen nuclei fuse together and release the light and heat we feel on Earth.',
+      explanation: "In the Sun’s core, hydrogen nuclei combine to form helium. The resulting nucleus has less mass than the starting particles; the difference is released as energy that eventually reaches us as sunlight.",
+      clue: "My nuclei fuel the reactions that power the Sun.",
       hint: 'It is the lightest element.',
     },
     {
       topic: 'technology',
-      question: 'Which element is being tested as a clean fuel for cars, buses, and rockets?',
-      explanation: 'Hydrogen can release energy and make water as its main exhaust, which is why it is useful in fuel cells and rocket engines.',
+      question: "Which element reacts with oxygen in a fuel cell to produce electricity and water?",
+      explanation: "A fuel cell uses reactions between hydrogen and oxygen to produce an electric current. Water forms at the outlet, although the environmental impact also depends on how the hydrogen was produced.",
+      clue: "I can react with oxygen in a fuel cell that produces electricity and water.",
       hint: 'Its symbol has one letter.',
     },
   ],
@@ -205,13 +159,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element makes party balloons float without burning?',
-      explanation: 'Helium is lighter than air and does not burn, so it is much safer for balloons than hydrogen.',
+      explanation: "A helium-filled balloon displaces air that weighs more than the balloon and its contents. That difference gives it lift; helium’s filled electron shell also makes it very unreactive.",
+      clue: "I can lift a party balloon and do not burn.",
       hint: 'It is a noble gas.',
     },
     {
       topic: 'technology',
       question: 'Which element is used as a super-cold liquid to keep MRI scanners working?',
-      explanation: 'Liquid helium is cold enough to keep the powerful magnets in MRI scanners superconducting.',
+      explanation: "Many MRI scanners use superconducting coils to create a strong magnetic field. Liquid helium keeps those coils cold enough for current to flow without electrical resistance.",
+      clue: "My liquid form cools the superconducting magnets in many MRI scanners.",
       hint: 'It is named after the Sun.',
     },
   ],
@@ -219,15 +175,17 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'technology',
       question: 'Which element powers many rechargeable phone, laptop, and electric car batteries?',
-      explanation: 'Lithium is very light and stores electrical energy well, which makes lithium-ion batteries useful in portable devices and electric vehicles.',
+      explanation: "During discharge, lithium ions move through the battery while electrons travel through the outside circuit and power the device. Charging drives the process back the other way.",
+      clue: "My ions move between electrodes in many rechargeable batteries.",
       hint: 'It is the lightest metal.',
     },
   ],
   4: [
     {
       topic: 'technology',
-      question: 'Which light metal is used in some satellites, aircraft parts, and strong copper alloys?',
-      explanation: 'Beryllium is light, stiff, and handles heat well, so it can be useful in high-performance engineering.',
+      question: "Which light metal is used to make stiff mirrors for some space telescopes?",
+      explanation: "Beryllium combines low mass with high stiffness, so a component can resist bending without being heavy. That matters in spacecraft, where both shape and launch mass are important.",
+      clue: "I am a light, stiff metal used in some space telescope mirrors.",
       hint: 'It is an alkaline earth metal.',
     },
   ],
@@ -235,27 +193,31 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'technology',
       question: 'Which element is added to glass cookware so it can handle sudden temperature changes?',
-      explanation: 'Boron compounds are used in borosilicate glass, which resists heat shock better than ordinary glass.',
+      explanation: "Borosilicate glass expands less when heated than ordinary glass. Smaller changes in size reduce the stresses that can crack a dish when its temperature changes suddenly.",
+      clue: "My compounds help glass withstand sudden changes in temperature.",
       hint: 'Its name starts with B.',
     },
   ],
   6: [
     {
       topic: 'food',
-      question: 'Which element makes fizzy drinks fizzy?',
-      explanation: 'Carbon dioxide gas is dissolved into drinks under pressure. When you open the bottle, the gas escapes as bubbles.',
+      question: "Which element, also found in diamond, is present in the gas that makes drinks fizzy?",
+      explanation: "The bubbles are carbon dioxide, a compound containing carbon and oxygen. Opening a bottle lowers the pressure above the drink, allowing dissolved gas to escape.",
+      clue: "I am present in the gas that makes fizzy drinks bubble.",
       hint: 'It can form diamond and graphite.',
     },
     {
       topic: 'environment',
       question: 'Which element do plants take from the air when they make sugar by photosynthesis?',
-      explanation: 'Plants use carbon dioxide from the air, water, and sunlight to build sugars. That locks carbon into leaves, wood, fruit, and roots.',
+      explanation: "Photosynthesis uses light energy to build sugars from carbon dioxide and water. The carbon atoms become part of the sugar, which plants can use for growth or store for later.",
+      clue: "Plants take me from the air to build sugars.",
       hint: 'It is central to life chemistry.',
     },
     {
       topic: 'common-object',
-      question: 'Which element can be pencil lead, diamond, charcoal, and part of every living thing?',
-      explanation: 'Carbon atoms can connect in many different structures, making soft graphite, hard diamond, charcoal, and the molecules of life.',
+      question: "Which element forms both diamond and the graphite in pencils?",
+      explanation: "In diamond, carbon atoms form a rigid three-dimensional network. In graphite they form sheets that slide over one another, which is why pencil marks can rub off onto paper.",
+      clue: "I can form both diamond and the graphite in pencils.",
       hint: 'Its symbol is C.',
     },
   ],
@@ -263,13 +225,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'environment',
       question: 'Which element makes up about 78 percent of the air around us?',
-      explanation: 'Nitrogen is the biggest part of air, even though our bodies cannot breathe it in the same way we use oxygen.',
+      explanation: "Nitrogen gas consists of pairs of atoms joined by a very strong bond. Most organisms cannot use it directly; nitrogen-fixing microbes convert it into compounds that enter food chains.",
+      clue: "I make up about 78 percent of the air.",
       hint: 'It is found in proteins and DNA.',
     },
     {
       topic: 'food',
-      question: 'Which element do farmers add to soil because plants need it to make proteins?',
-      explanation: 'Plants need nitrogen to build proteins and grow. Fertilisers often contain nitrogen compounds to replace what crops remove from soil.',
+      question: "Which element is supplied by nitrate fertilisers?",
+      explanation: "Plants take up nitrogen in compounds such as nitrates and use it to build amino acids. Those amino acids join into proteins, so harvesting crops removes some nitrogen from the soil.",
+      clue: "Nitrate fertilisers supply me to growing plants.",
       hint: 'Its symbol is N.',
     },
   ],
@@ -277,13 +241,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'body',
       question: 'Which element do your cells need from every breath to release energy from food?',
-      explanation: 'Oxygen helps cells release energy from glucose during respiration. Without it, most human cells stop working quickly.',
+      explanation: "Oxygen accepts electrons at the end of a series of reactions in cellular respiration. This helps cells make ATP, a molecule that supplies energy for processes such as muscle contraction.",
+      clue: "Your cells use me when releasing energy from food.",
       hint: 'It is a gas at room temperature.',
     },
     {
       topic: 'environment',
-      question: 'Which element is the most abundant element in Earths crust by mass?',
-      explanation: 'Oxygen is locked into rocks and minerals such as silicates and oxides, making it the most abundant element in Earths crust by mass.',
+      question: "Which element is most abundant in Earth’s crust by mass?",
+      explanation: "Much of the oxygen in the crust is chemically bonded into minerals. For example, quartz contains silicon and oxygen, so oxygen’s abundance does not mean the ground is full of trapped gas.",
+      clue: "I am the most abundant element in Earth’s crust by mass.",
       hint: 'It is part of water.',
     },
   ],
@@ -291,15 +257,17 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'body',
       question: 'Which element is used in toothpaste compounds that help protect teeth from decay?',
-      explanation: 'Fluoride compounds, which contain fluorine, help strengthen tooth enamel so acids cause less damage.',
+      explanation: "Fluoride helps minerals rebuild tooth enamel and makes its surface more resistant to acid. The useful form is fluoride in a compound, not fluorine gas.",
+      clue: "My fluoride compounds help protect tooth enamel.",
       hint: 'It is a halogen.',
     },
   ],
   10: [
     {
       topic: 'common-object',
-      question: 'Which element gives real neon signs their bright red-orange glow?',
-      explanation: 'Neon gas glows red-orange when electricity passes through it. Other sign colours usually come from different gases or coatings.',
+      question: "Which noble gas produces a red-orange glow in an electric sign?",
+      explanation: "An electric discharge gives energy to the gas atoms. As their electrons return to lower energy levels, they emit a characteristic mixture of light that looks red-orange.",
+      clue: "I am a noble gas that gives electric signs a red-orange glow.",
       hint: 'It is a noble gas.',
     },
   ],
@@ -307,13 +275,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'food',
       question: 'Which element joins with chlorine to make ordinary table salt?',
-      explanation: 'Sodium and chlorine bond to make sodium chloride, which is table salt. The bonded compound is very different from the pure elements.',
+      explanation: "Table salt forms a lattice of positive sodium ions and negative chloride ions. Their electrical attraction holds the crystal together, giving it properties very different from either pure element.",
+      clue: "I combine with chlorine to form table salt.",
       hint: 'Its symbol is Na.',
     },
     {
       topic: 'common-object',
       question: 'Which element made many older street lamps glow yellow-orange?',
-      explanation: 'Sodium vapour lamps produce a strong yellow-orange light and were used widely for roads and motorways.',
+      explanation: "Electricity excites atoms in sodium vapour. When they release that energy, much of the light falls in a narrow yellow region of the spectrum.",
+      clue: "My vapour gave many older street lamps their yellow light.",
       hint: 'It is an alkali metal.',
     },
   ],
@@ -321,57 +291,65 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element burns with a dazzling white flame in flares and fireworks?',
-      explanation: 'Magnesium burns extremely brightly, which makes it useful in emergency flares, fireworks, and old camera flash powders.',
+      explanation: "Magnesium reacts rapidly with oxygen and releases energy as heat and bright light. The product is magnesium oxide, a white solid left after the metal burns.",
+      clue: "I burn with a bright white light in flares.",
       hint: 'Its symbol is Mg.',
     },
     {
       topic: 'environment',
       question: 'Which element sits at the centre of chlorophyll, the green pigment in leaves?',
-      explanation: 'A magnesium atom sits inside each chlorophyll molecule, helping plants capture light for photosynthesis.',
+      explanation: "Chlorophyll absorbs light that drives the first stages of photosynthesis. Magnesium is part of the molecule’s central structure; the whole pigment, rather than loose magnesium metal, does this job.",
+      clue: "I sit at the centre of chlorophyll molecules.",
       hint: 'It is important in green leaves.',
     },
   ],
   13: [
     {
       topic: 'common-object',
-      question: 'Which element is used for drink cans, kitchen foil, bikes, and aircraft because it is light?',
-      explanation: 'Aluminium is light, strong for its mass, and protected by a thin oxide layer, so it is useful in transport and packaging.',
+      question: "Which lightweight metal is widely used for drink cans and kitchen foil?",
+      explanation: "Aluminium has a low density, so a given-sized part can be relatively light. For aircraft frames it is usually alloyed with other elements to make it stronger.",
+      clue: "I am widely used in drink cans and kitchen foil.",
       hint: 'It is the most abundant metal in Earths crust.',
     },
   ],
   14: [
     {
       topic: 'technology',
-      question: 'Which element is found in computer chips and many solar panels?',
-      explanation: 'Silicon is a semiconductor, so it can control electric current in computer chips and turn sunlight into electricity in solar cells.',
+      question: "Which element is the main semiconductor in most computer chips?",
+      explanation: "Small amounts of added elements change how easily charge moves through silicon. This lets engineers make switches called transistors, which form the working circuits in computer chips.",
+      clue: "I am the main semiconductor in most computer chips.",
       hint: 'Silicon Valley is named after it.',
     },
     {
       topic: 'common-object',
-      question: 'Which element is a major part of sand, glass, and many rocks?',
-      explanation: 'Silicon commonly bonds with oxygen to make silicates and silica, which are found in sand, glass, and rocks.',
+      question: "Which element combines with oxygen to form quartz?",
+      explanation: "Quartz is silicon dioxide: silicon atoms bonded with oxygen in an extended structure. Melting silica with other ingredients produces many familiar types of glass.",
+      clue: "I combine with oxygen to form quartz.",
       hint: 'Its symbol is Si.',
     },
   ],
   15: [
     {
       topic: 'common-object',
-      question: 'Which element is used in safety matches and is also part of DNA?',
-      explanation: 'Phosphorus compounds are used in matches, and phosphate groups form part of the backbone of DNA.',
+      question: "Which element is used in the red material on a safety matchbox’s striking strip?",
+      explanation: "Safety matches keep red phosphorus on the striking strip, separate from chemicals in the match head. Striking brings the materials together with friction, helping start the reaction.",
+      clue: "My red form is on a safety matchbox’s striking strip.",
       hint: 'Its symbol is P.',
     },
   ],
   16: [
     {
       topic: 'danger',
-      question: 'Which element is famous for the rotten egg smell of some of its compounds?',
-      explanation: 'Hydrogen sulfide smells like rotten eggs. It contains sulfur and can be dangerous at high concentrations.',
+      question: "Which yellow element is present in the compound responsible for a rotten-egg smell?",
+      explanation: "The familiar smell comes from hydrogen sulfide, not pure sulfur. The properties of a compound depend on how its atoms are bonded, so the smell of one compound does not describe every sulfur-containing substance.",
+      clue: "One of my compounds produces a rotten-egg smell.",
       hint: 'It is found near volcanoes and hot springs.',
     },
     {
       topic: 'environment',
-      question: 'Which element can form gases from volcanoes that help make acid rain?',
-      explanation: 'Sulfur dioxide from volcanoes and burning fuels can react with water in the air to form acids.',
+      question: "Which yellow element forms a colourless dioxide gas that contributes to acid rain?",
+      explanation: "Sulfur dioxide can be oxidised in the atmosphere and contribute to sulfuric acid in droplets. Rain can then carry that acid to the ground.",
+      clue: "My dioxide is a volcanic gas that contributes to acid rain.",
       hint: 'Its symbol is S.',
     },
   ],
@@ -379,13 +357,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element helps keep swimming pools clean but is poisonous as a pure gas?',
-      explanation: 'Chlorine compounds disinfect pool water. Pure chlorine gas is toxic, showing how different compounds can be from elements alone.',
+      explanation: "Chlorine-based disinfectants form reactive substances in water that damage microbes. Their effectiveness depends on the water’s chemistry and the amount used.",
+      clue: "My compounds help disinfect swimming pools.",
       hint: 'It is a halogen.',
     },
     {
       topic: 'food',
       question: 'Which element joins with sodium to make ordinary table salt?',
-      explanation: 'Chlorine and sodium form sodium chloride. Pure chlorine is a dangerous gas, but table salt is safe in normal amounts.',
+      explanation: "Sodium chloride contains chloride ions held in a crystal with sodium ions. Chloride is chemically different from the reactive chlorine molecules found in chlorine gas.",
+      clue: "I combine with sodium to form table salt.",
       hint: 'Its symbol is Cl.',
     },
   ],
@@ -393,7 +373,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element is put inside some light bulbs so the hot filament does not react with air?',
-      explanation: 'Argon is unreactive, so it can fill bulbs and protect hot metal filaments from oxygen.',
+      explanation: "A hot filament would react with oxygen and fail quickly. Argon provides an atmosphere that reacts very little with the metal, helping the filament last.",
+      clue: "I protect the hot filament inside some light bulbs.",
       hint: 'It is a noble gas.',
     },
   ],
@@ -401,13 +382,15 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'food',
       question: 'Which element makes bananas very slightly radioactive?',
-      explanation: 'Bananas contain potassium, and a tiny fraction of natural potassium is radioactive potassium-40. The amount is harmless.',
+      explanation: "Natural potassium includes a small fraction of potassium-40, whose nucleus can decay. The radioactivity comes from that isotope, not from the banana having been exposed to radiation.",
+      clue: "One of my natural isotopes makes bananas slightly radioactive.",
       hint: 'Its symbol is K.',
     },
     {
       topic: 'body',
-      question: 'Which element helps nerves and muscles send electrical signals in your body?',
-      explanation: 'Potassium ions help control nerve signals, muscle movement, and heartbeat rhythms.',
+      question: "Which alkali metal is found in high concentrations inside cells and helps nerve signals?",
+      explanation: "Cells maintain different concentrations of potassium ions inside and outside their membranes. Ion movement through channels helps change the electrical voltage needed for nerve and muscle activity.",
+      clue: "My ions are concentrated inside cells and help nerve signals.",
       hint: 'It is an alkali metal.',
     },
   ],
@@ -415,7 +398,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'body',
       question: 'Which element helps make bones and teeth hard?',
-      explanation: 'Calcium compounds give bones and teeth much of their hardness, and calcium ions also help muscles and nerves work.',
+      explanation: "Calcium is part of a phosphate mineral called hydroxyapatite. Tiny crystals of this mineral reinforce bones and form much of the hard enamel on teeth.",
+      clue: "My phosphate compounds give bones and teeth much of their hardness.",
       hint: 'Its symbol is Ca.',
     },
   ],
@@ -423,7 +407,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element helps make stainless steel resist rust?',
-      explanation: 'Chromium forms a thin protective oxide layer on stainless steel, helping stop rust from spreading.',
+      explanation: "Chromium reacts with oxygen to form a thin surface layer that slows further corrosion. Stainless steel can still corrode under some conditions, so rust-resistant does not mean rust-proof.",
+      clue: "I help stainless steel resist corrosion.",
       hint: 'Its name is linked to colour.',
     },
   ],
@@ -431,35 +416,40 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'body',
       question: 'Which element in haemoglobin helps blood carry oxygen?',
-      explanation: 'Iron atoms in haemoglobin bind oxygen in the lungs and help carry it around the body.',
+      explanation: "Iron in haemoglobin binds oxygen reversibly. That allows blood to pick oxygen up in the lungs and release it where tissues need it.",
+      clue: "I am part of haemoglobin, which carries oxygen in blood.",
       hint: 'Its symbol is Fe.',
     },
     {
       topic: 'common-object',
       question: 'Which element is the main ingredient in steel?',
-      explanation: 'Steel is mostly iron with a small amount of carbon and sometimes other elements to change its properties.',
+      explanation: "Adding a small amount of carbon changes how layers of iron atoms move past each other. This can make steel harder and stronger than pure iron.",
+      clue: "I am the main metal in steel.",
       hint: 'It rusts when exposed to oxygen and water.',
     },
   ],
   29: [
     {
       topic: 'technology',
-      question: 'Which element is used in electrical wiring because it conducts electricity well?',
-      explanation: 'Copper conducts electricity well, bends easily, and is cheaper than silver, so it is common in wires and circuits.',
+      question: "Which reddish metal is commonly used for household electrical wiring?",
+      explanation: "Copper’s mobile electrons carry charge through the metal. It can also be drawn into thin wires and bent into shape, making it practical for electrical connections.",
+      clue: "I am a reddish metal widely used for electrical wiring.",
       hint: 'Its symbol is Cu.',
     },
     {
       topic: 'history',
       question: 'Which element gives the Statue of Liberty its green surface after reacting with air and rain?',
-      explanation: 'Copper slowly forms a green patina on its surface, which protects the metal underneath.',
+      explanation: "Over time, exposed copper reacts with substances in the air and moisture to form a surface layer called a patina. The green layer slows further attack on the underlying metal.",
+      clue: "My surface forms the Statue of Liberty’s green patina.",
       hint: 'It is a reddish metal.',
     },
   ],
   30: [
     {
       topic: 'body',
-      question: 'Which element is used in white sunscreen compounds that physically block UV rays?',
-      explanation: 'Zinc oxide can sit on the skin and reflect or absorb ultraviolet light, helping protect against sunburn.',
+      question: "Which element forms the white oxide used in many mineral sunscreens?",
+      explanation: "Zinc oxide absorbs much of the ultraviolet light that reaches it and also scatters some light. It is the compound’s interaction with light, rather than zinc metal, that makes it useful in sunscreen.",
+      clue: "My white oxide is used in mineral sunscreens.",
       hint: 'Its symbol is Zn.',
     },
   ],
@@ -467,47 +457,53 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'weird',
       question: 'Which reddish-brown element is one of only two elements that are liquid at room temperature?',
-      explanation: 'Bromine is a liquid at room temperature, along with mercury. It gives off irritating vapour, so it must be handled carefully.',
+      explanation: "Bromine consists of pairs of atoms held together as molecules. At room temperature those molecules can move past one another while remaining close together, giving the substance a liquid form.",
+      clue: "I am a reddish-brown liquid at room temperature.",
       hint: 'It is a halogen.',
     },
   ],
   36: [
     {
       topic: 'technology',
-      question: 'Which noble gas shares its name with Supermans home planet and is used in some lamps?',
-      explanation: 'Krypton is a noble gas used in some high-performance lamps and flash photography.',
+      question: "Which noble gas takes its name from the Greek word for hidden and is used in some flash lamps?",
+      explanation: "An electric discharge transfers energy to krypton atoms. They release light as they return to lower energy states, which is useful in certain lamps and photographic flashes.",
+      clue: "My name comes from the Greek word for hidden, and I am used in some flash lamps.",
       hint: 'Its symbol is Kr.',
     },
   ],
   47: [
     {
       topic: 'common-object',
-      question: 'Which element is used in mirrors and is the best electrical conductor?',
-      explanation: 'Silver reflects visible light very well and conducts electricity better than any other element.',
+      question: "Which precious metal is used as a highly reflective coating in mirrors?",
+      explanation: "A thin silver layer reflects a large fraction of visible light. A protective backing helps keep the surface from tarnishing and losing its usefulness as a mirror.",
+      clue: "I am a precious metal used as a reflective mirror coating.",
       hint: 'Its symbol is Ag.',
     },
   ],
   50: [
     {
       topic: 'history',
-      question: 'Which element gave tin cans their name, even though most cans are mostly steel?',
-      explanation: 'Tin was used as a thin coating on steel cans to help stop corrosion, so people called them tin cans.',
+      question: "Which element coats the steel in traditional food cans?",
+      explanation: "The steel gives the can its strength, while a thin tin coating helps protect the surface from corrosion. A coating can therefore supply a useful property without making the whole object from that metal.",
+      clue: "I coat the steel in traditional food cans.",
       hint: 'Its symbol is Sn.',
     },
   ],
   53: [
     {
       topic: 'body',
-      question: 'Which element does your thyroid need to make hormones that help control metabolism?',
-      explanation: 'Iodine is needed for thyroid hormones. In some places, iodine is added to table salt to help prevent deficiency.',
+      question: "Which element is built into thyroid hormone molecules?",
+      explanation: "Iodine atoms are built into thyroid hormone molecules. These hormones help regulate how the body uses energy; iodine is a component of the signal rather than a fuel burned by cells.",
+      clue: "My atoms are built into thyroid hormones.",
       hint: 'Its symbol is I.',
     },
   ],
   54: [
     {
       topic: 'technology',
-      question: 'Which noble gas is used in bright camera flashes, car headlights, and some spacecraft engines?',
-      explanation: 'Xenon can make a bright white light in lamps, and xenon ions can be used as propellant in ion thrusters.',
+      question: "Which noble gas is used as propellant in many spacecraft ion thrusters?",
+      explanation: "An ion thruster removes electrons from xenon atoms and accelerates the resulting ions electrically. Expelling those ions produces a small, sustained thrust on the spacecraft.",
+      clue: "My ions propel some spacecraft engines.",
       hint: 'Its symbol is Xe.',
     },
   ],
@@ -515,7 +511,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'common-object',
       question: 'Which element gives many green fireworks their colour?',
-      explanation: 'Barium salts can produce bright green colours when heated in fireworks.',
+      explanation: "Heating transfers energy to barium-containing substances in the firework. As excited particles release energy, some of it appears as the characteristic green light.",
+      clue: "My salts help give fireworks a green colour.",
       hint: 'It is an alkaline earth metal.',
     },
   ],
@@ -523,15 +520,17 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'technology',
       question: 'Which element is used in very strong magnets found in headphones, speakers, and wind turbines?',
-      explanation: 'Neodymium magnets are extremely strong for their size, which makes them useful in compact electronics and generators.',
+      explanation: "Neodymium is used in an alloy with iron and boron that can retain strong magnetisation. A small magnet can then produce a useful magnetic field inside compact devices.",
+      clue: "I am used with iron and boron to make powerful magnets.",
       hint: 'It is a lanthanide.',
     },
   ],
   74: [
     {
       topic: 'technology',
-      question: 'Which element has such a high melting point that it was used in old light bulb filaments?',
-      explanation: 'Tungsten has the highest melting point of all metals, so it can glow white-hot without melting.',
+      question: "Which metal was widely used for the filament in incandescent light bulbs?",
+      explanation: "An electric current heats the filament until it emits visible light. Tungsten’s high melting point allows it to reach a bright glow while remaining solid.",
+      clue: "I was widely used in incandescent light bulb filaments.",
       hint: 'Its symbol is W.',
     },
   ],
@@ -539,7 +538,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'space',
       question: 'Which element is unusually common in the asteroid layer linked to the dinosaur extinction?',
-      explanation: 'Iridium is rare in Earths crust but more common in many meteorites, which helped scientists identify evidence for a giant asteroid impact.',
+      explanation: "An unusually iridium-rich layer occurs at the boundary associated with the mass extinction. Since many meteorites contain more iridium than Earth’s crust, the layer helped support the impact explanation.",
+      clue: "I enriched the geological layer linked to the dinosaur extinction.",
       hint: 'It is a dense transition metal.',
     },
   ],
@@ -547,21 +547,24 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'technology',
       question: 'Which element helps catalytic converters clean car exhaust gases?',
-      explanation: 'Platinum can act as a catalyst, helping convert harmful exhaust gases into less harmful substances.',
+      explanation: "Platinum provides a surface where exhaust molecules can react more readily. A catalyst speeds these reactions without being consumed overall, helping convert carbon monoxide and hydrocarbons into less harmful products.",
+      clue: "I help speed up reactions in car catalytic converters.",
       hint: 'It is a precious metal.',
     },
   ],
   79: [
     {
       topic: 'technology',
-      question: 'Which element is used on some electronics connectors because it conducts well and resists corrosion?',
-      explanation: 'Gold does not tarnish easily and conducts electricity well, so thin coatings are useful on reliable connectors.',
+      question: "Which yellow precious metal coats some electrical connectors to resist corrosion?",
+      explanation: "An oxide or tarnish layer can interfere with an electrical contact. Gold resists such surface changes, so a very thin coating helps connectors stay reliable.",
+      clue: "I am a yellow precious metal used to coat electrical contacts.",
       hint: 'Its symbol is Au.',
     },
     {
       topic: 'history',
       question: 'Which element has been treasured for coins and jewellery for thousands of years because it stays shiny?',
-      explanation: 'Gold is rare, easy to shape, and resists corrosion, so it keeps its shine for a very long time.',
+      explanation: "Gold reacts very little with air and moisture, so its surface keeps its appearance. Its softness also lets craftspeople shape it into detailed objects without it cracking easily.",
+      clue: "I keep my shine in jewellery because I react very little with air.",
       hint: 'It is a yellow precious metal.',
     },
   ],
@@ -569,7 +572,8 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'weird',
       question: 'Which metal is liquid at room temperature?',
-      explanation: 'Mercury is the only metal that is liquid at normal room temperature, but it is toxic and must be handled carefully.',
+      explanation: "Mercury’s melting point is below ordinary room temperature. Its atoms can therefore move past one another as a liquid under conditions where most metals remain solid.",
+      clue: "I am a metal that is liquid at ordinary room temperature.",
       hint: 'Its symbol is Hg.',
     },
   ],
@@ -577,21 +581,24 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'danger',
       question: 'Which heavy metal was once used in paint and pipes but is dangerous to the brain?',
-      explanation: 'Lead was once common in paint and plumbing, but it is poisonous, especially to developing brains.',
+      explanation: "Lead can disrupt biological processes by interfering with other metal ions, including calcium. Developing nervous systems are particularly vulnerable, which is why old lead-containing materials need careful management.",
+      clue: "I was used in old paints and pipes, but can damage the nervous system.",
       hint: 'Its symbol is Pb.',
     },
     {
       topic: 'technology',
       question: 'Which element is used in heavy shielding to block X-rays and gamma rays?',
-      explanation: 'Lead is dense, so it can absorb a lot of high-energy radiation in a relatively thin layer.',
+      explanation: "Lead packs a large amount of matter into a small volume. Its atoms can absorb or scatter X-rays and gamma rays, reducing the radiation that passes through a shield.",
+      clue: "I am a dense metal used in radiation shielding.",
       hint: 'It is very dense and soft.',
     },
   ],
   83: [
     {
       topic: 'weird',
-      question: 'Which element forms rainbow-coloured crystals and is used in some stomach medicines?',
-      explanation: 'Bismuth can form colourful oxide crystals, and bismuth compounds are used in some medicines for upset stomachs.',
+      question: "Which element forms stepped crystals with a rainbow-coloured oxide surface?",
+      explanation: "The rainbow colours come from a thin oxide film on the bismuth surface. Reflections from different layers of that film interfere with one another, enhancing some colours and cancelling others.",
+      clue: "My stepped crystals can have a rainbow-coloured surface.",
       hint: 'Its symbol is Bi.',
     },
   ],
@@ -599,22 +606,24 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
     {
       topic: 'technology',
       question: 'Which element is used as fuel in many nuclear power stations?',
-      explanation: 'Uranium atoms can split in nuclear fission, releasing heat that power stations use to make electricity.',
+      explanation: "When uranium-235 undergoes fission, it releases heat and additional neutrons. A reactor controls the chain reaction and transfers the heat to systems that generate electricity.",
+      clue: "One of my isotopes fuels many nuclear reactors.",
       hint: 'It is an actinide.',
     },
   ],
   95: [
     {
       topic: 'common-object',
-      question: 'Which element is used in tiny amounts inside many smoke detectors?',
-      explanation: 'Americium-241 emits alpha particles that help some smoke detectors sense smoke in the air.',
+      question: "Which element is used in tiny amounts inside ionisation smoke detectors?",
+      explanation: "In an ionisation smoke detector, alpha radiation helps maintain a small electric current through the air. Smoke disrupts that current, allowing the detector to trigger an alarm.",
+      clue: "I am used in tiny amounts in ionisation smoke detectors.",
       hint: 'It is named after the Americas.',
     },
   ],
 };
 
 export function getRelatableTrivia(element: Element): RelatableTrivia[] {
-  return RELATABLE_TRIVIA[element.atomicNumber] ?? [];
+  return [...(RELATABLE_TRIVIA[element.atomicNumber] ?? []), ...(MORE_TRIVIA[element.atomicNumber] ?? [])];
 }
 
 export function pickRelatableTrivia(element: Element): RelatableTrivia | null {
@@ -638,7 +647,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.symbol),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `It starts with the letter "${el.symbol[0]}".`,
       };
     },
@@ -653,7 +662,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -679,11 +688,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `sn-3-${el.atomicNumber}`,
         category: 'symbol-name',
-        questionText: `The symbol "${el.symbol}" comes from "${TRICKY[el.symbol]}". Which element is it?`,
+        questionText: `Which element uses the historical symbol "${el.symbol}"?`,
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name}'s symbol ${el.symbol} comes from its old Latin/German name — ${TRICKY[el.symbol]}! ${randomFact(el)}`,
+        explanation: `${el.name}'s symbol ${el.symbol} comes from its old Latin/German name — ${TRICKY[el.symbol]}!`,
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -701,7 +710,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `It has ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in its nucleus — that's what makes it ${el.name}! ${randomFact(el)}`,
+        explanation: `It has ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in its nucleus — that's what makes it ${el.name}!`,
         hint: `It's in period ${el.period}.`,
       };
     },
@@ -715,7 +724,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `Atomic number ${el.atomicNumber} means ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in the nucleus! ${randomFact(el)}`,
+        explanation: `Atomic number ${el.atomicNumber} means ${el.atomicNumber} proton${el.atomicNumber > 1 ? 's' : ''} in the nucleus!`,
         hint: `Its symbol is ${el.symbol}.`,
       };
     },
@@ -730,7 +739,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} has atomic number ${el.atomicNumber}, which means every ${el.name} atom has ${el.atomicNumber} protons. ${randomFact(el)}`,
+        explanation: `${el.name} has atomic number ${el.atomicNumber}, which means every ${el.name} atom has ${el.atomicNumber} protons.`,
         hint: `Its symbol is ${el.symbol}.`,
       };
     },
@@ -749,7 +758,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `Think about where it is on the periodic table.`,
       };
     },
@@ -772,7 +781,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices: choices.map(c => `Group ${c}`),
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -796,7 +805,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct.name),
         element: correct,
-        explanation: `${correct.name} and ${el.name} are both in group ${el.group}! ${randomFact(correct)}`,
+        explanation: `${correct.name} and ${el.name} are both in group ${el.group}!`,
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -812,7 +821,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(`Period ${correct}`),
         element: el,
-        explanation: `${el.name} is in period ${el.period} and block ${el.block}. ${randomFact(el)}`,
+        explanation: `${el.name} is in period ${el.period} and block ${el.block}.`,
         hint: `Its atomic number is ${el.atomicNumber}.`,
       };
     },
@@ -838,7 +847,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} was discovered by ${el.discoveredBy}${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}. ${randomFact(el)}`,
+        explanation: `${el.name} was discovered by ${el.discoveredBy}${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}.`,
         hint: `It was discovered in ${el.discoveryCountry}.`,
       };
     },
@@ -866,7 +875,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `Discovered by ${el.discoveredBy} in ${el.discoveryCountry} (${el.discoveryYear}). ${randomFact(el)}`,
+        explanation: `Discovered by ${el.discoveredBy} in ${el.discoveryCountry} (${el.discoveryYear}).`,
         hint: `It was discovered by ${el.discoveredBy}.`,
       };
     },
@@ -890,7 +899,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${el.name} was discovered in ${el.discoveryCountry} in ${el.discoveryYear} by ${el.discoveredBy}. ${randomFact(el)}`,
+        explanation: `${el.name} was discovered in ${el.discoveryCountry} in ${el.discoveryYear} by ${el.discoveredBy}.`,
         hint: `It was discovered by ${el.discoveredBy}.`,
       };
     },
@@ -898,25 +907,27 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
 
   'state': [
     (el, _pool, _n) => {
+      if (el.atomicNumber > 99) return null; // No bulk sample: state is often only predicted.
       const states = ['solid', 'liquid', 'gas'];
       const choices = shuffleArray(states);
       return {
         id: `st-1-${el.atomicNumber}`,
         category: 'state',
-        questionText: `What state is ${el.name} at room temperature?`,
+        questionText: `What state is ${el.name} at about 20°C and normal atmospheric pressure?`,
         choices: choices.map(s => s.charAt(0).toUpperCase() + s.slice(1)),
         correctIndex: choices.indexOf(el.stateAtRoomTemp),
         element: el,
-        explanation: randomFact(el),
-        hint: `Think about what ${categoryLabel(el.category)}s are usually like.`,
+        explanation: '',
+        hint: 'A solid keeps its shape, a liquid flows, and a gas fills its container.',
       };
     },
     // st-2: Which of these elements is a GAS/LIQUID at room temperature?
     (el, pool, n) => {
+      if (el.atomicNumber > 99) return null;
       const targetState = el.stateAtRoomTemp;
       if (targetState === 'solid') return null; // too many solids, not interesting
       const others = pickRandom(
-        pool.filter(e => e.stateAtRoomTemp !== targetState && e.atomicNumber !== el.atomicNumber),
+        pool.filter(e => e.atomicNumber <= 99 && e.stateAtRoomTemp !== targetState && e.atomicNumber !== el.atomicNumber),
         n - 1, [el]
       );
       if (others.length < n - 1) return null;
@@ -925,11 +936,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `st-2-${el.atomicNumber}`,
         category: 'state',
-        questionText: `Which of these elements is a ${targetState.toUpperCase()} at room temperature?`,
+        questionText: `Which of these elements is a ${targetState} at about 20°C and normal atmospheric pressure?`,
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} is a ${targetState} at room temperature! ${randomFact(el)}`,
+        explanation: `${el.name} is a ${targetState} at room temperature!`,
         hint: `Noble gases and some nonmetals are gases; mercury and bromine are the only liquid elements.`,
       };
     },
@@ -937,44 +948,20 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
 
   'radioactivity': [
     (el, _pool, _n) => {
-      const choices = ['Stable', 'Radioactive'];
-      const correct = el.radioactive ? 'Radioactive' : 'Stable';
+      const choices = ['Yes', 'No'];
+      const correct = el.stableIsotopes > 0 ? 'Yes' : 'No';
       return {
         id: `ra-1-${el.atomicNumber}`,
         category: 'radioactivity',
-        questionText: `Is ${el.name} stable or radioactive?`,
+        questionText: `Does ${el.name} have any stable isotopes?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: el.radioactive
-          ? `Its most stable isotope has a half-life of ${el.halfLife}! ${randomFact(el)}`
-          : `It has ${el.stableIsotopes} stable isotope${el.stableIsotopes !== 1 ? 's' : ''}! ${randomFact(el)}`,
+        explanation: '',
 
         hint: el.radioactive
           ? `Elements with atomic number above 82 are usually radioactive.`
           : `Most common elements are stable.`,
-      };
-    },
-    (el, pool, n) => {
-      if (!el.radioactive || !el.halfLife) return null;
-      const distractors = pickUniqueDistractors(
-        pool.filter(e => e.radioactive && e.halfLife),
-        n - 1,
-        e => e.halfLife!,
-        el.halfLife,
-        el
-      );
-      if (distractors.length < n - 1) return null;
-      const choices = shuffleArray([el.halfLife, ...distractors]);
-      return {
-        id: `ra-2-${el.atomicNumber}`,
-        category: 'radioactivity',
-        questionText: `What is the half-life of ${el.name}?`,
-        choices,
-        correctIndex: choices.indexOf(el.halfLife),
-        element: el,
-        explanation: randomFact(el),
-        hint: `${el.name} is an ${categoryLabel(el.category)}.`,
       };
     },
   ],
@@ -997,14 +984,14 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
     (el, pool, n) => {
       if (el.radioactive || el.stableIsotopes <= 0) return null;
       const distractors = pickUniqueDistractors(
-        pool.filter(e => !e.radioactive && e.stableIsotopes > 0),
+        pool.filter(e => !e.radioactive && e.stableIsotopes > 0 && e.stableIsotopes !== el.stableIsotopes),
         n - 1,
         e => e.name,
         el.name,
@@ -1019,7 +1006,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: `${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}. ${randomFact(el)}`,
+        explanation: `${el.name} has ${el.stableIsotopes} stable isotope${el.stableIsotopes === 1 ? '' : 's'}.`,
         hint: `${el.name} is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -1028,9 +1015,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
   'compounds': [
     (el, pool, n) => {
       if (el.compounds.length === 0) return null;
-      const compound = el.compounds[Math.floor(Math.random() * el.compounds.length)];
+      const eligibleCompounds = el.compounds.filter(c => new RegExp(`${el.symbol}(?![a-z])`).test(c));
+      if (!eligibleCompounds.length) return null;
+      const compound = eligibleCompounds[Math.floor(Math.random() * eligibleCompounds.length)];
       // Filter distractors: must not contain the target element's symbol in their formula
-      const symbolPattern = new RegExp(`(^|[^a-z])${el.symbol}([^a-z]|$)`, 'i');
+      const symbolPattern = new RegExp(`${el.symbol}(?![a-z])`);
       const distractorElements = pickRandom(
         pool.filter(e => e.compounds.length > 0 && e.atomicNumber !== el.atomicNumber),
         (n - 1) * 3, // get extra to filter
@@ -1056,17 +1045,22 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(compound),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `${el.name}'s symbol is ${el.symbol} — look for it in the formulas.`,
       };
     },
     (el, pool, n) => {
       if (el.compounds.length === 0) return null;
-      const correct = el.compounds[Math.floor(Math.random() * el.compounds.length)];
+      const eligibleCompounds = el.compounds.filter(c => new RegExp(`${el.symbol}(?![a-z])`).test(c));
+      if (!eligibleCompounds.length) return null;
+      const correct = eligibleCompounds[Math.floor(Math.random() * eligibleCompounds.length)];
       const distractors = pickUniqueDistractors(
-        pool.filter(e => e.compounds.length > 0 && e.atomicNumber !== el.atomicNumber),
+        pool.filter(e => e.compounds.some(c => !new RegExp(`${el.symbol}(?![a-z])`).test(c))),
         n - 1,
-        e => e.compounds[Math.floor(Math.random() * e.compounds.length)],
+        e => {
+          const eligible = e.compounds.filter(c => !new RegExp(`${el.symbol}(?![a-z])`).test(c));
+          return eligible[Math.floor(Math.random() * eligible.length)];
+        },
         correct,
         el
       );
@@ -1075,11 +1069,11 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       return {
         id: `co-2-${el.atomicNumber}-${correct}`,
         category: 'compounds',
-        questionText: `Which formula is one compound of ${el.name}?`,
+        questionText: `Which formula represents a compound containing ${el.name.toLowerCase()}?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,
-        explanation: `${correct} is one compound that contains ${el.name}. ${randomFact(el)}`,
+        explanation: `${correct} is one compound that contains ${el.name}.`,
         hint: `Look for the symbol ${el.symbol}.`,
       };
     },
@@ -1097,7 +1091,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: randomFact(el),
+        explanation: '',
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
@@ -1120,189 +1114,21 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(correct.name),
         element: correct,
-        explanation: `${correct.name} and ${el.name} are both in period ${el.period}! ${randomFact(correct)}`,
+        explanation: `${correct.name} and ${el.name} are both in period ${el.period}!`,
         hint: `${el.name} is in period ${el.period}.`,
       };
     },
   ],
 
+  // Use authored question/explanation pairs, never a fact with its name blanked out.
   'fun-fact': [
-    // ff-1: Blank out element name from funFact, ask "which element?"
-    (el, pool, n) => {
-      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      // Blank out element name/symbol from fun fact (global, case-insensitive)
-      const fact = blankOutElement(el.funFact, el);
-      return {
-        id: `ff-1-${el.atomicNumber}`,
-        category: 'fun-fact',
-        questionText: `Which element does this describe? "${fact}"`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: el.funFact,
-        hint: `Its symbol is ${el.symbol}.`,
-      };
-    },
-    // ff-2: Pick an additionalFact, blank out the name, ask "which element?"
-    (el, pool, n) => {
-      if (!el.additionalFacts || el.additionalFacts.length === 0) return null;
-      const fact = el.additionalFacts[Math.floor(Math.random() * el.additionalFacts.length)];
-      const blanked = blankOutElement(fact, el);
-      // Only useful if we actually blanked something
-      if (blanked === fact) return null;
-      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      return {
-        id: `ff-2-${el.atomicNumber}-${fact.length}`,
-        category: 'fun-fact',
-        questionText: `Which element does this fun fact describe? "${blanked}"`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: fact,
-        hint: `This element is a ${categoryLabel(el.category)}.`,
-      };
-    },
-    // ff-3: True or false style — show a fact and ask if it's about the right element
-    (el, pool, _n) => {
-      if (!el.additionalFacts || el.additionalFacts.length === 0) return null;
-      const fact = el.additionalFacts[Math.floor(Math.random() * el.additionalFacts.length)];
-      // Replace the element name with a wrong element's name
-      const wrong = pickRandom(pool, 1, [el])[0];
-      const falseFact = fact.replace(new RegExp(el.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), wrong.name);
-      // Only works if the name was actually in the fact
-      if (falseFact === fact) return null;
-      const isTrue = Math.random() > 0.5;
-      const displayed = isTrue ? fact : falseFact;
-      const correct = isTrue ? 'True' : 'False';
-      const choices = ['True', 'False'];
-      return {
-        id: `ff-3-${el.atomicNumber}-${isTrue ? 't' : 'f'}-${fact.length}`,
-        category: 'fun-fact',
-        questionText: `True or False: "${displayed}"`,
-        choices,
-        correctIndex: choices.indexOf(correct),
-        element: el,
-        explanation: fact,
-        hint: isTrue ? `Think about what ${el.name} is known for.` : `Think about whether this really sounds like ${wrong.name}.`,
-      };
-    },
-    // ff-4: Which of these facts is about element X?
-    (el, pool, n) => {
-      if (!el.additionalFacts || el.additionalFacts.length === 0) return null;
-      const correctFact = el.additionalFacts[Math.floor(Math.random() * el.additionalFacts.length)];
-      // Only use facts that mention the element name so we can blank it
-      if (!new RegExp(el.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(correctFact)) return null;
-      const blankedCorrect = blankOutElement(correctFact, el);
-      // Get distractor facts from other elements, also blanked
-      const distractorEls = pickRandom(pool.filter(e => e.additionalFacts && e.additionalFacts.length > 0), n - 1, [el]);
-      const distractorFacts = distractorEls.map(de => {
-        const f = de.additionalFacts[Math.floor(Math.random() * de.additionalFacts.length)];
-        return blankOutElement(f, de);
-      });
-      if (distractorFacts.length < n - 1) return null;
-      const choices = shuffleArray([blankedCorrect, ...distractorFacts]);
-      return {
-        id: `ff-4-${el.atomicNumber}-${correctFact.length}`,
-        category: 'fun-fact',
-        questionText: `Which of these fun facts is about ${el.name} (${el.symbol})?`,
-        choices,
-        correctIndex: choices.indexOf(blankedCorrect),
-        element: el,
-        explanation: correctFact,
-        hint: `${el.name} is a ${categoryLabel(el.category)} and is ${el.stateAtRoomTemp} at room temperature.`,
-      };
-    },
-    // ff-5: Which element has this real-world connection?
-    (el, pool, n) => {
-      if (!el.additionalFacts || el.additionalFacts.length === 0) return null;
-      // Try to find a fact that mentions the element name
-      const candidates = el.additionalFacts.filter(f =>
-        new RegExp(el.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(f)
-      );
-      if (candidates.length === 0) return null;
-      const fact = candidates[Math.floor(Math.random() * candidates.length)];
-      const blanked = blankOutElement(fact, el);
-      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      return {
-        id: `ff-5-${el.atomicNumber}-${fact.length}`,
-        category: 'fun-fact',
-        questionText: `Amazing fact! Which element is this about? "${blanked}"`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: `${fact} Cool, right?`,
-        hint: `Its symbol is ${el.symbol}.`,
-      };
-    },
-    // ff-6: "I Spy" style — describe the element from multiple facts, guess which one
-    (el, pool, n) => {
-      if (!el.additionalFacts || el.additionalFacts.length < 2) return null;
-      const selectedFacts = shuffleArray(el.additionalFacts).slice(0, 2);
-      const clues = selectedFacts.map(f => blankOutElement(f, el));
-      // Make sure at least one clue was actually blanked
-      if (clues.every((c, i) => c === selectedFacts[i])) return null;
-      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      return {
-        id: `ff-6-${el.atomicNumber}-${selectedFacts[0].length}`,
-        category: 'fun-fact',
-        questionText: `I'm thinking of an element! Clue 1: "${clues[0]}" Clue 2: "${clues[1]}" — Which element is it?`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: `It's ${el.name}! ${selectedFacts[0]}`,
-        hint: `This element is a ${categoryLabel(el.category)} with symbol ${el.symbol}.`,
-      };
-    },
-    // ff-7: Use any known fact, not only facts that mention the element name.
-    (el, pool, n) => {
-      const rawFact = randomKnownFact(el);
-      const fact = blankOutElement(rawFact, el);
-      const choices = elementNameChoices(el, pool, n);
-      return {
-        id: `ff-7-${el.atomicNumber}-${fact.length}`,
-        category: 'fun-fact',
-        questionText: `Which element matches this fact? "${fact}"`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: rawFact,
-        hint: `It is a ${categoryLabel(el.category)}.`,
-      };
-    },
-    // ff-8: Turn the structured element data into a compact clue set.
-    (el, pool, n) => {
-      const clues = [
-        `atomic number ${el.atomicNumber}`,
-        `${categoryLabel(el.category)}`,
-        `${el.stateAtRoomTemp} at room temperature`,
-        el.group === null ? `period ${el.period}` : `group ${el.group}, period ${el.period}`,
-      ];
-      const choices = elementNameChoices(el, pool, n);
-      return {
-        id: `ff-8-${el.atomicNumber}`,
-        category: 'fun-fact',
-        questionText: `Which element fits these clues: ${shuffleArray(clues).slice(0, 3).join(', ')}?`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: `${el.name} has atomic number ${el.atomicNumber}, symbol ${el.symbol}, and is a ${categoryLabel(el.category)}. ${randomFact(el)}`,
-        hint: `Its symbol is ${el.symbol}.`,
-      };
-    },
-    // ff-9: Relatable real-life trivia prompts: body, food, tech, space, danger, history, and everyday objects.
     (el, pool, n) => {
       const entries = getRelatableTrivia(el);
-      if (entries.length === 0) return null;
       const trivia = pickRelatableTrivia(el);
       if (!trivia) return null;
-      const entryIndex = entries.indexOf(trivia);
       const choices = elementNameChoices(el, pool, n);
       return {
-        id: `ff-9-${el.atomicNumber}-${trivia.topic}-${entryIndex}`,
+        id: `trivia-${el.atomicNumber}-${entries.indexOf(trivia)}`,
         category: 'fun-fact',
         questionText: trivia.question,
         choices,
@@ -1316,155 +1142,46 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
 
   'uses': [
     (el, pool, n) => {
-      if (!el.uses || el.uses.length === 0) return null;
-      const use = el.uses[Math.floor(Math.random() * el.uses.length)];
-      const scrubbedUse = blankOutElement(use, el);
-      const distractors = pickRandom(pool.filter(e => e.atomicNumber !== el.atomicNumber), n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
+      const entries = getRelatableTrivia(el);
+      const trivia = pickRelatableTrivia(el);
+      if (!trivia) return null;
+      const choices = elementNameChoices(el, pool, n);
       return {
-        id: `us-1-${el.atomicNumber}`,
+        id: `trivia-${el.atomicNumber}-${entries.indexOf(trivia)}`,
         category: 'uses',
-        questionText: `Which element is used for: "${scrubbedUse}"?`,
+        questionText: trivia.question,
         choices,
         correctIndex: choices.indexOf(el.name),
         element: el,
-        explanation: randomFact(el),
-        hint: `This element is a ${categoryLabel(el.category)}.`,
-      };
-    },
-    (el, pool, n) => {
-      if (!el.uses || el.uses.length === 0) return null;
-      const correctUse = el.uses[Math.floor(Math.random() * el.uses.length)];
-      const distractorUses = pickRandom(
-        pool.filter(e => e.uses && e.uses.length > 0 && e.atomicNumber !== el.atomicNumber),
-        n - 1,
-        [el]
-      ).map(e => e.uses[Math.floor(Math.random() * e.uses.length)]);
-      const choices = shuffleArray([correctUse, ...distractorUses]);
-      return {
-        id: `us-2-${el.atomicNumber}`,
-        category: 'uses',
-        questionText: `What is ${el.name} used for?`,
-        choices,
-        correctIndex: choices.indexOf(correctUse),
-        element: el,
-        explanation: randomFact(el),
-        hint: `${el.name} is ${el.stateAtRoomTemp} at room temperature.`,
-      };
-    },
-    // us-3: Hardcoded "famous use/fact" questions for key teaching elements
-    // Multiple entries per element are picked at random each time.
-    (el, pool, n) => {
-      type FQ = { question: string; explanation: string };
-      const FAMOUS_USES: Record<number, FQ[]> = {
-        // ── Original 8 ──
-        56: [{ question: 'Which element gives fireworks a brilliant GREEN colour?', explanation: 'Barium salts burn with a vivid green flame! Different elements make different colours — lithium = red, sodium = yellow, copper = blue.' }],
-        92: [{ question: 'Which element is used as fuel in nuclear power stations?', explanation: 'Uranium-235 is split by nuclear fission to release enormous heat, which makes steam to drive turbines. About 10% of the world\'s electricity comes from uranium!' }],
-        78: [{ question: 'Which element is used in car catalytic converters to clean exhaust fumes?', explanation: 'Platinum acts as a catalyst — it speeds up reactions that turn toxic exhaust gases into harmless ones, without being used up itself!' }],
-        20: [{ question: 'Which element makes your bones and teeth hard?', explanation: 'Calcium makes up the mineral in bones and teeth. Dairy foods, leafy greens, and nuts are all packed with it!' }],
-        14: [{ question: 'Which element is found in almost every computer chip and solar panel?', explanation: 'Silicon is a semiconductor — it conducts electricity only under certain conditions, making it perfect for controlling circuits. Silicon Valley is named after it!' }],
-        2:  [{ question: 'Which element is used as a super-cold liquid to keep MRI scanners working?', explanation: 'Liquid helium keeps MRI magnets at −269°C — close to absolute zero! Without it, hospitals couldn\'t run MRI machines.' }],
-        30: [{ question: 'Which element is used in sunscreen to physically block harmful UV rays?', explanation: 'Zinc oxide sits on skin and reflects UV rays. It\'s safe, effective, and that\'s why lifeguards often have white noses!' }],
-        9:  [{ question: 'Which element is added to drinking water and toothpaste to protect teeth from decay?', explanation: 'Fluoride (a form of fluorine) strengthens tooth enamel, making it harder for acids to cause cavities. It\'s one of public health\'s greatest successes!' }],
-        // ── Body & biology ──
-        26: [
-          { question: 'Which element gives blood its red colour?', explanation: 'Iron sits at the heart of haemoglobin — the protein in red blood cells. It grabs oxygen in the lungs and carries it to every cell in your body!' },
-          { question: 'Which element do you need in your diet to avoid feeling tired and anaemic?', explanation: 'Iron deficiency is the most common nutritional deficiency in the world! Without enough iron, your blood can\'t carry oxygen properly, making you feel exhausted.' },
-        ],
-        7:  [
-          { question: 'Which element makes up about 78% of the air around us?', explanation: 'Most of the air is nitrogen — but we can\'t use it directly like oxygen. Plants and bacteria can "fix" it into a form living things can eat!' },
-          { question: 'Which element is found in every protein and in DNA?', explanation: 'Nitrogen is in every amino acid, and therefore every protein — muscles, enzymes, antibodies. It\'s also a key part of the DNA that carries your genes!' },
-        ],
-        8:  [
-          { question: 'Which element do we need to breathe to stay alive?', explanation: 'Your cells burn glucose with oxygen to release energy — that\'s called cellular respiration. Without oxygen, cells die in minutes!' },
-          { question: 'Which element is the most abundant in Earth\'s crust by mass?', explanation: 'Oxygen makes up 46% of Earth\'s crust — mostly locked up in rocks and minerals like quartz and feldspar rather than as a gas!' },
-        ],
-        53: [{ question: 'Which element does your body need to make thyroid hormones?', explanation: 'The thyroid gland uses iodine to make hormones that control your metabolism — how fast your body burns energy. That\'s why iodine is added to table salt in many countries!' }],
-        19: [{ question: 'Which element makes bananas very slightly radioactive?', explanation: 'Bananas contain potassium, and about 0.01% of natural potassium is radioactive potassium-40. Don\'t worry — the dose is tiny and your body controls its potassium levels carefully!' }],
-        // ── Technology & devices ──
-        3:  [{ question: 'Which element is used in rechargeable phone and laptop batteries?', explanation: 'Lithium-ion batteries are lightweight and rechargeable. Lithium is the lightest metal and can store a lot of electrical energy — perfect for phones, laptops, and electric cars!' }],
-        74: [{ question: 'Which element was used to make light bulb filaments glow?', explanation: 'Tungsten has the highest melting point of all metals (3,422°C), so it glows white-hot without melting. LED bulbs have mostly replaced it now, but tungsten is still used in specialist lighting.' }],
-        24: [{ question: 'Which element is added to iron to make it stainless and rust-proof?', explanation: 'Adding chromium to steel creates stainless steel! Chromium forms a thin invisible layer of chromium oxide on the surface that stops rust from ever forming.' }],
-        10: [{ question: 'Which element glows with a bright red-orange colour in neon signs?', explanation: 'Neon gas glows vivid red-orange when electricity passes through it. Other "neon sign" colours actually use different gases — argon glows blue, mercury gives green!' }],
-        11: [
-          { question: 'Which element makes street lamps glow yellow-orange?', explanation: 'Sodium vapour lamps fire electricity through sodium gas to produce a very efficient bright yellow-orange light. You\'ve seen them on motorways and older streets!' },
-          { question: 'Which element, combined with chlorine, makes ordinary table salt?', explanation: 'Sodium (Na) + Chlorine (Cl) = Sodium Chloride (NaCl) — table salt! Pure sodium is a soft silvery metal that reacts explosively with water, yet in salt it\'s completely safe to eat.' },
-        ],
-        // ── Earth & environment ──
-        13: [{ question: 'Which element is the most abundant metal in Earth\'s crust?', explanation: 'Aluminium makes up about 8% of Earth\'s crust — it\'s everywhere in rocks and clay. We use it for cans, foil, aeroplanes, and bikes because it\'s light and doesn\'t rust!' }],
-        6:  [
-          { question: 'Which element do plants absorb from the air to make food through photosynthesis?', explanation: 'Plants absorb carbon dioxide (CO₂) and use sunlight to turn it into sugar (glucose) and oxygen. Every apple, tree, and blade of grass is mostly carbon! ' },
-          { question: 'Which element can form both the hardest natural substance AND the softest?', explanation: 'Carbon forms diamond (hardest natural material) and graphite (pencil lead — one of the softest)! The difference is just how the atoms are arranged.' },
-          { question: 'Which element makes fizzy drinks fizzy?', explanation: 'Carbon dioxide (CO₂) is dissolved in drinks under pressure. When you open the bottle, the pressure drops and the gas escapes as bubbles — that\'s the fizz!' },
-        ],
-        16: [{ question: 'Which element is released as a choking yellow gas from volcanoes?', explanation: 'Volcanoes release sulfur dioxide (SO₂) — a sharp-smelling toxic gas. It can cause acid rain when it reacts with water in the atmosphere!' }],
-        1:  [{ question: 'Which element makes up most of the Sun?', explanation: 'The Sun is about 73% hydrogen by mass. Its gravity squeezes hydrogen atoms together in nuclear fusion, releasing the light and heat that makes life on Earth possible!' }],
-        // ── Cool science ──
-        12: [{ question: 'Which element burns with such a dazzling white flame it\'s used in fireworks and emergency flares?', explanation: 'Magnesium burns at over 3,000°C with an incredibly bright white light — so bright you should never look directly at it! It\'s also used in flares and old-fashioned camera flash bulbs.' }],
-        15: [{ question: 'Which element is on the heads of safety matches?', explanation: 'Match heads contain red phosphorus or a mixture including phosphorus compounds. When struck, the friction ignites the phosphorus, which lights the rest of the match!' }],
-        17: [{ question: 'Which element, combined with sodium, makes ordinary table salt?', explanation: 'Chlorine (Cl) + Sodium (Na) = Sodium Chloride (NaCl) — table salt! Pure chlorine is a toxic yellow-green gas, but bonded with sodium it becomes perfectly safe to eat.' }],
-        80: [{ question: 'Which element is a liquid metal so dense that a steel ball-bearing floats on its surface?', explanation: 'Mercury is the only metal that\'s liquid at room temperature, and it\'s extraordinarily dense — a steel ball really does float on it! It\'s very toxic though, so scientists handle it carefully.' }],
-      };
-      const entries = FAMOUS_USES[el.atomicNumber];
-      if (!entries || entries.length === 0) return null;
-      const famous = entries[Math.floor(Math.random() * entries.length)];
-      const distractors = pickRandom(pool, n - 1, [el]).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      return {
-        id: `us-3-${el.atomicNumber}`,
-        category: 'uses',
-        questionText: famous.question,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: famous.explanation,
-        hint: `Its symbol is ${el.symbol}.`,
+        explanation: trivia.explanation,
+        hint: trivia.hint ?? `Its symbol is ${el.symbol}.`,
       };
     },
   ],
 
   'obtained-from': [
-    (el, pool, n) => {
-      if (!el.obtainedFrom) return null;
-      const distractors = pickRandom(
-        pool.filter(e => e.obtainedFrom && e.atomicNumber !== el.atomicNumber),
-        n - 1,
-        [el]
-      ).map(e => e.name);
-      const choices = shuffleArray([el.name, ...distractors]);
-      // Blank out the element name from the description
-      const desc = blankOutElement(el.obtainedFrom, el);
-      return {
-        id: `ob-1-${el.atomicNumber}`,
-        category: 'obtained-from',
-        questionText: `Which element is obtained this way? "${desc}"`,
-        choices,
-        correctIndex: choices.indexOf(el.name),
-        element: el,
-        explanation: `It is ${el.obtainedFrom.charAt(0).toLowerCase()}${el.obtainedFrom.slice(1)}. ${randomFact(el)}`,
-        hint: `Its symbol is ${el.symbol}.`,
+    (el, _pool, n) => {
+      const methods: Record<number, { answer: string; explanation: string; question?: string }> = {
+        1: { answer: 'Splitting water by electrolysis', question: 'Which process can produce hydrogen from water?', explanation: 'An electric current drives the splitting of water. Hydrogen forms at one electrode and oxygen at the other, so the gases can be collected separately.' },
+        8: { answer: 'Separating liquid air by distillation', explanation: 'Air is cooled until it becomes liquid. Its components have different boiling points, allowing oxygen to be separated as the mixture warms.' },
+        13: { answer: 'Electrolysing aluminium oxide dissolved in molten cryolite', explanation: 'Aluminium binds strongly to oxygen, so extracting it requires substantial energy. An electric current separates it from the oxide dissolved in a molten electrolyte.' },
+        17: { answer: 'Electrolysing concentrated salt solution', explanation: 'Brine contains chloride ions. During electrolysis these ions lose electrons at the positive electrode and form chlorine gas.' },
+        18: { answer: 'Separating liquid air by distillation', explanation: 'Argon is present in air as separate atoms, not chemically bonded to the other gases. Distillation exploits differences in boiling point to separate the mixture.' },
+        26: { answer: 'Reducing iron oxide in a blast furnace', explanation: 'Carbon monoxide reacts with iron oxide and removes its oxygen. The iron is released from the compound, rather than being created from a different element.' },
+        11: { answer: 'Electrolysing molten sodium chloride', explanation: 'Sodium ions gain electrons at the negative electrode. The salt must be molten rather than dissolved in water, because water would react and prevent sodium metal from being collected this way.' },
       };
-    },
-    (el, pool, n) => {
-      if (!el.obtainedFrom) return null;
-      const distractors = pickUniqueDistractors(
-        pool.filter(e => e.obtainedFrom && e.atomicNumber !== el.atomicNumber),
-        n - 1,
-        e => e.obtainedFrom,
-        el.obtainedFrom,
-        el
-      );
-      if (distractors.length < n - 1) return null;
-      const choices = shuffleArray([el.obtainedFrom, ...distractors]);
+      const method = methods[el.atomicNumber];
+      if (!method) return null;
+      const alternatives = ['Filtering the element out of seawater', 'Melting pure sand', 'Burning wood and collecting the ash', 'Freezing distilled water'];
+      const choices = shuffleArray([method.answer, ...alternatives.slice(0, n - 1)]);
       return {
-        id: `ob-2-${el.atomicNumber}`,
+        id: `extraction-${el.atomicNumber}`,
         category: 'obtained-from',
-        questionText: `How is ${el.name} usually obtained?`,
+        questionText: method.question ?? `Which process is used industrially to obtain ${el.name.toLowerCase()}?`,
         choices,
-        correctIndex: choices.indexOf(el.obtainedFrom),
+        correctIndex: choices.indexOf(method.answer),
         element: el,
-        explanation: `${el.name} is usually obtained from: ${el.obtainedFrom}. ${randomFact(el)}`,
-        hint: `${el.name} is a ${categoryLabel(el.category)}.`,
+        explanation: method.explanation,
       };
     },
   ],
@@ -1487,6 +1204,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         const db = comparisonData[b.atomicNumber]!.density!;
         return da >= db ? a : b;
       });
+      if (all.filter(e => comparisonData[e.atomicNumber]!.density === comparisonData[densest.atomicNumber]!.density).length !== 1) return null;
       const choices = all.map(e => e.name);
       const densestData = comparisonData[densest.atomicNumber]!;
       return {
@@ -1496,67 +1214,8 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(densest.name),
         element: densest,
-        explanation: `${densest.name} has a density of ${densestData.density} g/cm³ — that's super heavy! ${randomFact(densest)}`,
+        explanation: `${densest.name} has a density of ${densestData.density} g/cm³ — that's super heavy!`,
         hint: `Think about which metals feel really heavy when you hold them.`,
-      };
-    },
-    // wb-2: Which element costs most per kg?
-    (el, pool, n) => {
-      const data = comparisonData[el.atomicNumber];
-      if (!data || data.pricePerKg === null) return null;
-      const candidates = pool.filter(e => {
-        const d = comparisonData[e.atomicNumber];
-        return d && d.pricePerKg !== null && e.atomicNumber !== el.atomicNumber;
-      });
-      if (candidates.length < n - 1) return null;
-      const distractors = pickRandom(candidates, n - 1, [el]);
-      const all = shuffleArray([el, ...distractors]);
-      // Find the most expensive
-      const priciest = all.reduce((a, b) => {
-        const pa = comparisonData[a.atomicNumber]!.pricePerKg!;
-        const pb = comparisonData[b.atomicNumber]!.pricePerKg!;
-        return pa >= pb ? a : b;
-      });
-      const choices = all.map(e => e.name);
-      const price = comparisonData[priciest.atomicNumber]!.pricePerKg!;
-      return {
-        id: `wb-2-${all.map(e => e.atomicNumber).sort().join('-')}`,
-        category: 'which-is-bigger' as QuestionCategory,
-        questionText: `If you bought 1 kg of each, which would cost the MOST?`,
-        choices,
-        correctIndex: choices.indexOf(priciest.name),
-        element: priciest,
-        explanation: `1 kg of ${priciest.name} costs about ${formatPrice(price)} per kg! ${randomFact(priciest)}`,
-        hint: `Think about which of these is rarest or hardest to make.`,
-      };
-    },
-    // wb-3: Which element is the most dangerous?
-    (el, pool, n) => {
-      const data = comparisonData[el.atomicNumber];
-      if (!data) return null;
-      const candidates = pool.filter(e => {
-        const d = comparisonData[e.atomicNumber];
-        return d && e.atomicNumber !== el.atomicNumber && d.dangerLevel !== data.dangerLevel;
-      });
-      if (candidates.length < n - 1) return null;
-      const distractors = pickRandom(candidates, n - 1, [el]);
-      const all = shuffleArray([el, ...distractors]);
-      const mostDangerous = all.reduce((a, b) => {
-        const da = comparisonData[a.atomicNumber]!.dangerLevel;
-        const db = comparisonData[b.atomicNumber]!.dangerLevel;
-        return da >= db ? a : b;
-      });
-      const choices = all.map(e => e.name);
-      const dangerLvl = comparisonData[mostDangerous.atomicNumber]!.dangerLevel;
-      return {
-        id: `wb-3-${all.map(e => e.atomicNumber).sort().join('-')}`,
-        category: 'which-is-bigger' as QuestionCategory,
-        questionText: `Which of these elements is the MOST DANGEROUS?`,
-        choices,
-        correctIndex: choices.indexOf(mostDangerous.name),
-        element: mostDangerous,
-        explanation: `${mostDangerous.name} is rated ${dangerLvl}/10 — ${DANGER_LABELS[dangerLvl]}! ${randomFact(mostDangerous)}`,
-        hint: `Some elements are toxic or radioactive — which one sounds scariest?`,
       };
     },
     // wb-4: Which element is rarer in Earth's crust?
@@ -1576,6 +1235,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         const ab = comparisonData[b.atomicNumber]!.abundanceCrust!;
         return aa <= ab ? a : b;
       });
+      if (all.filter(e => comparisonData[e.atomicNumber]!.abundanceCrust === comparisonData[rarest.atomicNumber]!.abundanceCrust).length !== 1) return null;
       const choices = all.map(e => e.name);
       return {
         id: `wb-4-${all.map(e => e.atomicNumber).sort().join('-')}`,
@@ -1584,7 +1244,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(rarest.name),
         element: rarest,
-        explanation: `${rarest.name} is super rare — only about ${comparisonData[rarest.atomicNumber]!.abundanceCrust} parts per million in Earth's crust! ${randomFact(rarest)}`,
+        explanation: `${rarest.name} is super rare — only about ${comparisonData[rarest.atomicNumber]!.abundanceCrust} parts per million in Earth's crust!`,
         hint: `Precious metals and noble gases tend to be very rare.`,
       };
     },
@@ -1593,6 +1253,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
       const distractors = pickRandom(pool, n - 1, [el]);
       const all = shuffleArray([el, ...distractors]);
       const heaviest = all.reduce((a, b) => a.atomicMass >= b.atomicMass ? a : b);
+      if (all.filter(e => e.atomicMass === heaviest.atomicMass).length !== 1) return null;
       const choices = all.map(e => e.name);
       return {
         id: `wb-5-${all.map(e => e.atomicNumber).sort().join('-')}`,
@@ -1601,17 +1262,18 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(heaviest.name),
         element: heaviest,
-        explanation: `${heaviest.name} has an atomic mass of ${heaviest.atomicMass}! The heavier the atom, the more protons and neutrons it has. ${randomFact(heaviest)}`,
+        explanation: `${heaviest.name} has an atomic mass of ${heaviest.atomicMass}! The heavier the atom, the more protons and neutrons it has.`,
         hint: `Elements further down the periodic table are usually heavier.`,
       };
     },
     // wb-6: Which element has the highest melting point?
     (el, pool, n) => {
+      if (el.atomicNumber === 6) return null;
       const data = comparisonData[el.atomicNumber];
       if (!data || data.meltingPoint === null) return null;
       const candidates = pool.filter(e => {
         const d = comparisonData[e.atomicNumber];
-        return d && d.meltingPoint !== null && e.atomicNumber !== el.atomicNumber;
+        return d && d.meltingPoint !== null && e.atomicNumber !== 6 && e.atomicNumber !== el.atomicNumber;
       });
       if (candidates.length < n - 1) return null;
       const distractors = pickRandom(candidates, n - 1, [el]);
@@ -1621,6 +1283,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         const mb = comparisonData[b.atomicNumber]!.meltingPoint!;
         return ma >= mb ? a : b;
       });
+      if (all.filter(e => comparisonData[e.atomicNumber]!.meltingPoint === comparisonData[hottest.atomicNumber]!.meltingPoint).length !== 1) return null;
       const choices = all.map(e => e.name);
       const mp = comparisonData[hottest.atomicNumber]!.meltingPoint!;
       return {
@@ -1630,70 +1293,20 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         choices,
         correctIndex: choices.indexOf(hottest.name),
         element: hottest,
-        explanation: `${hottest.name} melts at ${mp}°C — that's ${mp > 1000 ? 'incredibly hot' : mp > 0 ? 'pretty warm' : 'actually below freezing'}! ${randomFact(hottest)}`,
+        explanation: `${hottest.name} melts at ${mp}°C — that's ${mp > 1000 ? 'incredibly hot' : mp > 0 ? 'pretty warm' : 'actually below freezing'}!`,
         hint: `Metals that are used in furnaces and light bulbs often have very high melting points.`,
-      };
-    },
-    // wb-7: Which element is the cheapest per kg?
-    (el, pool, n) => {
-      const data = comparisonData[el.atomicNumber];
-      if (!data || data.pricePerKg === null) return null;
-      const candidates = pool.filter(e => {
-        const d = comparisonData[e.atomicNumber];
-        return d && d.pricePerKg !== null && e.atomicNumber !== el.atomicNumber;
-      });
-      if (candidates.length < n - 1) return null;
-      const distractors = pickRandom(candidates, n - 1, [el]);
-      const all = shuffleArray([el, ...distractors]);
-      const cheapest = all.reduce((a, b) => {
-        const pa = comparisonData[a.atomicNumber]!.pricePerKg!;
-        const pb = comparisonData[b.atomicNumber]!.pricePerKg!;
-        return pa <= pb ? a : b;
-      });
-      const choices = all.map(e => e.name);
-      const price = comparisonData[cheapest.atomicNumber]!.pricePerKg!;
-      return {
-        id: `wb-7-${all.map(e => e.atomicNumber).sort().join('-')}`,
-        category: 'which-is-bigger' as QuestionCategory,
-        questionText: `Which of these elements is the CHEAPEST to buy per kilogram?`,
-        choices,
-        correctIndex: choices.indexOf(cheapest.name),
-        element: cheapest,
-        explanation: `${cheapest.name} costs only about ${formatPrice(price)} per kg — what a bargain! ${randomFact(cheapest)}`,
-        hint: `Elements you see in everyday life are usually the cheapest.`,
-      };
-    },
-    // wb-8: Which is the safest?
-    (el, pool, n) => {
-      const data = comparisonData[el.atomicNumber];
-      if (!data) return null;
-      const candidates = pool.filter(e => {
-        const d = comparisonData[e.atomicNumber];
-        return d && e.atomicNumber !== el.atomicNumber && d.dangerLevel !== data.dangerLevel;
-      });
-      if (candidates.length < n - 1) return null;
-      const distractors = pickRandom(candidates, n - 1, [el]);
-      const all = shuffleArray([el, ...distractors]);
-      const safest = all.reduce((a, b) => {
-        const da = comparisonData[a.atomicNumber]!.dangerLevel;
-        const db = comparisonData[b.atomicNumber]!.dangerLevel;
-        return da <= db ? a : b;
-      });
-      const choices = all.map(e => e.name);
-      const dangerLvl = comparisonData[safest.atomicNumber]!.dangerLevel;
-      return {
-        id: `wb-8-${all.map(e => e.atomicNumber).sort().join('-')}`,
-        category: 'which-is-bigger' as QuestionCategory,
-        questionText: `Which of these elements is the SAFEST?`,
-        choices,
-        correctIndex: choices.indexOf(safest.name),
-        element: safest,
-        explanation: `${safest.name} is rated ${dangerLvl}/10 — ${DANGER_LABELS[dangerLvl]}! ${randomFact(safest)}`,
-        hint: `Think about elements you use or touch every day.`,
       };
     },
   ],
 };
+
+function conceptKey(question: Question): string {
+  const family = question.id.startsWith('trivia-') ? question.id
+    : ['group-classification', 'position'].includes(question.category)
+      ? (question.id.startsWith('gc-4') || question.id.startsWith('po-2') ? 'period' : 'group')
+      : question.category;
+  return `concept:${question.element.atomicNumber}:${family}`;
+}
 
 export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>): Question {
   const config = DIFFICULTY_CONFIG[difficulty];
@@ -1708,7 +1321,7 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
     const gen = gens[Math.floor(Math.random() * gens.length)];
     const element = pool[Math.floor(Math.random() * pool.length)];
     const question = gen(element, pool, config.choiceCount);
-    if (question && (!usedIds || !usedIds.has(question.id))) {
+    if (question && (!usedIds || (!usedIds.has(question.id) && !usedIds.has(conceptKey(question))))) {
       const enriched = enrichQuestion(question);
       if (questionContainsAnswerText(enriched)) continue;
       return enriched;
@@ -1726,7 +1339,7 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
     choices,
     correctIndex: choices.indexOf(el.symbol),
     element: el,
-    explanation: `The symbol for ${el.name} is ${el.symbol}. ${randomFact(el)}`,
+    explanation: `The symbol for ${el.name} is ${el.symbol}.`,
     hint: `It starts with "${el.symbol[0]}".`,
   });
 }
@@ -1735,63 +1348,19 @@ export function generateQuiz(difficulty: Difficulty, count: number): Question[] 
   const usedIds = new Set<string>();
   const questions: Question[] = [];
   for (let i = 0; i < count; i++) {
-    const q = generateQuestion(difficulty, usedIds);
+    let q = generateQuestion(difficulty, usedIds);
+    for (let retry = 0; retry < 30 && questions.length && (q.element.atomicNumber === questions.at(-1)!.element.atomicNumber || questions.some(previous => previous.explanation === q.explanation) || questions.slice(-2).every(previous => previous.category === q.category)); retry++) {
+      q = generateQuestion(difficulty, usedIds);
+    }
     usedIds.add(q.id);
+    usedIds.add(conceptKey(q));
     questions.push(q);
   }
-  return questions;
-}
-
-function shortAnswerFact(el: Element, avoidText: string, usedFacts: Set<string>): string {
-  const options = [
-    `symbol ${el.symbol}`,
-    `atomic number ${el.atomicNumber}`,
-    categoryLabel(el.category),
-    `${el.stateAtRoomTemp} at room temperature`,
-    el.group === null ? `period ${el.period}` : `group ${el.group}`,
-    el.uses?.[0],
-    randomKnownFact(el).replace(/[.!?]+$/, ''),
-  ].filter((fact): fact is string => Boolean(fact && fact.trim()));
-
-  const avoid = normalizeForComparison(avoidText);
-  const shuffled = shuffleArray(options);
-  const fact = shuffled.find(candidate => {
-    const normalized = normalizeForComparison(candidate);
-    return !avoid.includes(normalized) && !usedFacts.has(normalized);
-  }) ?? shuffled.find(candidate => !usedFacts.has(normalizeForComparison(candidate)))
-    // Symbols and atomic numbers are element-specific, so this is only a
-    // defensive fallback if the element data ever contains duplicate facts.
-    ?? `atomic number ${el.atomicNumber}`;
-
-  usedFacts.add(normalizeForComparison(fact));
-  return fact;
-}
-
-function varyElementAnswerText(question: Question): Question {
-  const choiceElements = question.choices.map(choice => elements.find(e => e.name === choice));
-  if (choiceElements.some(el => !el)) return question;
-
-  const style = Math.floor(Math.random() * 4);
-  const usedFacts = new Set<string>();
-  const choices = choiceElements.map(el => {
-    if (!el) return '';
-    const fact = shortAnswerFact(el, question.questionText, usedFacts);
-    if (style === 0) return `${el.name} (${el.symbol})`;
-    if (style === 1) return `${el.name} - ${fact}`;
-    if (style === 2) return `${el.name}, ${fact}`;
-    return `${el.name}: ${fact}`;
-  });
-
-  return {
-    ...question,
-    id: `qb-${style}-${question.id}`,
-    choices,
-    correctIndex: question.correctIndex,
-  };
+  return addExtraFacts(questions);
 }
 
 export function generateQuizBattleQuiz(difficulty: Difficulty, count: number): Question[] {
-  return generateQuiz(difficulty, count).map(varyElementAnswerText);
+  return generateQuiz(difficulty, count);
 }
 
 /**
@@ -1806,11 +1375,10 @@ const DEEP_DIVE_SAFE_GENERATORS: Partial<Record<QuestionCategory, number[]>> = {
   'atomic-number': [0],     // "What is the atomic number of X?" → answer is number
   'group-classification': [0, 1], // answer is category label or group number
   'state': [0],             // answer is solid/liquid/gas
-  'radioactivity': [0, 1],  // answer is stable/radioactive or half-life
+  'radioactivity': [0],    // whether the element has stable isotopes
   'isotopes': [0],          // answer is isotope count
   'compounds': [0],         // answer is a compound formula
   'discovery': [0, 1],      // answer is person or year
-  'uses': [1],              // "What is X used for?" → answer is a use (not element name)
   // Excluded entirely: 'fun-fact' (answer = element name), 'obtained-from' (answer = element name),
   // 'position' (answer = element name), 'uses[0]' (answer = element name)
 };
@@ -1829,13 +1397,7 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     if (cat === 'group-classification' && element.group === null) continue;
     if (cat === 'compounds' && element.compounds.length === 0) continue;
     if (cat === 'isotopes' && element.radioactive) continue;
-    if (cat === 'radioactivity' && !element.radioactive && indices.includes(1)) {
-      // Keep index 0 (stable/radioactive) but skip index 1 (half-life) for non-radioactive
-      safeGens.push({ category: cat, genIndex: 0 });
-      continue;
-    }
     if (cat === 'discovery' && (element.discoveredBy === 'Ancient' || !element.discoveryYear)) continue;
-    if (cat === 'uses' && (!element.uses || element.uses.length === 0)) continue;
 
     for (const idx of indices) {
       safeGens.push({ category: cat, genIndex: idx });
@@ -1876,7 +1438,7 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     }
   }
 
-  return shuffleArray(questions);
+  return addExtraFacts(shuffleArray(questions));
 }
 
 /** Generate a quiz using only 'which-is-bigger' comparison questions */
@@ -1901,5 +1463,5 @@ export function generateComparisonQuiz(difficulty: Difficulty, count: number): Q
     }
   }
 
-  return shuffleArray(questions);
+  return addExtraFacts(shuffleArray(questions));
 }

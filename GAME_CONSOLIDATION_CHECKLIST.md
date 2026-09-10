@@ -94,7 +94,7 @@ This checklist tracks the move to one canonical game catalogue. The existing mul
 - [x] Support Solo Championship using the canonical Solo screens and link every leg to its Championship run.
 - [ ] Preserve 2 Player Championship.
 - [ ] Preserve Player vs Bot Championship.
-- [x] Replace raw-score addition with equal-weight Championship points (100 win / 50 draw / 0 loss).
+- [x] Total the points acquired in each Championship match without normalization.
 - [x] Define an exact-combination key from format, size, difficulty, ordered games/variants, and rules version.
 - [x] Add a leaderboard for every exact Championship combination that is played.
 - [x] Update each individual game's leaderboard when its Championship leg completes.
