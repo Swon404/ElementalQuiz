@@ -9,6 +9,7 @@ interface AtomQuizScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -16,7 +17,7 @@ type Phase = 'setup' | 'playing' | 'result';
 import { generateAtomQuestions, type AtomQuestion } from '../games/atomQuiz.ts';
 export { generateAtomQuestions, type AtomQuestion } from '../games/atomQuiz.ts';
 
-export default function AtomQuizScreen({ onBack, playerId, playerName, championshipRunId }: AtomQuizScreenProps) {
+export default function AtomQuizScreen({ onBack, playerId, playerName, championshipRoundCount, championshipRunId }: AtomQuizScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
   const [questions, setQuestions] = useState<AtomQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
@@ -29,7 +30,7 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
   const [newBestId, setNewBestId] = useState<string | null>(null);
   const startedAtRef = useRef(0);
 
-  const questionCount = 12;
+  const questionCount = championshipRoundCount ?? 12;
   const configKey = buildGameConfigKey('atom-quiz', 'classic', { questions: questionCount });
 
   const startQuiz = useCallback(() => {
@@ -43,7 +44,7 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
     setLeaderboard(getGameLeaderboard('atom-quiz', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [configKey]);
+  }, [configKey, questionCount]);
 
   const handleAnswer = (idx: number) => {
     if (answered !== null) return;

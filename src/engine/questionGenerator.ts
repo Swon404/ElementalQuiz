@@ -1,6 +1,6 @@
 import { elements, type Element } from '../data/elements.ts';
 import { focusedExplanation } from './questionFeedback.ts';
-import { addExtraFacts, pickExtraFact } from './extraFacts.ts';
+import { addExtraFacts, pickExtraFact, extraFactCandidates } from './extraFacts.ts';
 import { MORE_TRIVIA } from '../data/moreTrivia.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from './scoring.ts';
 import { comparisonData } from '../data/comparisonData.ts';
@@ -63,7 +63,7 @@ function enrichQuestion(question: Question): Question {
     ...question,
     questionText: question.questionText.replace(/\b(GROUP|PERIOD|DENSEST|RAREST|BIGGEST|HIGHEST)\b/g, word => word.toLowerCase()),
     explanation,
-    extraFact: pickExtraFact(`${question.questionText} ${explanation}`),
+    extraFact: pickExtraFact(`${question.questionText} ${explanation}`, new Set(), extraFactCandidates(question)),
   };
 }
 
@@ -326,15 +326,6 @@ const RELATABLE_TRIVIA: Record<number, RelatableTrivia[]> = {
       explanation: "Quartz is silicon dioxide: silicon atoms bonded with oxygen in an extended structure. Melting silica with other ingredients produces many familiar types of glass.",
       clue: "I combine with oxygen to form quartz.",
       hint: 'Its symbol is Si.',
-    },
-  ],
-  15: [
-    {
-      topic: 'common-object',
-      question: "Which element is used in the red material on a safety matchbox’s striking strip?",
-      explanation: "Safety matches keep red phosphorus on the striking strip, separate from chemicals in the match head. Striking brings the materials together with friction, helping start the reaction.",
-      clue: "My red form is on a safety matchbox’s striking strip.",
-      hint: 'Its symbol is P.',
     },
   ],
   16: [
@@ -1308,6 +1299,20 @@ function conceptKey(question: Question): string {
   return `concept:${question.element.atomicNumber}:${family}`;
 }
 
+function repetitionKeys(question: Question): string[] {
+  return [question.id, conceptKey(question),
+    `feedback:${normalizeForComparison(question.explanation)}`,
+    `prompt:${normalizeForComparison(question.questionText)}:${normalizeForComparison(question.choices[question.correctIndex])}`];
+}
+
+function isRepeated(question: Question, used: Set<string>): boolean {
+  return repetitionKeys(question).some(key => used.has(key));
+}
+
+function rememberQuestion(question: Question, used: Set<string>): void {
+  repetitionKeys(question).forEach(key => used.add(key));
+}
+
 export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>): Question {
   const config = DIFFICULTY_CONFIG[difficulty];
   const pool = getElementPool(difficulty);
@@ -1324,43 +1329,47 @@ export function generateQuestion(difficulty: Difficulty, usedIds?: Set<string>):
     if (question && (!usedIds || (!usedIds.has(question.id) && !usedIds.has(conceptKey(question))))) {
       const enriched = enrichQuestion(question);
       if (questionContainsAnswerText(enriched)) continue;
+      if (usedIds && isRepeated(enriched, usedIds)) continue;
       return enriched;
     }
   }
 
-  // Fallback: simple symbol question
-  const el = pool[Math.floor(Math.random() * pool.length)];
-  const distractors = pickRandom(pool, config.choiceCount - 1, [el]).map(e => e.symbol);
-  const choices = shuffleArray([el.symbol, ...distractors]);
-  return enrichQuestion({
-    id: `fallback-${Date.now()}`,
-    category: 'symbol-name',
-    questionText: `What is the chemical symbol for ${el.name}?`,
-    choices,
-    correctIndex: choices.indexOf(el.symbol),
-    element: el,
-    explanation: `The symbol for ${el.name} is ${el.symbol}.`,
-    hint: `It starts with "${el.symbol[0]}".`,
-  });
+  // Fallback must respect the same history as regular questions.
+  for (const el of shuffleArray(pool)) {
+    const distractors = pickRandom(pool, config.choiceCount - 1, [el]).map(e => e.symbol);
+    const choices = shuffleArray([el.symbol, ...distractors]);
+    const fallback = enrichQuestion({
+      id: `fallback-symbol-${el.atomicNumber}`,
+      category: 'symbol-name',
+      questionText: `What is the chemical symbol for ${el.name}?`,
+      choices,
+      correctIndex: choices.indexOf(el.symbol),
+      element: el,
+      explanation: `The symbol for ${el.name} is ${el.symbol}.`,
+      hint: `It starts with "${el.symbol[0]}".`,
+    });
+    if (!usedIds || !isRepeated(fallback, usedIds)) return fallback;
+  }
+  throw new Error('No unused questions remain for this difficulty.');
 }
 
-export function generateQuiz(difficulty: Difficulty, count: number): Question[] {
+export function generateQuiz(difficulty: Difficulty, count: number, previousQuestions: Question[] = []): Question[] {
   const usedIds = new Set<string>();
+  previousQuestions.forEach(question => rememberQuestion(question, usedIds));
   const questions: Question[] = [];
   for (let i = 0; i < count; i++) {
     let q = generateQuestion(difficulty, usedIds);
     for (let retry = 0; retry < 30 && questions.length && (q.element.atomicNumber === questions.at(-1)!.element.atomicNumber || questions.some(previous => previous.explanation === q.explanation) || questions.slice(-2).every(previous => previous.category === q.category)); retry++) {
       q = generateQuestion(difficulty, usedIds);
     }
-    usedIds.add(q.id);
-    usedIds.add(conceptKey(q));
+    rememberQuestion(q, usedIds);
     questions.push(q);
   }
   return addExtraFacts(questions);
 }
 
-export function generateQuizBattleQuiz(difficulty: Difficulty, count: number): Question[] {
-  return generateQuiz(difficulty, count);
+export function generateQuizBattleQuiz(difficulty: Difficulty, count: number, previousQuestions: Question[] = []): Question[] {
+  return generateQuiz(difficulty, count, previousQuestions);
 }
 
 /**
@@ -1417,7 +1426,8 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     if (question && !usedIds.has(question.id)) {
       const enriched = enrichQuestion(question);
       if (questionContainsAnswerText(enriched)) continue;
-      usedIds.add(enriched.id);
+      if (isRepeated(enriched, usedIds)) continue;
+      rememberQuestion(enriched, usedIds);
       questions.push(enriched);
     }
   }
@@ -1433,7 +1443,8 @@ export function generateDeepDiveQuiz(element: Element, difficulty: Difficulty, c
     if (question && !usedIds.has(question.id)) {
       const enriched = enrichQuestion(question);
       if (questionContainsAnswerText(enriched)) continue;
-      usedIds.add(enriched.id);
+      if (isRepeated(enriched, usedIds)) continue;
+      rememberQuestion(enriched, usedIds);
       questions.push(enriched);
     }
   }
@@ -1458,7 +1469,8 @@ export function generateComparisonQuiz(difficulty: Difficulty, count: number): Q
     if (question && !usedIds.has(question.id)) {
       const enriched = enrichQuestion(question);
       if (questionContainsAnswerText(enriched)) continue;
-      usedIds.add(enriched.id);
+      if (isRepeated(enriched, usedIds)) continue;
+      rememberQuestion(enriched, usedIds);
       questions.push(enriched);
     }
   }

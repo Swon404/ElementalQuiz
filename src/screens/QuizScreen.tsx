@@ -17,6 +17,8 @@ interface QuizScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
+  championshipDifficulty?: Difficulty;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -34,9 +36,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   'actinide': '#a67abd',
 };
 
-export default function QuizScreen({ mode, progress, onComplete, onBack, playerId, playerName, championshipRunId }: QuizScreenProps) {
+export default function QuizScreen({ mode, progress, onComplete, onBack, playerId, playerName, championshipRoundCount, championshipDifficulty, championshipRunId }: QuizScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
-  const [difficulty, setDifficulty] = useState<Difficulty>('explorer');
+  const [localDifficulty, setDifficulty] = useState<Difficulty>('explorer');
+  const difficulty = championshipDifficulty ?? localDifficulty;
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
   const [score, setScore] = useState(0);
@@ -51,7 +54,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack, playerI
   const startedAtRef = useRef(0);
 
   const variantId = mode;
-  const expectedQuestionCount = mode === 'sprint' ? 50 : mode === 'deep-dive' ? 8 : 10;
+  const expectedQuestionCount = championshipRoundCount ?? (mode === 'sprint' ? 50 : mode === 'deep-dive' ? 8 : 10);
   const configKey = buildGameConfigKey('quiz-battle', variantId, {
     difficulty,
     questions: expectedQuestionCount,
@@ -60,10 +63,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack, playerI
   });
 
   const startQuiz = useCallback(() => {
-    let count = 10;
-    if (mode === 'sprint') count = 50;
-    if (mode === 'deep-dive') count = 8;
-    if (mode === 'showdown') count = 10;
+    const count = expectedQuestionCount;
 
     let qs: Question[];
     if (mode === 'deep-dive') {
@@ -93,7 +93,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack, playerI
     setLeaderboard(getGameLeaderboard('quiz-battle', variantId, configKey, 'solo'));
     startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [configKey, difficulty, mode, selectedElement, variantId]);
+  }, [configKey, difficulty, mode, selectedElement, variantId, expectedQuestionCount]);
 
   const handleAnswer = useCallback((correct: boolean, points: number, elementNum: number) => {
     setScore(s => s + points);
@@ -158,16 +158,16 @@ export default function QuizScreen({ mode, progress, onComplete, onBack, playerI
           {isComparison && '💥 Element Showdown'}
         </h2>
 
-        <Elementor expression="greeting" message={isComparison ? "Element Showdown! Which is heavier? Pricier? More dangerous? Let's battle!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
+        <Elementor expression="greeting" message={championshipDifficulty ? "Ready for Quiz Battle?" : isComparison ? "Element Showdown! Which is heavier? Pricier? More dangerous? Let's battle!" : isDeepDive ? "Pick an element to explore in depth, or let me choose a random one!" : "Choose your difficulty level!"} />
 
-        <div className="difficulty-select">
+        {!championshipDifficulty && <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => {
             const cfg = DIFFICULTY_CONFIG[d];
             return (
               <button
                 key={d}
                 className={`diff-btn ${difficulty === d ? 'selected' : ''}`}
-                onClick={() => setDifficulty(d)}
+                disabled={!!championshipDifficulty} onClick={() => setDifficulty(d)}
               >
                 <span className="diff-label">{cfg.label}</span>
                 <span className="diff-desc">{cfg.description}</span>
@@ -179,7 +179,7 @@ export default function QuizScreen({ mode, progress, onComplete, onBack, playerI
               </button>
             );
           })}
-        </div>
+        </div>}
 
         {isDeepDive && (
           <div className="deep-dive-picker">

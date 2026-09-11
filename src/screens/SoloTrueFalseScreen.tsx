@@ -13,14 +13,18 @@ interface SoloTrueFalseScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
+  championshipDifficulty?: Difficulty;
 }
 
-const QUESTION_COUNT = 10;
+
 const TIME_LIMIT_SECONDS = 20;
 
-export default function SoloTrueFalseScreen({ onBack, playerId, playerName, championshipRunId }: SoloTrueFalseScreenProps) {
+export default function SoloTrueFalseScreen({ onBack, playerId, playerName, championshipRoundCount, championshipDifficulty, championshipRunId }: SoloTrueFalseScreenProps) {
+  const QUESTION_COUNT = championshipRoundCount ?? 10;
   const [phase, setPhase] = useState<Phase>('setup');
-  const [difficulty, setDifficulty] = useState<Difficulty>('scientist');
+  const [localDifficulty, setDifficulty] = useState<Difficulty>('scientist');
+  const difficulty = championshipDifficulty ?? localDifficulty;
   const [statements, setStatements] = useState<TrueFalseStatement[]>([]);
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState<boolean | null>(null);
@@ -52,7 +56,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
     setLeaderboard(getGameLeaderboard('tf-blitz', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [configKey, pool]);
+  }, [configKey, pool, QUESTION_COUNT]);
 
   useEffect(() => {
     if (phase !== 'playing' || showResult) return;
@@ -123,14 +127,14 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">✅ True or False Blitz</h2>
         <Elementor expression="greeting" message="Decide whether each element statement is true before the timer runs out!" />
-        <div className="difficulty-select">
+        {!championshipDifficulty && <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(option => (
-            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} onClick={() => setDifficulty(option)}>
+            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} disabled={!!championshipDifficulty} onClick={() => setDifficulty(option)}>
               <span className="diff-label">{DIFFICULTY_CONFIG[option].label}</span>
               <span className="diff-desc">Elements 1–{DIFFICULTY_CONFIG[option].elementPool}</span>
             </button>
           ))}
-        </div>
+        </div>}
         <button className="start-btn" onClick={startGame}>Start!</button>
       </div>
     );

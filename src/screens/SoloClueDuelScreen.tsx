@@ -13,13 +13,17 @@ interface SoloClueDuelScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
+  championshipDifficulty?: Difficulty;
 }
 
-const ROUND_COUNT = 6;
 
-export default function SoloClueDuelScreen({ onBack, playerId, playerName, championshipRunId }: SoloClueDuelScreenProps) {
+
+export default function SoloClueDuelScreen({ onBack, playerId, playerName, championshipRoundCount, championshipDifficulty, championshipRunId }: SoloClueDuelScreenProps) {
+  const ROUND_COUNT = championshipRoundCount ?? 6;
   const [phase, setPhase] = useState<Phase>('setup');
-  const [difficulty, setDifficulty] = useState<Difficulty>('scientist');
+  const [localDifficulty, setDifficulty] = useState<Difficulty>('scientist');
+  const difficulty = championshipDifficulty ?? localDifficulty;
   const [rounds, setRounds] = useState<ClueRound[]>([]);
   const [roundIndex, setRoundIndex] = useState(0);
   const [clueIndex, setClueIndex] = useState(0);
@@ -50,7 +54,7 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
     setLeaderboard(getGameLeaderboard('clue-duel', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [configKey, pool]);
+  }, [configKey, pool, ROUND_COUNT]);
 
   const revealNextClue = () => {
     if (roundComplete || clueIndex >= 4) return;
@@ -124,14 +128,14 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">🕵️ Clue Duel</h2>
         <Elementor expression="greeting" message="Identify each element using as few clues as possible!" />
-        <div className="difficulty-select">
+        {!championshipDifficulty && <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(option => (
-            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} onClick={() => setDifficulty(option)}>
+            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} disabled={!!championshipDifficulty} onClick={() => setDifficulty(option)}>
               <span className="diff-label">{DIFFICULTY_CONFIG[option].label}</span>
               <span className="diff-desc">Elements 1–{DIFFICULTY_CONFIG[option].elementPool}</span>
             </button>
           ))}
-        </div>
+        </div>}
         <button className="start-btn" onClick={startGame}>Start!</button>
       </div>
     );

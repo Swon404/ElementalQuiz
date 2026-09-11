@@ -1,3 +1,4 @@
+import { type Difficulty } from '../engine/scoring.ts';
 import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { playCorrect, playWrong, playCollect } from '../engine/sounds.ts';
@@ -14,6 +15,8 @@ interface SymbolPickScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
+  championshipDifficulty?: Difficulty;
 }
 
 type Phase = 'setup' | 'playing' | 'result';
@@ -24,9 +27,10 @@ const SYMBOL_RULES = {
   hard: { pool: 118, distractors: 6 },
 } as const;
 
-export default function SymbolPickScreen({ onBack, playerId, playerName, championshipRunId }: SymbolPickScreenProps) {
+export default function SymbolPickScreen({ onBack, playerId, playerName, championshipRoundCount, championshipDifficulty, championshipRunId }: SymbolPickScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [localDifficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const difficulty = championshipDifficulty ? ({ explorer: 'easy', scientist: 'medium', professor: 'hard' } as const)[championshipDifficulty] : localDifficulty;
   const [rounds, setRounds] = useState<SymbolRound[]>([]);
   const [idx, setIdx] = useState(0);
   const [answered, setAnswered] = useState<number | null>(null);
@@ -35,7 +39,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
   const [elapsedMs, setElapsedMs] = useState(0);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [newBest, setNewBest] = useState(false);
-  const total = 10;
+  const total = championshipRoundCount ?? 10;
   const startedAtRef = useRef(0);
 
   const configKey = buildGameConfigKey('symbol-pick', 'classic', {
@@ -55,7 +59,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
     setLeaderboard(getGameLeaderboard('symbol-pick', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
     setPhase('playing');
-  }, [configKey, difficulty]);
+  }, [configKey, difficulty, total]);
 
   const handleAnswer = (choiceIdx: number) => {
     if (answered !== null) return;
@@ -103,7 +107,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">🔤 Symbol Pick</h2>
         <Elementor expression="greeting" message="I'll show you an element — pick its chemical symbol from look-alikes!" />
-        <div className="difficulty-select">
+        {!championshipDifficulty && <div className="difficulty-select">
           {[
             { v: 'easy' as const, label: 'Easy', desc: '1–20, 5 look-alikes' },
             { v: 'medium' as const, label: 'Medium', desc: 'Up to 50, 6 look-alikes' },
@@ -112,13 +116,13 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
             <button
               key={opt.v}
               className={`diff-btn ${difficulty === opt.v ? 'selected' : ''}`}
-              onClick={() => setDifficulty(opt.v)}
+              disabled={!!championshipDifficulty} onClick={() => setDifficulty(opt.v)}
             >
               <span className="diff-label">{opt.label}</span>
               <span className="diff-desc">{opt.desc}</span>
             </button>
           ))}
-        </div>
+        </div>}
         <button className="start-btn" onClick={startGame}>Start!</button>
       </div>
     );

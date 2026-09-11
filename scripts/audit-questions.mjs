@@ -11,11 +11,23 @@ try {
   const { generateAtomQuestions } = await server.ssrLoadModule('/src/games/atomQuiz.ts');
   const { generateClueRounds } = await server.ssrLoadModule('/src/games/clueDuel.ts');
   const { elements } = await server.ssrLoadModule('/src/data/elements.ts');
-  const { EXTRA_FACTS, pickExtraFact } = await server.ssrLoadModule('/src/engine/extraFacts.ts');
+  const { EXTRA_FACTS, pickExtraFact, extraFactCandidates } = await server.ssrLoadModule('/src/engine/extraFacts.ts');
   const counts = { quiz: 0, atom: 0, clues: 0, deepDive: 0, comparison: 0, curated: 0 };
   const atomPrompts = new Set();
   const extraFactsSeen = new Set();
+  const matchstickContent = /matchsticks?|matchbox|safety matches|striking strip|match heads?|used in matches/i;
+  for (const el of elements) {
+    assert.ok(!matchstickContent.test([el.funFact, ...el.additionalFacts, ...el.uses].join(' ')), el.name);
+    for (const trivia of getRelatableTrivia(el)) {
+      assert.ok(!matchstickContent.test(JSON.stringify(trivia)), 'No matchstick questions or clues');
+    }
+  }
+  assert.ok(EXTRA_FACTS.every(fact => !matchstickContent.test(fact)));
   const normalise = text => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const checkNoRepetition = questions => {
+    assert.equal(new Set(questions.map(q => normalise(q.explanation))).size, questions.length, 'No repeated explanations within a game');
+    assert.equal(new Set(questions.map(q => `${normalise(q.questionText)}:${normalise(q.choices[q.correctIndex])}`)).size, questions.length, 'No repeated question/answer pairs');
+  };
   const check = q => {
     assert.ok(q.questionText.trim());
     assert.ok(q.correctIndex >= 0 && q.correctIndex < q.choices.length, q.questionText);
@@ -24,7 +36,7 @@ try {
     assert.ok(q.explanation?.length >= 65, `${q.questionText}: ${q.explanation}`);
     assert.ok(q.explanation.split(/\s+/).length <= 85, q.questionText);
     assert.notEqual(normalise(q.explanation), normalise(q.choices[q.correctIndex]), q.questionText);
-    assert.ok(EXTRA_FACTS.includes(q.extraFact), 'Exactly one authored extra fact is supplied');
+    assert.ok(extraFactCandidates(q).includes(q.extraFact), 'Fun fact belongs to the correct element or subject');
     assert.ok(!normalise(q.explanation).includes(normalise(q.extraFact)), q.questionText);
     extraFactsSeen.add(q.extraFact);
     assert.ok(!/\?\?\?|_{2,}|undefined|NaN/.test(q.questionText + q.explanation), q.questionText);
@@ -41,17 +53,30 @@ try {
       const questions = generateQuiz(difficulty, 12);
       assert.equal(questions.length, 12);
       assert.equal(new Set(questions.map(q => q.id)).size, 12);
-      assert.equal(new Set(questions.map(q => q.extraFact)).size, 12, 'No repeated extra facts in a session');
       questions.forEach(check);
+      checkNoRepetition(questions);
       counts.quiz += questions.length;
       const comparisons = generateComparisonQuiz(difficulty, 8);
       comparisons.forEach(check);
+      checkNoRepetition(comparisons);
       counts.comparison += comparisons.length;
     }
     for (const el of elements) {
       const questions = generateDeepDiveQuiz(el, difficulty, 12);
       questions.forEach(check);
+      checkNoRepetition(questions);
       counts.deepDive += questions.length;
+    }
+  }
+  for (const difficulty of ['explorer', 'scientist', 'professor']) {
+    for (let run = 0; run < 20; run++) {
+      const sprint = generateQuiz(difficulty, 50);
+      assert.equal(sprint.length, 50);
+      checkNoRepetition(sprint);
+      const firstPlayer = generateQuiz(difficulty, 12);
+      const secondPlayer = generateQuiz(difficulty, 12, firstPlayer);
+      assert.equal(secondPlayer.length, 12);
+      checkNoRepetition([...firstPlayer, ...secondPlayer]);
     }
   }
   for (let run = 0; run < 200; run++) {
@@ -61,7 +86,6 @@ try {
     assert.equal(new Set(questions.map(q => q.explanation)).size, questions.length);
     assert.equal(new Set(questions.map(q => q.topic)).size, questions.length, 'No repeated Atom Quiz concepts');
     assert.ok(questions.every(q => q.topic));
-    assert.equal(new Set(questions.map(q => q.extraFact)).size, questions.length);
     counts.atom += questions.length;
   }
   assert.equal(atomPrompts.size, 85, 'All Atom Quiz wordings exercised');
@@ -74,7 +98,7 @@ try {
       assert.equal(new Set(round.choices).size, round.choices.length);
       assert.ok(round.choices.includes(round.correctName));
       assert.ok(round.explanation.length >= 65);
-      assert.ok(EXTRA_FACTS.includes(round.extraFact));
+      assert.ok(extraFactCandidates(round).includes(round.extraFact), 'Clue fact belongs to the answer element');
       assert.ok(!/\?\?\?|_{2,}|undefined/.test(round.clues.join(' ')));
       assert.ok(round.choices.every(name => elements.slice(0, size).some(el => el.name === name)));
     }
@@ -93,8 +117,16 @@ try {
   for (const fact of EXTRA_FACTS) {
     assert.notEqual(pickExtraFact(fact), fact, 'Do not repeat the supplied teaching fact');
   }
-  assert.equal(counts.curated, 73);
-  assert.equal(extraFactsSeen.size, EXTRA_FACTS.length, 'The full extra-fact pool is reachable');
+  const helium = elements.find(el => el.name === 'Helium');
+  const heliumPool = extraFactCandidates({ element: helium, explanation: '' });
+  assert.ok(heliumPool.includes(EXTRA_FACTS[0]));
+  assert.ok(!heliumPool.includes(EXTRA_FACTS[1]), 'Helium must not receive a copper fact');
+  const quarkPool = extraFactCandidates({ topic: 'quarks', explanation: '' });
+  assert.ok(quarkPool.includes(EXTRA_FACTS[31]));
+  assert.ok(!quarkPool.includes(EXTRA_FACTS[1]), 'Quarks must not receive a copper fact');
+  assert.ok(heliumPool.includes(pickExtraFact('', new Set(heliumPool), heliumPool)), 'Exhaustion never escapes the relevant pool');
+  assert.equal(counts.curated, 72);
+  assert.ok(extraFactsSeen.size > EXTRA_FACTS.length, 'Element-specific pools provide broader variety');
   console.log(JSON.stringify({ passed: true, counts, atomWordingsCovered: atomPrompts.size }, null, 2));
   for (const difficulty of ['explorer', 'scientist', 'professor']) {
     console.log(difficulty, generateQuiz(difficulty, 3).map(q => ({ question: q.questionText, answer: q.choices[q.correctIndex], explanation: q.explanation })));

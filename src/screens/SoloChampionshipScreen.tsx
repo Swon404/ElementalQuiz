@@ -18,7 +18,7 @@ import type {
   ElementMatchTrialTarget,
   PlayerProgress,
 } from '../engine/storage.ts';
-import { GAME_CATALOG, GAME_IDS, type GameId } from '../games/catalog.ts';
+import { GAME_CATALOG, GAME_IDS, type GameId, type ChampionshipSize } from '../games/catalog.ts';
 import { ATOMIC_ORDER_LEVELS, ATOMIC_ORDER_TILE_COUNTS } from '../games/atomicOrder.ts';
 import AtomQuizScreen from './AtomQuizScreen.tsx';
 import ElementOrderScreen from './ElementOrderScreen.tsx';
@@ -41,6 +41,7 @@ const participantKind = (playerId: string) => playerId.startsWith('guest:') ? 'g
 
 export default function SoloChampionshipScreen({ onBack, playerId, playerName, progress }: SoloChampionshipScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
+  const [championshipSize, setChampionshipSize] = useState<ChampionshipSize>('standard');
   const [selectedGames, setSelectedGames] = useState<GameId[]>([...GAME_IDS]);
   const [activeGames, setActiveGames] = useState<GameId[]>([]);
   const [gameIndex, setGameIndex] = useState(0);
@@ -57,11 +58,11 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const [huntTargetMode, setHuntTargetMode] = useState<HuntTargetMode>('none');
   const [huntChosenTarget, setHuntChosenTarget] = useState(1);
   const [huntUnlockPairs, setHuntUnlockPairs] = useState(0);
-  const [atomicDifficulty, setAtomicDifficulty] = useState<Difficulty>('explorer');
+  const [championshipDifficulty, setChampionshipDifficulty] = useState<Difficulty>('explorer');
   const [atomicChallenge, setAtomicChallenge] = useState<AtomicOrderLevel>('easy');
   const [atomicMultiplier, setAtomicMultiplier] = useState<AtomicOrderMultiplier>(1);
 
-  const championshipTimeTrialMatches = GAME_CATALOG['atomic-order'].championshipCounts.standard;
+  const championshipTimeTrialMatches = GAME_CATALOG['atomic-order'].championshipCounts[championshipSize];
   const championshipTimeTrialBoardPairs = championshipTimeTrialMatches * 3;
 
   const currentGame = activeGames[gameIndex];
@@ -90,7 +91,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
     const score = results.reduce((sum, result) => sum + result.metrics.score, 0);
     const combinationKey = buildChampionshipCombinationKey({
       format: 'solo',
-      size: 'standard',
+      size: championshipSize,
       games: activeGames,
       gameConfigurations: groupedResults.map(gameResults => gameResults[0]?.configKey ?? 'missing'),
       rulesVersion: 2,
@@ -120,7 +121,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const completeCurrentLeg = () => {
     const results = getChampionshipRunGameResults(runId);
     const gameResults = results.filter(result => result.gameId === currentGame);
-    const requiredResults = currentGame === 'atomic-order' ? 5 : 1;
+    const requiredResults = currentGame === 'atomic-order' ? championshipTimeTrialMatches : 1;
     if (gameResults.length < requiredResults) {
       setPhase('setup');
       return;
@@ -147,7 +148,13 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
           </div>
         </div>
 
+        <section className="champ-options-group">
+          <strong>Championship difficulty</strong>
+          <div className="round-select"><span>Difficulty:</span>{(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(option => <button key={option} className={`round-btn ${championshipDifficulty === option ? 'selected' : ''}`} onClick={() => setChampionshipDifficulty(option)}>{DIFFICULTY_CONFIG[option].label}</button>)}</div>
+        </section>
+
         <div className="champ-game-picker">
+          <div className="round-select"><span>Championship length:</span>{(['quick', 'standard', 'epic'] as ChampionshipSize[]).map(size => <button key={size} className={`round-btn ${championshipSize === size ? 'selected' : ''}`} aria-pressed={championshipSize === size} onClick={() => setChampionshipSize(size)}>{size[0].toUpperCase() + size.slice(1)}</button>)}</div>
           <label>Games (choose at least 2):</label>
           <div className="champ-games-list">
             {GAME_IDS.map(gameId => {
@@ -155,7 +162,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
               const selected = selectedGames.includes(gameId);
               return (
                 <button key={gameId} className={`champ-game-chip champ-game-toggle ${selected ? 'selected' : ''}`} onClick={() => toggleGame(gameId)} aria-pressed={selected}>
-                  {selected ? '✓ ' : ''}{game.icon} {game.label}
+                  {selected ? '✓ ' : ''}{game.icon} {game.label} · {gameId === 'element-match' ? (matchMode === 'hunt' ? '1 board' : `${championshipTimeTrialMatches} matches`) : `${game.championshipCounts[championshipSize]} rounds`}
                 </button>
               );
             })}
@@ -182,13 +189,13 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
         </section>
         <section className={`champ-options-group ${selectedGames.includes('atomic-order') ? '' : 'disabled'}`} aria-disabled={!selectedGames.includes('atomic-order')}>
           <div className="champ-options-heading">
-            <div><strong>🔢 Atomic Order options</strong><span>Challenge rules, difficulty, and number of tiles</span></div>
+            <div><strong>🔢 Atomic Order options</strong><span>Challenge rules and number of tiles</span></div>
             <span className="champ-option-status">{selectedGames.includes('atomic-order') ? 'Included' : 'Game not selected'}</span>
           </div>
-          <div className="round-select"><span>Difficulty:</span>{(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(option => <button key={option} disabled={!selectedGames.includes('atomic-order')} className={`round-btn ${atomicDifficulty === option ? 'selected' : ''}`} onClick={() => setAtomicDifficulty(option)}>{DIFFICULTY_CONFIG[option].label}</button>)}</div>
+
           <span className="atomic-order-setting-label">Challenge:</span>
           <div className="atomic-order-preset-grid">{(Object.keys(ATOMIC_ORDER_LEVELS) as AtomicOrderLevel[]).map(option => <button key={option} disabled={!selectedGames.includes('atomic-order')} className={`atomic-order-preset-btn ${atomicChallenge === option ? 'selected' : ''}`} onClick={() => setAtomicChallenge(option)}><strong>{ATOMIC_ORDER_LEVELS[option].label}</strong><span>{ATOMIC_ORDER_LEVELS[option].description}</span></button>)}</div>
-          <div className="round-select"><span>Tiles:</span>{([1, 2, 3, 4] as AtomicOrderMultiplier[]).map(option => <button key={option} disabled={!selectedGames.includes('atomic-order')} className={`round-btn ${atomicMultiplier === option ? 'selected' : ''}`} onClick={() => setAtomicMultiplier(option)}>{option}×</button>)}<span className="gm-desc">{ATOMIC_ORDER_TILE_COUNTS[atomicDifficulty] * atomicMultiplier} tiles</span></div>
+          <div className="round-select"><span>Tiles:</span>{([1, 2, 3, 4] as AtomicOrderMultiplier[]).map(option => <button key={option} disabled={!selectedGames.includes('atomic-order')} className={`round-btn ${atomicMultiplier === option ? 'selected' : ''}`} onClick={() => setAtomicMultiplier(option)}>{option}×</button>)}<span className="gm-desc">{ATOMIC_ORDER_TILE_COUNTS[championshipDifficulty] * atomicMultiplier} tiles</span></div>
         </section>
         <div className="champ-info">
           <div className="champ-games-list">{selectedGames.map(gameId => <span key={gameId} className="champ-game-chip">{GAME_CATALOG[gameId].icon} {GAME_CATALOG[gameId].label}</span>)}</div>
@@ -225,16 +232,16 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
     );
   }
 
-  const sharedProps = { onBack: completeCurrentLeg, playerId, playerName, championshipRunId: runId };
+  const sharedProps = { onBack: completeCurrentLeg, playerId, playerName, championshipRunId: runId, championshipDifficulty, championshipRoundCount: GAME_CATALOG[currentGame].championshipCounts[championshipSize] };
   return (
     <>
-      <div className="champ-game-banner">🏆 Solo Championship · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
+      <div className="champ-game-banner">🏆 Solo Championship · {championshipSize[0].toUpperCase() + championshipSize.slice(1)} · {DIFFICULTY_CONFIG[championshipDifficulty].label} · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
       {currentGame === 'quiz-battle' && <QuizScreen mode="classic" progress={progress} onComplete={() => completeCurrentLeg()} {...sharedProps} />}
       {currentGame === 'tf-blitz' && <SoloTrueFalseScreen {...sharedProps} />}
       {currentGame === 'element-match' && <SoloElementMatchScreen initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}
       {currentGame === 'clue-duel' && <SoloClueDuelScreen {...sharedProps} />}
       {currentGame === 'symbol-pick' && <SymbolPickScreen {...sharedProps} />}
-      {currentGame === 'atomic-order' && <ElementOrderScreen initialOptions={{ difficulty: atomicDifficulty, challenge: atomicChallenge, multiplier: atomicMultiplier }} {...sharedProps} />}
+      {currentGame === 'atomic-order' && <ElementOrderScreen initialOptions={{ difficulty: championshipDifficulty, challenge: atomicChallenge, multiplier: atomicMultiplier }} {...sharedProps} />}
       {currentGame === 'atom-quiz' && <AtomQuizScreen {...sharedProps} />}
     </>
   );

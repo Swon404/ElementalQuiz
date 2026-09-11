@@ -4,7 +4,11 @@ Scope: Quiz (including the shared multiplayer, Championship, Deep Dive and compa
 
 ## Editorial rule
 
-Keep the answer short and explicit. Follow it with one connected explanation, usually two sentences, that explains a mechanism, gives a worked example, or clears up a misconception about the topic asked. Then show exactly one separately labelled Fun fact, selected once when generating the question. Prefer a different topic and avoid repeats within a session; do not turn the explanation into a miniature element biography.
+Record and price facts should include the relevant number, units/currency and date. Distinguish a valuation or asking price from an actual sale, and avoid unsupported claims of current records.
+
+Rhodium ring correction: replaced the unverified claim of a most-expensive sale with the 2023 diamond-count record (50,907), rhodium finish and maker's valuation of US$785,645 (approximately £639,000). Source: [Guinness World Records, 28 April 2023](https://www.guinnessworldrecords.com/news/commercial/2023/04/record-breaking-ring-is-a-cut-above-the-rest-with-over-50000-diamonds-744771).
+
+Keep the answer short and explicit. Follow it with one connected explanation, usually two sentences, that explains a mechanism, gives a worked example, or clears up a misconception about the topic asked. Then show exactly one separately labelled Fun fact, selected once when generating the question. The fact must concern the answer element or the Atom Quiz subject. Within that pool, prefer a detail not already explained and an unused fact; relevance takes priority if the subject pool is exhausted.
 
 New real-world questions must have an authored prompt, a readable Clue Duel clue and a focused explanation. Do not build questions by deleting element names from an arbitrary paragraph. Where evidence is thin, use a well-supported property question or a smaller question pool.
 
@@ -14,11 +18,11 @@ New real-world questions must have an authored prompt, a readable Clue Duel clue
 | --- | --- | --- |
 | Quiz feedback | Two random facts were appended to every answer | Removed the enrichment; each category now explains its own concept |
 | Multiplayer choices | Element choices sometimes contained unrelated facts | Choices now contain only the requested answer |
-| Fact and use questions | Several generators recycled the same fact, sometimes with blanks or multiple unrelated clues | Consolidated and expanded to 73 authored question/clue/explanation pairs; removed the duplicate famous-use bank |
+| Fact and use questions | Several generators recycled the same fact, sometimes with blanks or multiple unrelated clues | Consolidated to 72 authored question/clue/explanation pairs after removing matchstick content; removed the duplicate famous-use bank |
 | Extraction | Scrubbed source paragraphs were awkward and often repeated by the explanation | Added seven focused process questions with explanations |
 | Clue Duel | Redacted paragraphs, repetitive clues and no explanation at the reveal | Five readable clues, each adding a detail, followed by the shared explanation; distinct explanations are selected first |
 | Atom Quiz | 69 wordings included repeated concepts and shallow restatements | Rewrote every explanation and added 16 applied questions, giving 85 wordings; grouped equivalent concepts so a session uses each at most once |
-| Fun facts | User requested one random fact alongside the focused explanation | Added a 40-fact pool, selected for low topic overlap, with no fact reuse until the pool is exhausted; shown and read aloud after the explanation |
+| Fun facts | Random facts were unrelated to the question | Select from the answer element's existing facts plus matching curated facts, or an explicit Atom Quiz subject pool; prefer unused details within that relevant pool; shown and read aloud after the explanation |
 | Scientific wording | Mass number was conflated with atomic mass; electrons described as orbiting planets; stellar origins overgeneralised | Corrected these distinctions and narrowed prompts where needed |
 | Answer validity | A neutron question offered the same correct quark combination twice | Removed the equivalent duplicate |
 | Generated distractors | Compounds and isotope counts could admit multiple correct choices | Filtered distractors using the tested property; excluded abbreviations that do not show the relevant symbol |

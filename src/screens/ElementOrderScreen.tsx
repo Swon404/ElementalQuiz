@@ -19,6 +19,8 @@ interface ElementOrderScreenProps {
   playerId: string;
   playerName: string;
   championshipRunId?: string;
+  championshipRoundCount?: number;
+  championshipDifficulty?: Difficulty;
   initialOptions?: Partial<SoloAtomicOrderOptions>;
 }
 
@@ -29,11 +31,13 @@ export type SoloAtomicOrderOptions = {
 };
 
 type Phase = 'setup' | 'playing' | 'result';
-const ROUND_COUNT = 5;
 
-export default function ElementOrderScreen({ onBack, playerId, playerName, championshipRunId, initialOptions }: ElementOrderScreenProps) {
+
+export default function ElementOrderScreen({ onBack, playerId, playerName, championshipRoundCount, championshipDifficulty, championshipRunId, initialOptions }: ElementOrderScreenProps) {
+  const ROUND_COUNT = championshipRoundCount ?? 5;
   const [phase, setPhase] = useState<Phase>('setup');
-  const [difficulty, setDifficulty] = useState<Difficulty>(initialOptions?.difficulty ?? 'explorer');
+  const [localDifficulty, setDifficulty] = useState<Difficulty>(initialOptions?.difficulty ?? 'explorer');
+  const difficulty = championshipDifficulty ?? localDifficulty;
   const [challenge, setChallenge] = useState<AtomicOrderLevel>(initialOptions?.challenge ?? 'easy');
   const [multiplier, setMultiplier] = useState<AtomicOrderMultiplier>(initialOptions?.multiplier ?? 1);
   const [gameRounds, setGameRounds] = useState<AtomicOrderRound[]>([]);
@@ -76,7 +80,7 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
     setLeaderboard(getGameLeaderboard('atomic-order', 'arrange', configKey, 'solo'));
     prepareRound(rounds, 0);
     setPhase('playing');
-  }, [configKey, difficulty, multiplier, rules.randomizeStart]);
+  }, [configKey, difficulty, multiplier, rules.randomizeStart, ROUND_COUNT]);
 
   useEffect(() => {
     if (!startedAt || result) return;
@@ -170,14 +174,14 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
         <button className="back-btn" onClick={onBack}>← Back</button>
         <h2 className="setup-title">🔢 Atomic Order</h2>
         <Elementor expression="greeting" message="Arrange every tile from the lowest atomic number to the highest. Tap two tiles to swap them!" />
-        <div className="difficulty-select">
+        {!championshipDifficulty && <div className="difficulty-select">
           {(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(option => (
-            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} onClick={() => setDifficulty(option)}>
+            <button key={option} className={`diff-btn ${difficulty === option ? 'selected' : ''}`} disabled={!!championshipDifficulty} onClick={() => setDifficulty(option)}>
               <span className="diff-label">{DIFFICULTY_CONFIG[option].label}</span>
               <span className="diff-desc">{ATOMIC_ORDER_TILE_COUNTS[option] * multiplier} tiles · elements 1–{DIFFICULTY_CONFIG[option].elementPool}</span>
             </button>
           ))}
-        </div>
+        </div>}
         <div className="round-select"><span>Challenge:</span>{(Object.keys(ATOMIC_ORDER_LEVELS) as AtomicOrderLevel[]).map(option => <button key={option} className={`round-btn ${challenge === option ? 'selected' : ''}`} onClick={() => setChallenge(option)}>{ATOMIC_ORDER_LEVELS[option].label}</button>)}</div>
         <div className="round-select"><span>Tiles:</span>{([1, 2, 3, 4] as AtomicOrderMultiplier[]).map(option => <button key={option} className={`round-btn ${multiplier === option ? 'selected' : ''}`} onClick={() => setMultiplier(option)}>{option}×</button>)}</div>
         <p className="setup-hint">{rules.description}</p>

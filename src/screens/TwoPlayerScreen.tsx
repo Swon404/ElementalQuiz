@@ -620,8 +620,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Quiz Battle ---
   const startQuizBattle = useCallback(() => {
-    setP1Questions(generateQuizBattleQuiz(player1.difficulty, rounds));
-    setP2Questions(generateQuizBattleQuiz(player2.difficulty, rounds));
+    const firstQuestions = generateQuizBattleQuiz(player1.difficulty, rounds);
+    setP1Questions(firstQuestions);
+    setP2Questions(generateQuizBattleQuiz(player2.difficulty, rounds, firstQuestions));
     setCurrentPlayer(1);
     setCurrentRound(1);
     setQIndex(0);
@@ -1494,8 +1495,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     const counts = CHAMP_SIZE_CONFIG[champSize].counts;
     if (mode === 'quiz-battle') {
       const n = counts[mode];
-      setP1Questions(generateQuizBattleQuiz(player1.difficulty, n));
-      setP2Questions(generateQuizBattleQuiz(player2.difficulty, n));
+      const firstQuestions = generateQuizBattleQuiz(player1.difficulty, n);
+      setP1Questions(firstQuestions);
+      setP2Questions(generateQuizBattleQuiz(player2.difficulty, n, firstQuestions));
       setCurrentPlayer(1);
       setCurrentRound(1);
       setQIndex(0);
