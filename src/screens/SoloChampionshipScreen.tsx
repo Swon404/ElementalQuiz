@@ -94,10 +94,10 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
       size: championshipSize,
       games: activeGames,
       gameConfigurations: groupedResults.map(gameResults => gameResults[0]?.configKey ?? 'missing'),
-      rulesVersion: 2,
+      rulesVersion: 3,
     });
     const recorded = recordCompletedChampionshipResult({
-      rulesVersion: 2,
+      rulesVersion: 3,
       runId,
       combinationKey,
       format: 'solo',
@@ -121,7 +121,8 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const completeCurrentLeg = () => {
     const results = getChampionshipRunGameResults(runId);
     const gameResults = results.filter(result => result.gameId === currentGame);
-    const requiredResults = currentGame === 'atomic-order' ? championshipTimeTrialMatches : 1;
+    const requiredResults = currentGame === 'atomic-order' ? championshipTimeTrialMatches
+      : currentGame === 'element-match' && matchMode === 'hunt' ? 3 : 1;
     if (gameResults.length < requiredResults) {
       setPhase('setup');
       return;
@@ -162,7 +163,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
               const selected = selectedGames.includes(gameId);
               return (
                 <button key={gameId} className={`champ-game-chip champ-game-toggle ${selected ? 'selected' : ''}`} onClick={() => toggleGame(gameId)} aria-pressed={selected}>
-                  {selected ? '✓ ' : ''}{game.icon} {game.label} · {gameId === 'element-match' ? (matchMode === 'hunt' ? '1 board' : `${championshipTimeTrialMatches} matches`) : `${game.championshipCounts[championshipSize]} rounds`}
+                  {selected ? '✓ ' : ''}{game.icon} {game.label} · {gameId === 'element-match' ? (matchMode === 'hunt' ? '3 rounds' : `${championshipTimeTrialMatches} matches`) : `${game.championshipCounts[championshipSize]} rounds`}
                 </button>
               );
             })}
@@ -170,7 +171,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
         </div>
         <section className={`champ-options-group ${selectedGames.includes('element-match') ? '' : 'disabled'}`} aria-disabled={!selectedGames.includes('element-match')}>
           <div className="champ-options-heading">
-            <div><strong>🃏 Element Match options</strong><span>{matchMode === 'hunt' ? (huntTimed ? 'One timed Hunt board' : 'One relaxed Hunt board') : 'Timed run to the selected match target'}</span></div>
+            <div><strong>🃏 Element Match options</strong><span>{matchMode === 'hunt' ? (huntTimed ? 'Three timed Hunt rounds' : 'Three relaxed Hunt rounds') : 'Timed run to the selected match target'}</span></div>
             <span className="champ-option-status">{selectedGames.includes('element-match') ? 'Included' : 'Game not selected'}</span>
           </div>
           <div className="round-select"><span>Mode:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => setMatchMode('time-trial')}>⏱️ Time Trial</button></div>
@@ -238,7 +239,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
       <div className="champ-game-banner">🏆 Solo Championship · {championshipSize[0].toUpperCase() + championshipSize.slice(1)} · {DIFFICULTY_CONFIG[championshipDifficulty].label} · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
       {currentGame === 'quiz-battle' && <QuizScreen mode="classic" progress={progress} onComplete={() => completeCurrentLeg()} {...sharedProps} />}
       {currentGame === 'tf-blitz' && <SoloTrueFalseScreen {...sharedProps} />}
-      {currentGame === 'element-match' && <SoloElementMatchScreen initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}
+      {currentGame === 'element-match' && <SoloElementMatchScreen championshipHuntRounds={3} initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}
       {currentGame === 'clue-duel' && <SoloClueDuelScreen {...sharedProps} />}
       {currentGame === 'symbol-pick' && <SymbolPickScreen {...sharedProps} />}
       {currentGame === 'atomic-order' && <ElementOrderScreen initialOptions={{ difficulty: championshipDifficulty, challenge: atomicChallenge, multiplier: atomicMultiplier }} {...sharedProps} />}
