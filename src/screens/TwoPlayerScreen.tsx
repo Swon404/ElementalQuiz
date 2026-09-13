@@ -535,9 +535,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   });
   const [activeChampGames, setActiveChampGames] = useState<GameId[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
-  const isMatchTimeTrial = gameMode === 'element-match' && matchMode === 'time-trial' && !isChampTiebreaker;
+  const isTimedHunt = matchMode === 'hunt' && huntTimed;
+  const isMatchTimedRun = gameMode === 'element-match' && (matchMode === 'time-trial' || isTimedHunt) && !isChampTiebreaker;
   const matchTrialPool: ElementMatchPool = matchExotic ? 'exotic' : 'all';
-  const matchTrialGoal = matchTrialTarget === 'all' ? rounds : Math.min(matchTrialTarget, rounds);
+  const matchTrialGoal = isTimedHunt ? rounds : matchTrialTarget === 'all' ? rounds : Math.min(matchTrialTarget, rounds);
 
   // Save names whenever they change
   useEffect(() => {
@@ -856,6 +857,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     setMatchTrialElapsed(0);
     setMatchTrialResult(null);
     setMatchTrialNewBest(false);
+    setHuntFoundMessage(null);
     botKnownCardsRef.current.clear();
   };
 
@@ -894,6 +896,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
     setMatchCards(cards);
     setHuntTargetElementNum(targetNum);
+    if (huntTimed && !isChampTiebreaker) {
+      setMatchTrialElementNums(boardElementNums);
+      setMatchTrialP1Result(null);
+      setMatchTrialWinner(null);
+      setMatchTrialComplete(false);
+      setMatchTrialLeaderboard([]);
+      resetScores();
+      beginMatchTrialTurn(boardElementNums, 1);
+      setPhase('playing');
+      return;
+    }
     setMatchTurn(1);
     setMatchFirst(null);
     setMatchLocked(false);
@@ -917,7 +930,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const startMatchTrialTimer = () => {
-    if (!isMatchTimeTrial || matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
+    if (!isMatchTimedRun || matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
     setMatchTrialCountdown(3);
   };
 
@@ -932,8 +945,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       rulesVersion: 1,
       championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
       gameId: 'element-match',
-      variantId: 'time-trial',
-      configKey: buildGameConfigKey('element-match', 'time-trial', {
+      variantId: isTimedHunt ? 'hunt' : 'time-trial',
+      configKey: buildGameConfigKey('element-match', isTimedHunt ? 'hunt' : 'time-trial', isTimedHunt ? {
+        pool: matchTrialPool, pairs: rounds, targetMode: huntTargetMode,
+        targetElement: huntTargetMode === 'choose' ? huntTargetElementNum : null,
+        unlockAfterPairs: huntRequiredPairs, timed: true, turnMode: 'separate',
+      } : {
         pool: matchTrialPool,
         pairs: rounds,
         target: matchTrialTarget,
@@ -941,14 +958,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       format: currentPlayerFormat(),
       participant: participantForTurn(completedTurn),
       metrics: {
-        score: result.matches,
+        score: result.matches + (isTimedHunt && huntTargetElementNum !== null ? HUNT_TARGET_PAIR_POINTS - 1 + HUNT_WIN_BONUS : 0),
         normalizedScore: matchTrialGoal ? Math.round((result.matches / matchTrialGoal) * 100) : 0,
         correct: result.matches,
         total: matchTrialGoal,
         elapsedMs: result.elapsedMs,
       },
     });
-    if (!botFinisher) {
+    if (!botFinisher && !isTimedHunt) {
       const finisher = completedTurn === 1 ? player1 : player2;
       const recorded = recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
       setMatchTrialLeaderboard(recorded.leaderboard);
@@ -990,12 +1007,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   }, [matchCards]);
 
   const handleMatchFlip = (cardId: number) => {
-    if (matchLocked || (isMatchTimeTrial ? (!matchTrialTimerStarted || matchTrialResult) : !huntTimerStarted)) return;
+    if (matchLocked || (isMatchTimedRun ? (!matchTrialTimerStarted || matchTrialResult) : !huntTimerStarted)) return;
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
     if (
-      gameMode === 'element-match' && !isMatchTimeTrial &&
+      gameMode === 'element-match' && matchMode === 'hunt' &&
       huntTargetElementNum !== null &&
       card.elementNum === huntTargetElementNum &&
       claimedPairsBeforeFlip < huntRequiredPairs
@@ -1017,17 +1034,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
       if (first.elementNum === second.elementNum) {
         playCorrect();
-        const isTargetMatch = gameMode === 'element-match' && !isMatchTimeTrial && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum;
+        const isTargetMatch = gameMode === 'element-match' && matchMode === 'hunt' && huntTargetElementNum !== null && first.elementNum === huntTargetElementNum;
         const pairPoints = isTargetMatch ? HUNT_TARGET_PAIR_POINTS : 1;
         const matched = updated.map(c =>
           c.elementNum === first.elementNum ? { ...c, matched: true, matchedBy: matchTurn as 1 | 2 } : c
         );
         setMatchCards(matched);
-        if (isMatchTimeTrial) {
+        if (isMatchTimedRun) {
           const matchedPairs = Math.floor(matched.filter(c => c.matched).length / 2);
           setMatchFirst(null);
           setMatchLocked(false);
-          if (matchedPairs >= matchTrialGoal) {
+          if (isTargetMatch || matchedPairs >= matchTrialGoal) {
             finishMatchTrialTurn({
               matches: matchedPairs,
               elapsedMs: Math.max(1, Date.now() - matchTrialStartedAt),
@@ -1090,7 +1107,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           ));
           setMatchFirst(null);
           setMatchLocked(false);
-          if (!isMatchTimeTrial) setMatchTurn(t => t === 1 ? 2 : 1);
+          if (!isMatchTimedRun) setMatchTurn(t => t === 1 ? 2 : 1);
         }, MATCH_MISMATCH_DELAY_MS);
       }
     }
@@ -1099,7 +1116,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   // Safety net: if all cards are matched, always end the game even if a prior callback was interrupted.
   useEffect(() => {
     if (phase !== 'playing' || gameMode !== 'element-match' || matchCards.length === 0) return;
-    if (isMatchTimeTrial) return;
+    if (isMatchTimedRun) return;
     if (!matchCards.every(c => c.matched)) return;
     if (matchFinishTimerRef.current) return;
 
@@ -1112,10 +1129,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       matchFinishTimerRef.current = null;
       finishCurrentGame(p1Pairs, p2Pairs);
     }, finishDelay);
-  }, [gameMode, isChampionship, isMatchTimeTrial, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
+  }, [gameMode, isChampionship, isMatchTimedRun, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
 
   useEffect(() => {
-    if (!isMatchTimeTrial || phase !== 'playing' || matchTrialCountdown === null || matchTrialResult) return;
+    if (!isMatchTimedRun || phase !== 'playing' || matchTrialCountdown === null || matchTrialResult) return;
     const timer = setTimeout(() => {
       if (matchTrialCountdown > 1) {
         setMatchTrialCountdown(count => count === null ? null : count - 1);
@@ -1127,24 +1144,24 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setMatchTrialCountdown(null);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [isMatchTimeTrial, matchTrialCountdown, matchTrialResult, phase]);
+  }, [isMatchTimedRun, matchTrialCountdown, matchTrialResult, phase]);
 
   useEffect(() => {
-    if (!isMatchTimeTrial || phase !== 'playing' || !matchTrialTimerStarted || matchTrialResult || !matchTrialStartedAt) return;
+    if (!isMatchTimedRun || phase !== 'playing' || !matchTrialTimerStarted || matchTrialResult || !matchTrialStartedAt) return;
     const timer = setInterval(() => setMatchTrialElapsed(Date.now() - matchTrialStartedAt), 100);
     return () => clearInterval(timer);
-  }, [isMatchTimeTrial, matchTrialResult, matchTrialStartedAt, matchTrialTimerStarted, phase]);
+  }, [isMatchTimedRun, matchTrialResult, matchTrialStartedAt, matchTrialTimerStarted, phase]);
 
   useEffect(() => {
-    if (!isMatchTimeTrial || phase !== 'playing' || player2Mode !== 'bot' || matchTurn !== 2) return;
+    if (!isMatchTimedRun || phase !== 'playing' || player2Mode !== 'bot' || matchTurn !== 2) return;
     if (matchTrialTimerStarted || matchTrialCountdown !== null || matchTrialResult) return;
     setMatchTrialStartedAt(Date.now());
     setMatchTrialElapsed(0);
     setMatchTrialTimerStarted(true);
-  }, [isMatchTimeTrial, matchTrialCountdown, matchTrialResult, matchTrialTimerStarted, matchTurn, phase, player2Mode]);
+  }, [isMatchTimedRun, matchTrialCountdown, matchTrialResult, matchTrialTimerStarted, matchTurn, phase, player2Mode]);
 
   useEffect(() => {
-    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || huntCountdown === null) return;
+    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimedRun || huntCountdown === null) return;
     const timer = setTimeout(() => {
       if (huntCountdown > 1) {
         setHuntCountdown(count => count === null ? null : count - 1);
@@ -1156,13 +1173,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setHuntCountdown(null);
     }, 1000);
     return () => clearTimeout(timer);
-  }, [gameMode, huntCountdown, isMatchTimeTrial, phase]);
+  }, [gameMode, huntCountdown, isMatchTimedRun, phase]);
 
   useEffect(() => {
-    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimeTrial || !huntTimed || !huntTimerStarted || !huntStartedAt) return;
+    if (phase !== 'playing' || gameMode !== 'element-match' || isMatchTimedRun || !huntTimed || !huntTimerStarted || !huntStartedAt) return;
     const timer = setInterval(() => setHuntElapsed(Date.now() - huntStartedAt), 100);
     return () => clearInterval(timer);
-  }, [gameMode, huntStartedAt, huntTimed, huntTimerStarted, isMatchTimeTrial, phase]);
+  }, [gameMode, huntStartedAt, huntTimed, huntTimerStarted, isMatchTimedRun, phase]);
 
   // --- Clue Duel ---
   const startElementSnap = useCallback(() => {
@@ -1542,6 +1559,17 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
       setMatchCards(cards);
       setHuntTargetElementNum(targetNum);
+      if (huntTimed) {
+        setMatchTrialElementNums(boardElementNums);
+        setMatchTrialP1Result(null);
+        setMatchTrialWinner(null);
+        setMatchTrialComplete(false);
+        setMatchTrialLeaderboard([]);
+        setRounds(n);
+        beginMatchTrialTurn(boardElementNums, 1);
+        setPhase('playing');
+        return;
+      }
       setHuntFoundMessage(null);
       setMatchTurn(1);
       setMatchFirst(null);
@@ -1599,7 +1627,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             requiredMatches: CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'],
             boardPairs: CHAMP_SIZE_CONFIG[champSize].counts['atomic-order'] * 3,
           }
-        : { matchExotic, huntTimed, huntTargetMode, huntTargetElementNum, huntRequiredPairs }),
+        : { matchExotic, huntTimed, huntTargetMode, huntTargetElementNum, huntRequiredPairs, turnMode: huntTimed ? 'separate' : 'shared' }),
       atomicOrderRules: JSON.stringify({ orderChallengeLevel, orderTileMultiplier }),
       rulesVersion: 2,
     });
@@ -1623,7 +1651,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const finishCurrentGame = (finalP1: number = p1Score, finalP2: number = p2Score) => {
     // A Time Trial Championship leg is only valid after both players have run the board.
     // This also protects against a stale auto-advance callback from closing it after Player 1.
-    if (isMatchTimeTrial && (!matchTrialP1Result || !matchTrialComplete || matchTrialTurnRef.current !== 2)) return;
+    if (isMatchTimedRun && (!matchTrialP1Result || !matchTrialComplete || matchTrialTurnRef.current !== 2)) return;
 
     setP1Score(finalP1);
     setP2Score(finalP2);
@@ -1694,7 +1722,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setGenericLeaderboardBestId(updatedLeaderboard.find(entry => newResultIds.includes(entry.id))?.id ?? null);
     }
 
-    if (gameMode === 'element-match' && !isMatchTimeTrial && !huntRecordedRef.current) {
+    if (gameMode === 'element-match' && !isMatchTimedRun && !huntRecordedRef.current) {
       huntRecordedRef.current = true;
       const elapsedMs = huntFinishedElapsedRef.current || Math.max(1, Date.now() - huntStartedAt);
       setHuntElapsed(elapsedMs);
@@ -1882,9 +1910,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       return;
     }
 
-    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked && (isMatchTimeTrial ? matchTrialTimerStarted : huntTimerStarted)) {
+    if (gameMode === 'element-match' && matchTurn === 2 && !matchLocked && (isMatchTimedRun ? matchTrialTimerStarted : huntTimerStarted)) {
       const claimedPairs = Math.floor(matchCards.filter(c => c.matched).length / 2);
-      const blockedElementNum = !isMatchTimeTrial && huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
+      const blockedElementNum = matchMode === 'hunt' && huntTargetElementNum !== null && claimedPairs < huntRequiredPairs ? huntTargetElementNum : null;
       const choiceId = pickBotMatchCard(matchCards, matchFirst, player2.difficulty, blockedElementNum);
       if (choiceId !== null) {
         botTimerRef.current = setTimeout(() => {
@@ -1962,7 +1990,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     botGetsCorrect,
     currentPlayer,
     gameMode,
-    isMatchTimeTrial,
+    isMatchTimedRun,
     matchCards,
     matchFirst,
     matchLocked,
@@ -2031,7 +2059,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       return;
     }
 
-    if (gameMode === 'element-match' && isMatchTimeTrial && matchTurn === 2 && matchTrialResult) {
+    if (gameMode === 'element-match' && isMatchTimedRun && matchTurn === 2 && matchTrialResult) {
       botTimerRef.current = setTimeout(() => {
         botTimerRef.current = null;
         nextMatchTrialStage();
@@ -2041,7 +2069,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     atomAnswered,
     atomTurn,
     gameMode,
-    isMatchTimeTrial,
+    isMatchTimedRun,
     matchTrialResult,
     matchTurn,
     orderTurn,
@@ -2217,7 +2245,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             <label>Mode: </label>
             <button className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button>
             <button className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}>⏱️ Time Trial</button>
-            <span className="gm-desc">{matchMode === 'hunt' ? (huntTimed ? 'Share one timed board; the winner can set a leaderboard time.' : 'Share one relaxed board; highest score wins.') : 'Take separate turns; fastest wins.'}</span>
+            <span className="gm-desc">{matchMode === 'hunt' ? (huntTimed ? 'Take separate timed turns; fastest wins.' : 'Share one relaxed board; highest score wins.') : 'Take separate turns; fastest wins.'}</span>
           </div>
         )}
         {gameMode === 'element-match' && matchMode === 'hunt' && (
@@ -2390,7 +2418,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               <div className="champ-options-heading">
                 <div>
                   <strong>Element Match options</strong>
-                  <span>{matchMode === 'hunt' ? (huntTimed ? 'Timed shared board · fastest winner joins the leaderboard' : 'Relaxed shared board · highest score wins') : 'Separate timed runs · fastest player wins'}</span>
+                  <span>{matchMode === 'hunt' ? (huntTimed ? 'Separate timed Hunt runs · fastest player wins' : 'Relaxed shared board · highest score wins') : 'Separate timed runs · fastest player wins'}</span>
                 </div>
                 <span className="champ-option-status">{championshipHasElementMatch ? 'Included' : 'Game not selected'}</span>
               </div>
@@ -2658,7 +2686,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   // --- PLAYING: Element Match ---
   if (phase === 'playing' && gameMode === 'element-match') {
     const cp = matchTurn === 1 ? player1 : player2;
-    if (isMatchTimeTrial) {
+    if (isMatchTimedRun) {
       const matchedPairs = Math.floor(matchCards.filter(card => card.matched).length / 2);
       const elapsedMs = matchTrialResult?.elapsedMs ?? matchTrialElapsed;
       const p2Result = matchTurn === 2 ? matchTrialResult : null;
@@ -2667,7 +2695,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           {quitOverlay}
           <div className="match-header">
             <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">×</button>
-            <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is matching...` : `${cp.avatar} ${cp.name}'s Time Trial`}</span>
+            <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is matching...` : `${cp.avatar} ${cp.name}'s ${isTimedHunt ? 'Timed Hunt' : 'Time Trial'}`}</span>
             <div className="match-scores match-trial-times">
               <span>{player1.avatar} {matchTrialP1Result ? `${(matchTrialP1Result.elapsedMs / 1000).toFixed(1)}s` : '—'}</span>
               <span>vs</span>
@@ -2679,7 +2707,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           <div className="match-trial-card">
             <div className="match-trial-heading">
               <div>
-                <h2>Find {matchTrialGoal === rounds ? `all ${rounds}` : matchTrialGoal} matches</h2>
+                <h2>{isTimedHunt && huntTargetElementNum !== null ? `Hunt ${elements.find(el => el.atomicNumber === huntTargetElementNum)?.name ?? 'the target'}` : `Find ${matchTrialGoal === rounds ? `all ${rounds}` : matchTrialGoal} matches`}</h2>
+                {isTimedHunt && huntTargetElementNum !== null && <p>Find {huntRequiredPairs} other pairs to unlock the target.</p>}
+                {huntFoundMessage && <p role="status">{huntFoundMessage}</p>}
                 <span>{matchExotic ? 'Exotic elements' : 'All elements'} · {rounds}-pair board</span>
               </div>
               {(matchTrialTimerStarted || matchTrialResult) && (
@@ -2751,7 +2781,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               </div>
             )}
 
-            <div className="atomic-order-leaderboard match-trial-leaderboard">
+            {!isTimedHunt && <div className="atomic-order-leaderboard match-trial-leaderboard">
               <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · Find {matchTrialTarget === 'all' ? 'all' : matchTrialTarget}</span>
               <span className="atomic-order-best-label">🏆 Time Trial Top 5</span>
               {matchTrialLeaderboard.length ? (
@@ -2763,7 +2793,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                   ))}
                 </ol>
               ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
-            </div>
+            </div>}
           </div>
         </div>
       );

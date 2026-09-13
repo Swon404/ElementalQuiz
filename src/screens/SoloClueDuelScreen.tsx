@@ -148,7 +148,7 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
       <div className="snap-playing">
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={onBack} title="Quit">✕</button>
-          <span className="snap-round">Round {roundIndex + 1}/{rounds.length}</span>
+          <span className="snap-round">Round {roundIndex + 1}/{rounds.length} · {round.challenge}</span>
           <div className="snap-scores"><span>Score: {score}</span><span>Clues: {cluesUsed}</span></div>
         </div>
         <p className="snap-buzzer-name">Which element am I?</p>

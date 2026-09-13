@@ -94,6 +94,9 @@ try {
     assert.equal(rounds.length, size);
     for (const round of rounds) {
       assert.equal(round.clues.length, 5);
+      const answerElement = elements.find(el => el.name === round.correctName);
+      assert.equal(round.clues[4], `My chemical symbol is ${answerElement.symbol}.`, 'Symbol is always the fifth clue');
+      assert.ok(round.clues.slice(0, 4).every(clue => !new RegExp(`\\b${answerElement.name}\\b`, 'i').test(clue)), 'Early clues do not name the answer');
       assert.equal(new Set(round.clues).size, 5);
       assert.equal(new Set(round.choices).size, round.choices.length);
       assert.ok(round.choices.includes(round.correctName));
@@ -103,6 +106,9 @@ try {
       assert.ok(round.choices.every(name => elements.slice(0, size).some(el => el.name === name)));
     }
     counts.clues += rounds.length;
+    assert.equal(new Set(rounds.map(round => round.correctName)).size, rounds.length, 'No repeated elements');
+    const stages = rounds.map(round => ['warm-up', 'tricky', 'expert'].indexOf(round.challenge));
+    assert.ok(stages.every((stage, index) => index === 0 || stage >= stages[index - 1]), 'Challenge progresses through the game');
   }
   for (const el of elements) {
     for (const trivia of getRelatableTrivia(el)) {
