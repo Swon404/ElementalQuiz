@@ -61,7 +61,7 @@ const DEFAULT_TWO_PLAYER_SETTINGS: TwoPlayerSettings = {
   player2Mode: 'human',
   rounds: 5,
   champSize: 'standard',
-  championshipGames: ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match'],
+  championshipGames: ['quiz-battle', 'tf-blitz', 'atom-quiz', 'clue-duel', 'symbol-pick', 'atomic-order', 'element-match', 'family-finder'],
   matchExotic: false,
   matchMode: 'hunt',
   matchTrialTarget: 5,

@@ -1,3 +1,5 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import { useCallback, useRef, useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
@@ -26,6 +28,7 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
   const difficulty = championshipDifficulty ?? localDifficulty;
   const [rounds, setRounds] = useState<ClueRound[]>([]);
   const [roundIndex, setRoundIndex] = useState(0);
+  const undo = useRewind(roundIndex);
   const [clueIndex, setClueIndex] = useState(0);
   const [wrongChoices, setWrongChoices] = useState<Set<number>>(new Set());
   const [roundComplete, setRoundComplete] = useState(false);
@@ -53,17 +56,20 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
     setNewBestId(null);
     setLeaderboard(getGameLeaderboard('clue-duel', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
+    undo.clear();
     setPhase('playing');
   }, [configKey, pool, ROUND_COUNT]);
 
   const revealNextClue = () => {
     if (roundComplete || clueIndex >= 4) return;
+    undo.clear();
     setClueIndex(current => current + 1);
     setCluesUsed(current => current + 1);
   };
 
   const chooseElement = (choiceIndex: number) => {
     if (roundComplete || wrongChoices.has(choiceIndex)) return;
+    undo.mark(() => { setScore(score); setRoundWon(roundWon); setRoundComplete(roundComplete); setWrongChoices(wrongChoices); setClueIndex(clueIndex); setCluesUsed(cluesUsed); });
     const correct = rounds[roundIndex].choices[choiceIndex] === rounds[roundIndex].correctName;
     if (correct) {
       setScore(current => current + 1);
@@ -110,6 +116,7 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
   };
 
   const nextRound = () => {
+    undo.clear();
     if (roundIndex + 1 >= rounds.length) {
       finishGame();
       return;
@@ -146,6 +153,7 @@ export default function SoloClueDuelScreen({ onBack, playerId, playerName, champ
     if (!round) return null;
     return (
       <div className="snap-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={onBack} title="Quit">✕</button>
           <span className="snap-round">Round {roundIndex + 1}/{rounds.length} · {round.challenge}</span>

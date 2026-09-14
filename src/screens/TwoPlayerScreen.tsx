@@ -1,3 +1,6 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
+import FamilyFinderScreen from './FamilyFinderScreen.tsx';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
@@ -535,6 +538,68 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   });
   const [activeChampGames, setActiveChampGames] = useState<GameId[]>(selectedChampGames);
   const prevPhaseRef = useRef<Phase>('mode-select');
+  const undo = useRewind(`${gameMode}:${tfIndex}:${snapIndex}:${symbolIndex}:${atomIndex}:${orderRoundIndex}`);
+  const pendingTurnCommit = useRef<(() => void) | null>(null);
+  const [pendingMatchFinish, setPendingMatchFinish] = useState<[number, number] | null>(null);
+  const commitTurn = () => { pendingTurnCommit.current?.(); pendingTurnCommit.current = null; undo.clear(); };
+  const captureRewind = () => {
+    if (isBotTurn) { undo.clear(); return; }
+    const memory = new Map(botKnownCardsRef.current);
+    undo.mark(pausedMs => {
+      if (lockTimer.current) clearTimeout(lockTimer.current);
+      if (matchFinishTimerRef.current) clearTimeout(matchFinishTimerRef.current);
+      if (botTimerRef.current) clearTimeout(botTimerRef.current);
+      lockTimer.current = null; matchFinishTimerRef.current = null; botTimerRef.current = null;
+      pendingTurnCommit.current = null; setPendingMatchFinish(null);
+      botKnownCardsRef.current = memory;
+      setP1Score(p1Score);
+      setP2Score(p2Score);
+      setTfAnswered(tfAnswered);
+      setTfShowResult(tfShowResult);
+      setTfTimer(tfTimer);
+      setSnapClueIdx(snapClueIdx);
+      setSnapTurn(snapTurn);
+      setSnapFirstWrongBy(snapFirstWrongBy);
+      setSnapAnswered(snapAnswered);
+      setSnapLastWinner(snapLastWinner);
+      setSymbolAnswered(symbolAnswered);
+      setAtomAnswered(atomAnswered);
+      setAtomSecondChance(atomSecondChance);
+      setAtomFirstWrong(atomFirstWrong);
+      setOrderTiles(orderTiles);
+      setOrderAttempts(orderAttempts);
+      setOrderFeedback(orderFeedback);
+      setOrderCorrectCount(orderCorrectCount);
+      setOrderSelected(orderSelected);
+      setOrderTurnResult(orderTurnResult);
+      setOrderP1Result(orderP1Result);
+      setOrderRoundWinner(orderRoundWinner);
+      setOrderRoundComplete(orderRoundComplete);
+      setOrderTimerStarted(orderTimerStarted);
+      setOrderElapsed(orderElapsed);
+      setMatchCards(matchCards);
+      setMatchTurn(matchTurn);
+      setMatchFirst(matchFirst);
+      setMatchLocked(matchLocked);
+      setMatchTrialTimerStarted(matchTrialTimerStarted);
+      setMatchTrialElapsed(matchTrialElapsed);
+      setMatchTrialResult(matchTrialResult);
+      setMatchTrialP1Result(matchTrialP1Result);
+      setMatchTrialWinner(matchTrialWinner);
+      setMatchTrialComplete(matchTrialComplete);
+      setHuntElapsed(huntElapsed);
+      setHuntTimerStarted(huntTimerStarted);
+      setHuntFoundMessage(huntFoundMessage);
+      setOrderStartedAt(orderStartedAt ? orderStartedAt + pausedMs : 0);
+      setMatchTrialStartedAt(matchTrialStartedAt ? matchTrialStartedAt + pausedMs : 0);
+      setHuntStartedAt(huntStartedAt ? huntStartedAt + pausedMs : 0);
+      if (gameMode === 'tf-blitz') {
+        stopTfTimer();
+        tfTimerRef.current = setInterval(() => setTfTimer(t => t - 1), 1000);
+      }
+    });
+  };
+
   const isTimedHunt = matchMode === 'hunt' && huntTimed;
   const isMatchTimedRun = gameMode === 'element-match' && (matchMode === 'time-trial' || isTimedHunt) && !isChampTiebreaker;
   const matchTrialPool: ElementMatchPool = matchExotic ? 'exotic' : 'all';
@@ -817,6 +882,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const handleTFAnswer = (answer: boolean) => {
     if (tfAnswered !== null || (tfTimer <= 0 && tfShowResult)) return;
+    captureRewind();
     stopTfTimer();
     const stmt = tfStatements[tfIndex];
     const correct = answer === stmt.answer;
@@ -833,6 +899,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextTFRound = () => {
+    commitTurn();
     const nextIdx = tfIndex + 1;
     if (nextIdx >= tfStatements.length) {
       finishCurrentGame();
@@ -846,6 +913,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Element Match ---
   const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2) => {
+    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
     matchTrialTurnRef.current = turn;
     setMatchCards(generateMatchCardsForElements(elementNums));
     setMatchTurn(turn);
@@ -940,6 +1008,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     setMatchTrialTimerStarted(false);
     setMatchTrialResult(result);
 
+    pendingTurnCommit.current = () => {
     const botFinisher = completedTurn === 2 && player2Mode === 'bot';
     recordCompletedGameResult({
       rulesVersion: 1,
@@ -974,6 +1043,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setMatchTrialNewBest(false);
     }
 
+    };
+
     if (completedTurn === 1) {
       setMatchTrialP1Result(result);
       return;
@@ -990,6 +1061,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextMatchTrialStage = () => {
+    commitTurn();
     if (matchTrialTurnRef.current === 1) {
       beginMatchTrialTurn(matchTrialElementNums, 2);
       return;
@@ -1010,6 +1082,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     if (matchLocked || (isMatchTimedRun ? (!matchTrialTimerStarted || matchTrialResult) : !huntTimerStarted)) return;
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
+    captureRewind();
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
     if (
       gameMode === 'element-match' && matchMode === 'hunt' &&
@@ -1073,7 +1146,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           if (!matchFinishTimerRef.current) {
             matchFinishTimerRef.current = setTimeout(() => {
               matchFinishTimerRef.current = null;
-              finishCurrentGame(finalP1, finalP2);
+              setPendingMatchFinish([finalP1, finalP2]); setMatchLocked(true);
             }, BOT_RESULT_DELAY_MS);
           }
           return;
@@ -1095,7 +1168,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           if (!matchFinishTimerRef.current) {
             matchFinishTimerRef.current = setTimeout(() => {
               matchFinishTimerRef.current = null;
-              finishCurrentGame(newMatchP1, newMatchP2);
+              setPendingMatchFinish([newMatchP1, newMatchP2]); setMatchLocked(true);
             }, finishDelay);
           }
         }
@@ -1127,7 +1200,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
     matchFinishTimerRef.current = setTimeout(() => {
       matchFinishTimerRef.current = null;
-      finishCurrentGame(p1Pairs, p2Pairs);
+      setPendingMatchFinish([p1Pairs, p2Pairs]); setMatchLocked(true);
     }, finishDelay);
   }, [gameMode, isChampionship, isMatchTimedRun, matchCards, matchTurn, p1Score, p2Score, phase, player2Mode]);
 
@@ -1196,6 +1269,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const handleClueNext = () => {
     if (snapAnswered !== null) return;
+    undo.clear();
     if (snapFirstWrongBy !== null) {
       // A skipped attempt still gets an answer and explanation before continuing.
       setSnapAnswered(-1);
@@ -1212,6 +1286,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const handleSnapAnswer = (idx: number) => {
     if (snapAnswered !== null) return;
+    captureRewind();
     const round = snapRounds[snapIndex];
     const correct = round.choices[idx] === round.correctName;
     const active = snapTurn;
@@ -1237,6 +1312,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextSnapRound = () => {
+    commitTurn();
     const nextIdx = snapIndex + 1;
     if (nextIdx >= snapRounds.length) {
       finishCurrentGame();
@@ -1265,6 +1341,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const handleSymbolAnswer = (idx: number) => {
     if (symbolAnswered !== null) return;
+    captureRewind();
     const round = symbolRounds[symbolIndex];
     const correct = round.choices[idx] === round.correctSymbol;
     setSymbolAnswered(idx);
@@ -1278,6 +1355,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextSymbolRound = () => {
+    commitTurn();
     const nextIdx = symbolIndex + 1;
     if (nextIdx >= symbolRounds.length) {
       finishCurrentGame();
@@ -1291,6 +1369,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   // --- Atom Quiz ---
   const handleAtomAnswer = (idx: number) => {
     if (atomAnswered !== null) return;
+    captureRewind();
     const q = atomQuestions[atomIndex];
     const cp = atomTurn === 1 ? player1 : player2;
     const hasSecondChance = DIFFICULTY_CONFIG[cp.difficulty].secondChance;
@@ -1310,6 +1389,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextAtomRound = () => {
+    commitTurn();
     const nextIdx = atomIndex + 1;
     if (nextIdx >= atomQuestions.length) {
       finishCurrentGame();
@@ -1324,6 +1404,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Atomic Order ---
   const beginAtomicOrderTurn = (gameRounds: AtomicOrderRound[], roundIndex: number, turn: 1 | 2) => {
+    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
     const puzzle = gameRounds[roundIndex];
     if (!puzzle) return;
     setOrderTurn(turn);
@@ -1362,6 +1443,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const moveAtomicOrderTile = (fromIndex: number, toIndex: number) => {
     if (!orderTimerStarted || orderTurnResult || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    captureRewind();
     setOrderTiles(current => {
       const next = [...current];
       const [moved] = next.splice(fromIndex, 1);
@@ -1375,6 +1457,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const selectAtomicOrderTile = (index: number) => {
     if (!orderTimerStarted || orderTurnResult || isBotTurn) return;
+    captureRewind();
     if (orderSelected === null) setOrderSelected(index);
     else if (orderSelected === index) setOrderSelected(null);
     else {
@@ -1392,6 +1475,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
     setOrderTurnResult(result);
 
+    pendingTurnCommit.current = () => {
     const finisher = orderTurn === 1 ? player1 : player2;
     recordCompletedGameResult({
       rulesVersion: 1,
@@ -1425,6 +1509,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setOrderTurnNewBest(false);
     }
 
+    };
+
     if (orderTurn === 1) {
       setOrderP1Result(result);
       return;
@@ -1443,6 +1529,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const submitAtomicOrder = () => {
     if (!orderTimerStarted || orderTurnResult || orderTiles.length < 3) return;
+    captureRewind();
     setOrderSelected(null);
     const sorted = [...orderTiles].sort((a, b) => a - b);
     const feedback = orderTiles.map((atomicNumber, index): AtomicOrderFeedback => {
@@ -1467,6 +1554,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextAtomicOrderStage = () => {
+    commitTurn();
     if (orderTurn === 1) {
       beginAtomicOrderTurn(orderRounds, orderRoundIndex, 2);
       return;
@@ -1576,6 +1664,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setMatchLocked(false);
       setRounds(n);
       prepareHuntTimer(n);
+      setPhase('playing');
+    } else if (mode === 'family-finder') {
+      setRounds(counts[mode]);
       setPhase('playing');
     } else if (mode === 'atom-quiz') {
       const n = counts[mode];
@@ -1812,6 +1903,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextChampGame = () => {
+    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
     const next = champStep + 1;
     setChampStep(next);
     launchSubGame(activeChampGames[next]);
@@ -1835,12 +1927,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   }, [player1.difficulty, player2.difficulty]);
 
   const startGame = () => {
+    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
     setIsChampionship(false);
     if (gameMode === 'quiz-battle') startQuizBattle();
     else if (gameMode === 'tf-blitz') startTFBlitz();
     else if (gameMode === 'element-match') startElementMatch();
     else if (gameMode === 'clue-duel') startElementSnap();
     else if (gameMode === 'symbol-pick') startSymbolPick();
+    else if (gameMode === 'family-finder') { resetScores(); setPhase('playing'); }
     else if (gameMode === 'atomic-order') startAtomicOrder();
     else if (gameMode === 'atom-quiz') {
       setAtomQuestions(generateAtomQuestions(rounds));
@@ -2085,6 +2179,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   ]);
 
   // --- MODE SELECT ---
+  const rewindControls = <>{gameMode !== 'quiz-battle' && gameMode !== 'family-finder' && <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />}
+        {pendingMatchFinish && <button className="start-btn" onClick={() => { undo.clear(); const scores = pendingMatchFinish; setPendingMatchFinish(null); finishCurrentGame(scores[0], scores[1]); }}>Next →</button>}</>;
+
   if (phase === 'mode-select') {
     return (
       <div className="two-player-setup">
@@ -2093,6 +2190,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         <Elementor expression="greeting" message="Pick a game to play together!" />
 
         <div className="game-mode-grid">
+          <button className={`game-mode-btn ${gameMode === 'family-finder' ? 'selected' : ''}`} onClick={() => { setGameMode('family-finder'); setPhase('setup'); }}>
+            <span className="gm-icon">🔎</span><span className="gm-name">Family Finder</span><span className="gm-desc">Find every matching element in a periodic-table window.</span>
+          </button>
           <button
             className={`game-mode-btn championship ${gameMode === 'championship' ? 'selected' : ''}`}
             onClick={() => { setGameMode('championship'); setPhase('setup'); }}
@@ -2174,6 +2274,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           {gameMode === 'tf-blitz' && '✅ True or False Blitz'}
           {gameMode === 'element-match' && `🃏 Element Match ${matchMode === 'time-trial' ? 'Time Trial' : 'Hunt'}`}
           {gameMode === 'clue-duel' && '🕵️ Clue Duel'}
+          {gameMode === 'family-finder' && '🔎 Family Finder'}
           {gameMode === 'symbol-pick' && '🔤 Symbol Pick'}
           {gameMode === 'atom-quiz' && '⚛️ Atom Quiz'}
           {gameMode === 'atomic-order' && '🔢 Atomic Order'}
@@ -2585,6 +2686,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="quiz-playing two-player-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="two-player-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="player-indicator">
@@ -2629,6 +2731,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="tf-blitz-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="tf-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="tf-turn-info">
@@ -2693,6 +2796,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       return (
         <div className="element-match-playing match-trial-playing">
           {quitOverlay}
+        {rewindControls}
           <div className="match-header">
             <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">×</button>
             <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is matching...` : `${cp.avatar} ${cp.name}'s ${isTimedHunt ? 'Timed Hunt' : 'Time Trial'}`}</span>
@@ -2804,6 +2908,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="element-match-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="match-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="match-turn">{isBotTurn ? `${player2.avatar} ${player2.name} is thinking...` : `${cp.avatar} ${cp.name}'s turn`}</span>
@@ -2900,6 +3005,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="snap-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">Element {Math.floor(snapIndex / 2) + 1}/{Math.floor(snapRounds.length / 2)} each</span>
@@ -2999,6 +3105,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   }
 
   // --- PLAYING: Symbol Pick ---
+  if (phase === 'playing' && gameMode === 'family-finder') {
+    return <>{quitOverlay}
+        {rewindControls}<FamilyFinderScreen playerId={playerId} playerName={playerName} onBack={() => setShowQuitConfirm(true)}
+      championshipRoundCount={rounds} championshipRunId={isChampionship ? championshipRunIdRef.current : undefined}
+      players={[{ ...participantForTurn(1), difficulty: player1.difficulty }, { ...participantForTurn(2), difficulty: player2.difficulty, bot: player2Mode === 'bot' }]}
+      onFinish={scores => finishCurrentGame(scores[0], scores[1])} /></>;
+  }
+
   if (phase === 'playing' && gameMode === 'symbol-pick' && symbolRounds.length > 0) {
     const round = symbolRounds[symbolIndex];
     const cp = symbolTurn === 1 ? player1 : player2;
@@ -3006,6 +3120,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="snap-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">{Math.floor(symbolIndex / 2) + 1}/{Math.floor(symbolRounds.length / 2)}</span>
@@ -3066,6 +3181,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="snap-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="snap-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <span className="snap-round">⚛️ {Math.floor(atomIndex / 2) + 1}/{Math.floor(atomQuestions.length / 2)}</span>
@@ -3135,6 +3251,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     return (
       <div className="atomic-order-playing two-player-playing">
         {quitOverlay}
+        {rewindControls}
         <div className="two-player-header">
           <button className="quiz-exit-btn" onClick={() => setShowQuitConfirm(true)} title="Quit">✕</button>
           <div className="player-indicator">
@@ -3455,7 +3572,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       : gameMode === 'quiz-battle' ? 'Quiz Battle'
       : gameMode === 'tf-blitz' ? 'True or False Blitz'
       : gameMode === 'clue-duel' ? 'Clue Duel'
-      : gameMode === 'symbol-pick' ? 'Symbol Pick'
+      : gameMode === 'family-finder' ? 'Family Finder' : gameMode === 'symbol-pick' ? 'Symbol Pick'
       : gameMode === 'atom-quiz' ? 'Atom Quiz'
       : gameMode === 'atomic-order' ? 'Atomic Order'
       : gameMode === 'element-match' && matchMode === 'time-trial' ? 'Element Match Time Trial'

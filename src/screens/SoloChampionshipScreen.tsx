@@ -1,3 +1,4 @@
+import FamilyFinderScreen from './FamilyFinderScreen.tsx';
 import { useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { elements } from '../data/elements.ts';
@@ -237,6 +238,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   return (
     <>
       <div className="champ-game-banner">🏆 Solo Championship · {championshipSize[0].toUpperCase() + championshipSize.slice(1)} · {DIFFICULTY_CONFIG[championshipDifficulty].label} · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
+      {currentGame === 'family-finder' && <FamilyFinderScreen {...sharedProps} />}
       {currentGame === 'quiz-battle' && <QuizScreen mode="classic" progress={progress} onComplete={() => completeCurrentLeg()} {...sharedProps} />}
       {currentGame === 'tf-blitz' && <SoloTrueFalseScreen {...sharedProps} />}
       {currentGame === 'element-match' && <SoloElementMatchScreen championshipHuntRounds={3} initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}

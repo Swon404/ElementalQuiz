@@ -1,3 +1,5 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
@@ -27,6 +29,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
   const difficulty = championshipDifficulty ?? localDifficulty;
   const [statements, setStatements] = useState<TrueFalseStatement[]>([]);
   const [index, setIndex] = useState(0);
+  const undo = useRewind(index);
   const [answer, setAnswer] = useState<boolean | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(TIME_LIMIT_SECONDS);
@@ -55,6 +58,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
     setNewBestId(null);
     setLeaderboard(getGameLeaderboard('tf-blitz', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
+    undo.clear();
     setPhase('playing');
   }, [configKey, pool, QUESTION_COUNT]);
 
@@ -73,6 +77,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
 
   const chooseAnswer = (chosen: boolean) => {
     if (showResult) return;
+    undo.mark(() => { setAnswer(answer); setShowResult(showResult); setScore(score); setSecondsLeft(secondsLeft); });
     const correct = chosen === statements[index].answer;
     setAnswer(chosen);
     setShowResult(true);
@@ -111,6 +116,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
   };
 
   const next = () => {
+    undo.clear();
     if (index + 1 >= statements.length) {
       finishGame();
       return;
@@ -146,6 +152,7 @@ export default function SoloTrueFalseScreen({ onBack, playerId, playerName, cham
     const correct = answer !== null && answer === statement.answer;
     return (
       <div className="tf-blitz-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         <div className="tf-header">
           <button className="quiz-exit-btn" onClick={onBack} title="Quit">✕</button>
           <div className="tf-turn-info"><span>{playerName}</span><span className="tf-round">Question {index + 1}/{statements.length}</span></div>

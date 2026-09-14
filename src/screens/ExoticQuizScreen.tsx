@@ -1,4 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import Elementor from '../components/Elementor.tsx';
 import { speakText } from '../engine/tts.ts';
 import { playCorrect, playWrong, playCollect } from '../engine/sounds.ts';
@@ -258,6 +260,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
   const [phase, setPhase] = useState<Phase>('setup');
   const [questions, setQuestions] = useState<ExoticQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
+  const undo = useRewind(currentQ);
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -278,6 +281,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
   });
 
   const startQuiz = useCallback(() => {
+    undo.clear();
     setQuestions(generateExoticQuestions(questionCount));
     setCurrentQ(0);
     setScore(0);
@@ -296,6 +300,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
 
   const handleAnswer = (idx: number) => {
     if (answered !== null) return;
+    undo.mark(() => { setAnswered(answered); setScore(score); setCorrectCount(correctCount); setStreak(streak); setHintUsed(hintUsed); setEliminated(eliminated); setRetrying(retrying); });
     setAnswered(idx);
     const q = questions[currentQ];
     if (idx === q.correctIndex) {
@@ -314,6 +319,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
     const q = questions[currentQ];
     // Only offer hint when wrong
     if (answered === q.correctIndex) return;
+    undo.mark(() => { setAnswered(answered); setHintUsed(hintUsed); setEliminated(eliminated); setRetrying(retrying); });
     // Eliminate 2 wrong choices (not the correct one, not the one already picked)
     const wrongIndices = q.choices
       .map((_, i) => i)
@@ -326,6 +332,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
   };
 
   const nextQuestion = () => {
+    undo.clear();
     if (currentQ + 1 >= questions.length) {
       const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
       const recorded = recordCompletedGameResult({
@@ -373,6 +380,7 @@ export default function ExoticQuizScreen({ onBack, playerId, playerName }: Exoti
     const q = questions[currentQ];
     return (
       <div className="aq-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         {showExitConfirm && (
           <div className="exit-confirm-overlay" onClick={() => setShowExitConfirm(false)}>
             <div className="exit-confirm-card" onClick={e => e.stopPropagation()}>

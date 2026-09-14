@@ -13,6 +13,29 @@ try {
   const { elements } = await server.ssrLoadModule('/src/data/elements.ts');
   const { EXTRA_FACTS, pickExtraFact, extraFactCandidates } = await server.ssrLoadModule('/src/engine/extraFacts.ts');
   const counts = { quiz: 0, atom: 0, clues: 0, deepDive: 0, comparison: 0, curated: 0 };
+  const { generateFamilyRounds, familyWindows, isFamilyAnswerCorrect } = await server.ssrLoadModule('/src/games/familyFinder.ts');
+  const { PERIODIC_LAYOUT } = await server.ssrLoadModule('/src/data/periodicLayout.ts');
+  assert.ok(familyWindows('explorer').some(window => window.tiles.map(el => el.symbol).join(',') === 'Cu,Zn,Ga,Ge,Ag,Cd,In,Sn'), 'Includes the requested example window');
+  for (const difficulty of ['explorer', 'scientist', 'professor']) {
+    for (const count of [4, 6, 8, 10]) {
+      for (let run = 0; run < 25; run++) {
+        const rounds = generateFamilyRounds(count, difficulty);
+        assert.equal(rounds.length, count);
+        assert.equal(new Set(rounds.map(round => round.id)).size, count, 'Different table windows within a short game');
+        for (const round of rounds) {
+          assert.equal(round.tiles.length, 8);
+          assert.equal(new Set(round.tiles.map(el => el.atomicNumber)).size, 8);
+          assert.ok(round.answers.length > 0 && round.answers.length < 8);
+          assert.deepEqual(round.tiles.map(el => el.atomicNumber), [0, 1].flatMap(dy => [0, 1, 2, 3].map(dx => PERIODIC_LAYOUT[round.row + dy][round.column + dx])), 'Real contiguous 2x4 window in reading order');
+          const correct = round.answers.map(el => el.atomicNumber);
+          assert.ok(isFamilyAnswerCorrect(round, correct));
+          assert.ok(!isFamilyAnswerCorrect(round, correct.slice(1)), 'Missing a matching tile is not correct');
+          assert.ok(!isFamilyAnswerCorrect(round, [...correct, round.tiles.find(el => el.category !== round.category).atomicNumber]), 'Extra tile is not correct');
+          assert.ok(round.prompt.startsWith('Choose all the '));
+        }
+      }
+    }
+  }
   const atomPrompts = new Set();
   const extraFactsSeen = new Set();
   const matchstickContent = /matchsticks?|matchbox|safety matches|striking strip|match heads?|used in matches/i;

@@ -4,6 +4,8 @@ import { DIFFICULTY_CONFIG, calculatePoints, type Difficulty } from '../engine/s
 import { speakText } from '../engine/tts.ts';
 import { playCorrect, playWrong, playStreak } from '../engine/sounds.ts';
 import Elementor from './Elementor.tsx';
+import RewindButton from './RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 
 interface QuizCardProps {
   question: Question;
@@ -25,6 +27,7 @@ export default function QuizCard({
   disableChoiceInput = false,
 }: QuizCardProps) {
   const config = DIFFICULTY_CONFIG[difficulty];
+  const undo = useRewind(question.id);
   const [selected, setSelected] = useState<number | null>(null);
   const [secondChanceUsed, setSecondChanceUsed] = useState(false);
   const [disabledChoices, setDisabledChoices] = useState<Set<number>>(new Set());
@@ -75,6 +78,10 @@ export default function QuizCard({
 
   const handleSelect = (index: number) => {
     if (answered || disabledChoices.has(index)) return;
+    if (!disableChoiceInput) undo.mark(() => {
+      setSelected(selected); setSecondChanceUsed(secondChanceUsed); setDisabledChoices(disabledChoices);
+      setShowResult(showResult); setTimeLeft(timeLeft); setAnswered(answered); setPendingResult(pendingResult);
+    });
 
     const isCorrect = index === question.correctIndex;
     setSelected(index);
@@ -131,6 +138,7 @@ export default function QuizCard({
   };
 
   const handleNext = () => {
+    undo.clear();
     if (pendingResult) {
       onAnswer(pendingResult.correct, pendingResult.points, pendingResult.elementNum);
     }
@@ -206,6 +214,7 @@ export default function QuizCard({
           Next →
         </button>
       )}
+      {!disableChoiceInput && <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import FamilyFinderScreen from './screens/FamilyFinderScreen.tsx';
 import { useState, useCallback } from 'react';
 import IntroScreen from './screens/IntroScreen.tsx';
 import ProfileScreen from './screens/ProfileScreen.tsx';
@@ -24,7 +25,7 @@ import {
 import type { Difficulty } from './engine/scoring.ts';
 
 type QuizBattleScreen = 'quiz-battle-classic' | 'quiz-battle-sprint' | 'quiz-battle-deep-dive' | 'quiz-battle-showdown';
-type Screen = 'intro' | 'profile' | 'home' | 'play' | QuizBattleScreen | 'two-player' | 'two-player-champ' | 'solo-champ' | 'explore' | 'atomic-order' | 'atom-quiz' | 'quiz-battle-exotic' | 'element-lab' | 'symbol-pick' | 'solo-tf-blitz' | 'solo-clue-duel' | 'solo-element-match';
+type Screen = 'family-finder' | 'intro' | 'profile' | 'home' | 'play' | QuizBattleScreen | 'two-player' | 'two-player-champ' | 'solo-champ' | 'explore' | 'atomic-order' | 'atom-quiz' | 'quiz-battle-exotic' | 'element-lab' | 'symbol-pick' | 'solo-tf-blitz' | 'solo-clue-duel' | 'solo-element-match';
 
 const QUIZ_BATTLE_SCREENS: Record<QuizBattleScreen, 'classic' | 'sprint' | 'deep-dive' | 'showdown'> = {
   'quiz-battle-classic': 'classic',
@@ -148,6 +149,7 @@ export default function App() {
       return;
     }
     const soloRoutes: Record<GameId, Screen> = {
+      'family-finder': 'family-finder',
       'quiz-battle': 'quiz-battle-classic',
       'tf-blitz': 'solo-tf-blitz',
       'element-match': 'solo-element-match',
@@ -291,6 +293,7 @@ export default function App() {
       {screen === 'element-lab' && (
         <ElementLabScreen onBack={() => setScreen('home')} playerName={activeProfileName} />
       )}
+      {screen === 'family-finder' && <FamilyFinderScreen onBack={() => setScreen('play')} playerId={getActiveProfileId() ?? `guest:${activeProfileName.toLowerCase()}`} playerName={activeProfileName || 'Player'} />}
       {screen === 'symbol-pick' && (
         <SymbolPickScreen
           onBack={() => setScreen('play')}

@@ -1,3 +1,5 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { speakText } from '../engine/tts.ts';
@@ -21,6 +23,7 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
   const [phase, setPhase] = useState<Phase>('setup');
   const [questions, setQuestions] = useState<AtomQuestion[]>([]);
   const [currentQ, setCurrentQ] = useState(0);
+  const undo = useRewind(currentQ);
   const [score, setScore] = useState(0);
   const [streak, setStreak] = useState(0);
   const [answered, setAnswered] = useState<number | null>(null);
@@ -43,11 +46,13 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
     setNewBestId(null);
     setLeaderboard(getGameLeaderboard('atom-quiz', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
+    undo.clear();
     setPhase('playing');
   }, [configKey, questionCount]);
 
   const handleAnswer = (idx: number) => {
     if (answered !== null) return;
+    undo.mark(() => { setAnswered(answered); setScore(score); setStreak(streak); });
     setAnswered(idx);
     const q = questions[currentQ];
     if (idx === q.correctIndex) {
@@ -61,6 +66,7 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
   };
 
   const nextQuestion = () => {
+    undo.clear();
     if (currentQ + 1 >= questions.length) {
       const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
       const recorded = recordCompletedGameResult({
@@ -106,6 +112,7 @@ export default function AtomQuizScreen({ onBack, playerId, playerName, champions
     const q = questions[currentQ];
     return (
       <div className="aq-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         {showExitConfirm && (
           <div className="exit-confirm-overlay" onClick={() => setShowExitConfirm(false)}>
             <div className="exit-confirm-card" onClick={e => e.stopPropagation()}>

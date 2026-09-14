@@ -1,3 +1,5 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { elements } from '../data/elements.ts';
@@ -42,6 +44,8 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
   const [multiplier, setMultiplier] = useState<AtomicOrderMultiplier>(initialOptions?.multiplier ?? 1);
   const [gameRounds, setGameRounds] = useState<AtomicOrderRound[]>([]);
   const [roundIndex, setRoundIndex] = useState(0);
+  const undo = useRewind(roundIndex);
+  const commitResultRef = useRef<(() => void) | null>(null);
   const [tiles, setTiles] = useState<number[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<AtomicOrderFeedback[]>([]);
@@ -60,6 +64,7 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
   const configKey = buildGameConfigKey('atomic-order', 'arrange', { difficulty, challenge, multiplier, tiles: tileCount });
 
   const prepareRound = (rounds: AtomicOrderRound[], index: number) => {
+    undo.clear(); commitResultRef.current = null;
     setTiles([...(rounds[index]?.p1 ?? [])]);
     setSelected(null);
     setFeedback([]);
@@ -95,6 +100,12 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
 
   const swapTiles = (first: number, second: number) => {
     if (!startedAt || result || first === second) return;
+    undo.mark(pausedMs => {
+      setTiles(tiles); setSelected(selected); setFeedback(feedback); setAttempts(attempts);
+      setResult(result); setElapsedMs(elapsedMs); setStartedAt(startedAt ? startedAt + pausedMs : 0);
+      setTotalAttempts(totalAttempts); setTotalElapsedMs(totalElapsedMs);
+      commitResultRef.current = null; resultRecordedRef.current = false;
+    });
     setTiles(current => {
       const updated = [...current];
       [updated[first], updated[second]] = [updated[second], updated[first]];
@@ -105,6 +116,7 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
 
   const selectTile = (index: number) => {
     if (!startedAt || result) return;
+    undo.mark(() => setSelected(selected));
     if (selected === null) setSelected(index);
     else if (selected === index) setSelected(null);
     else {
@@ -115,6 +127,12 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
 
   const submit = () => {
     if (!startedAt || result || tiles.length < 3) return;
+    undo.mark(pausedMs => {
+      setTiles(tiles); setSelected(selected); setFeedback(feedback); setAttempts(attempts);
+      setResult(result); setElapsedMs(elapsedMs); setStartedAt(startedAt ? startedAt + pausedMs : 0);
+      setTotalAttempts(totalAttempts); setTotalElapsedMs(totalElapsedMs);
+      commitResultRef.current = null; resultRecordedRef.current = false;
+    });
     const sorted = [...tiles].sort((a, b) => a - b);
     const nextFeedback = tiles.map((atomicNumber, index): AtomicOrderFeedback => {
       const targetIndex = sorted.indexOf(atomicNumber);
@@ -138,6 +156,7 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
     setElapsedMs(completedElapsedMs);
     setTotalAttempts(current => current + nextAttempts);
     setTotalElapsedMs(current => current + completedElapsedMs);
+    commitResultRef.current = () => {
     if (!resultRecordedRef.current) {
       resultRecordedRef.current = true;
       const recorded = recordCompletedGameResult({
@@ -155,9 +174,11 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
       setLeaderboard(updated);
       setNewBestId(recorded && updated.some(entry => entry.id === recorded.id) ? recorded.id : null);
     }
+    };
   };
 
   const nextRound = () => {
+    commitResultRef.current?.(); commitResultRef.current = null; undo.clear();
     const nextIndex = roundIndex + 1;
     if (nextIndex >= gameRounds.length) {
       playCollect();
@@ -194,6 +215,7 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
     const shownElapsed = result?.elapsedMs ?? elapsedMs;
     return (
       <div className="atomic-order-playing two-player-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         <div className="two-player-header"><button className="quiz-exit-btn" onClick={onBack} title="Quit">✕</button><div className="player-indicator"><span className="player-avatar">🔢</span><span className="player-name">{playerName}</span><span className="player-diff">Round {roundIndex + 1}/{gameRounds.length}</span></div></div>
         <div className="atomic-order-card">
           <h2>Put {tiles.length} elements in atomic-number order</h2>

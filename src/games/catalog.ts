@@ -1,4 +1,5 @@
 export const GAME_IDS = [
+  'family-finder',
   'quiz-battle',
   'tf-blitz',
   'atom-quiz',
@@ -37,6 +38,12 @@ export type GameDefinition = {
 const ALL_FORMATS: readonly PlayerFormat[] = ['solo', 'versus-human', 'versus-bot'];
 
 export const GAME_CATALOG: Readonly<Record<GameId, GameDefinition>> = {
+  'family-finder': {
+    id: 'family-finder', label: 'Family Finder', icon: '🔎',
+    description: 'Find every matching element in a window of the periodic table.',
+    formats: ALL_FORMATS, variants: ['classic'],
+    championshipCounts: { quick: 4, standard: 6, epic: 8 }, leaderboardMetric: 'score',
+  },
   'quiz-battle': {
     id: 'quiz-battle',
     label: 'Quiz Battle',

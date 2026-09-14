@@ -1,3 +1,5 @@
+import RewindButton from '../components/RewindButton.tsx';
+import { useRewind } from '../engine/useRewind.ts';
 import { type Difficulty } from '../engine/scoring.ts';
 import { useState, useCallback, useRef } from 'react';
 import Elementor from '../components/Elementor.tsx';
@@ -33,6 +35,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
   const difficulty = championshipDifficulty ? ({ explorer: 'easy', scientist: 'medium', professor: 'hard' } as const)[championshipDifficulty] : localDifficulty;
   const [rounds, setRounds] = useState<SymbolRound[]>([]);
   const [idx, setIdx] = useState(0);
+  const undo = useRewind(idx);
   const [answered, setAnswered] = useState<number | null>(null);
   const [score, setScore] = useState(0);
   const [showExit, setShowExit] = useState(false);
@@ -58,11 +61,13 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
     setNewBest(false);
     setLeaderboard(getGameLeaderboard('symbol-pick', 'classic', configKey, 'solo'));
     startedAtRef.current = Date.now();
+    undo.clear();
     setPhase('playing');
   }, [configKey, difficulty, total]);
 
   const handleAnswer = (choiceIdx: number) => {
     if (answered !== null) return;
+    undo.mark(() => { setAnswered(answered); setScore(score); });
     const round = rounds[idx];
     const correct = round.choices[choiceIdx] === round.correctSymbol;
     setAnswered(choiceIdx);
@@ -71,6 +76,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
   };
 
   const next = () => {
+    undo.clear();
     if (idx + 1 >= rounds.length) {
       const completedElapsedMs = Math.max(1, Date.now() - startedAtRef.current);
       const recorded = recordCompletedGameResult({
@@ -133,6 +139,7 @@ export default function SymbolPickScreen({ onBack, playerId, playerName, champio
     const isCorrect = answered !== null && round.choices[answered] === round.correctSymbol;
     return (
       <div className="snap-playing">
+        <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />
         {showExit && (
           <div className="exit-confirm-overlay" onClick={() => setShowExit(false)}>
             <div className="exit-confirm-card" onClick={e => e.stopPropagation()}>
