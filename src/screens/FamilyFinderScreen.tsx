@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { generateFamilyRounds, FAMILY_LABELS, isFamilyAnswerCorrect } from '../games/familyFinder.ts';
+import { generateFamilyRounds, FAMILY_SINGULAR, FAMILY_SIZES, isFamilyAnswerCorrect } from '../games/familyFinder.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { buildGameConfigKey, recordCompletedGameResult } from '../engine/gameResults.ts';
 import { useRewind } from '../engine/useRewind.ts';
@@ -43,13 +43,13 @@ export default function FamilyFinderScreen(props: Props) {
   const toggle = (number: number) => {
     if (checked || player.bot) return;
     undo.mark(() => setSelected(selected));
-    setSelected(current => current.includes(number) ? current.filter(value => value !== number) : [...current, number]);
+    setSelected(current => current.includes(number) ? [] : [number]);
   };
   useEffect(() => {
     if (!player.bot || !round || done || checked) return;
     const timer = setTimeout(() => {
-      const selection = round.answers.map(el => el.atomicNumber);
-      if (Math.random() >= 0.75) selection.push(round.tiles.find(el => el.category !== round.category)!.atomicNumber);
+      const candidates = Math.random() < 0.75 ? round.answers : round.tiles;
+      const selection = [candidates[Math.floor(Math.random() * candidates.length)].atomicNumber];
       setSelected(selection); submit(selection);
     }, 1500);
     return () => clearTimeout(timer);
@@ -61,8 +61,8 @@ export default function FamilyFinderScreen(props: Props) {
     if (saved.current) return;
     saved.current = true;
     players.forEach((p, i) => recordCompletedGameResult({
-      rulesVersion: 2, gameId: 'family-finder', variantId: 'classic',
-      configKey: buildGameConfigKey('family-finder', 'classic', { difficulty: p.difficulty, rounds: count, tiles: 8, layout: 'table-window-2x4', selection: 'all' }),
+      rulesVersion: 3, gameId: 'family-finder', variantId: 'classic',
+      configKey: buildGameConfigKey('family-finder', 'classic', { difficulty: p.difficulty, rounds: count, tiles: FAMILY_SIZES[p.difficulty] ** 2, layout: 'consecutive-square', selection: 'one' }),
       format: players.length === 1 ? 'solo' : players.some(p => p.bot) ? 'versus-bot' : 'versus-human',
       participant: { id: p.id, name: p.name, kind: p.bot ? 'bot' : p.id.startsWith('guest:') ? 'guest' : 'profile' },
       championshipRunId: props.championshipRunId,
@@ -72,7 +72,7 @@ export default function FamilyFinderScreen(props: Props) {
   };
   if (!session.length) return <div className="quiz-setup">
     <button className="back-btn" onClick={props.onBack}>← Back</button><h2>Family Finder</h2>
-    <p>Select every matching element in a 2 × 4 window of the periodic table, then check your answer. Tap again to deselect.</p>
+    <p>Find one element from the requested family, then check your answer. The tiles run in atomic-number order. Explorer: 3 × 3 · Scientist: 4 × 4 · Professor: 5 × 5.</p>
     {!props.championshipDifficulty && !props.players && <div className="difficulty-select">{(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => <button className={`diff-btn ${d === difficulty ? 'selected' : ''}`} key={d} onClick={() => setDifficulty(d)}>{DIFFICULTY_CONFIG[d].label}</button>)}</div>}
     <button className="start-btn" onClick={start}>Start!</button>
   </div>;
@@ -81,8 +81,8 @@ export default function FamilyFinderScreen(props: Props) {
     <button className="back-btn" onClick={props.onBack}>← Back</button>
     <p>{player.name} · Round {Math.floor(index / players.length) + 1}/{count} · {scores[playerIndex]} points</p>
     <h2>{round.prompt}</h2>
-    <p>{round.row < 7 ? `Periods ${round.row + 1}–${round.row + 2} · Groups ${round.column + 1}–${round.column + 4}` : 'Lanthanide and actinide rows'}</p>
-    <div aria-label="Periodic table window" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4, width: '100%', maxWidth: 480, margin: '16px auto' }}>
+    <p>Atomic numbers {round.tiles[0].atomicNumber}–{round.tiles.at(-1)!.atomicNumber} · Choose one tile</p>
+    <div aria-label="Element grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${round.size}, minmax(0, 1fr))`, gap: 4, width: '100%', maxWidth: 480, margin: '16px auto' }}>
       {round.tiles.map(el => <button key={el.atomicNumber}
         aria-label={`${el.name}, ${el.symbol}, atomic number ${el.atomicNumber}`}
         aria-pressed={selected.includes(el.atomicNumber)} disabled={checked || player.bot}
@@ -97,8 +97,8 @@ export default function FamilyFinderScreen(props: Props) {
     </div>
     {!checked && <><p>{selected.length} selected</p><button className="start-btn" disabled={!selected.length || player.bot} onClick={() => submit()}>Check answer</button></>}
     {checked && <div role="status">
-      <p><strong>{isFamilyAnswerCorrect(round, answers[index]!) ? 'Correct—all found!' : 'Not quite.'}</strong></p>
-      <p>The {FAMILY_LABELS[round.category]} in this window are {round.answers.map(el => `${el.name} (${el.symbol})`).join(', ')}.</p>
+      <p><strong>{isFamilyAnswerCorrect(round, answers[index]!) ? 'Correct!' : 'Not quite.'}</strong></p>
+      <p>{(round.answers.find(el => el.atomicNumber === answers[index]![0]) ?? round.answers[0]).name} is {FAMILY_SINGULAR[round.category]}.</p>
       <button className="start-btn" onClick={advance}>{index + 1 === session.length ? 'Finish' : 'Next →'}</button>
     </div>}
     {!player.bot && <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />}

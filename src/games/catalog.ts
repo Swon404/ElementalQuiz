@@ -40,7 +40,7 @@ const ALL_FORMATS: readonly PlayerFormat[] = ['solo', 'versus-human', 'versus-bo
 export const GAME_CATALOG: Readonly<Record<GameId, GameDefinition>> = {
   'family-finder': {
     id: 'family-finder', label: 'Family Finder', icon: '🔎',
-    description: 'Find every matching element in a window of the periodic table.',
+    description: 'Find one matching element in a grid of consecutive atomic numbers.',
     formats: ALL_FORMATS, variants: ['classic'],
     championshipCounts: { quick: 4, standard: 6, epic: 8 }, leaderboardMetric: 'score',
   },

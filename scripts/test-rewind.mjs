@@ -84,10 +84,10 @@ try {
   await click(buttons().find(b => b.props['aria-label']?.includes('atomic number')));
   await click(rewind());
   assert.ok(rewind().props.disabled);
-  const { FAMILY_LABELS } = await server.ssrLoadModule('/src/games/familyFinder.ts');
+  const { FAMILY_SINGULAR } = await server.ssrLoadModule('/src/games/familyFinder.ts');
   const { elements: familyElements } = await server.ssrLoadModule('/src/data/elements.ts');
   const prompt = renderer.root.findAllByType('h2').map(label).join('');
-  const category = Object.keys(FAMILY_LABELS).find(category => prompt === `Choose all the ${FAMILY_LABELS[category]}.`);
+  const category = Object.keys(FAMILY_SINGULAR).find(category => prompt === `Find ${FAMILY_SINGULAR[category]}.`);
   const familyTiles = () => buttons().filter(b => b.props['aria-label']?.includes('atomic number'));
   const initialWindow = familyTiles().map(b => b.props['aria-label']);
   for (const tile of familyTiles()) {
@@ -95,7 +95,8 @@ try {
     if (familyElements[number - 1].category === category) await click(tile);
   }
   await click(button('Check answer'));
-  assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => label(node).includes('Correct—all found!')));
+  assert.equal(familyTiles().filter(b => b.props['aria-pressed']).length, 1, 'Selecting another tile replaces the selection');
+  assert.ok(renderer.root.findAllByProps({ role: 'status' }).some(node => label(node).includes('Correct!')));
   await click(rewind());
   assert.ok(!buttons().some(b => label(b).startsWith('Next')), 'Rewinding the check reopens the selection');
   assert.ok(familyTiles().some(b => b.props['aria-pressed']), 'Rewinding check preserves selected tiles');
@@ -213,6 +214,46 @@ try {
   await click(button('Pass to'));
   assert.equal(storedResults().length, 1, 'Handover saves one result');
   assert.ok(rewind().props.disabled, 'Handover locks prior turn');
+  // Finish all remaining turns: two players per round, three rounds total.
+  for (let turn = 1; turn < 6; turn++) {
+    assert.ok(label(renderer.root).includes(`Round ${Math.floor(turn / 2) + 1}/3`));
+    await click(button('Start Timer'));
+    for (let tick = 0; tick < 3; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
+    const known = new Map();
+    const nextLabel = turn % 2 === 0 ? 'Pass to' : turn === 5 ? 'See Results' : 'Next Round';
+    for (let moves = 0; moves < 200 && !buttons().some(b => label(b).startsWith(nextLabel)); moves++) {
+      const available = cards().map((card, i) => ({ card, i })).filter(({ card }) => !card.props.disabled);
+      const open = cards().findIndex(card => /active-p[12]/.test(card.props.className));
+      const partner = open >= 0 ? available.find(({ i }) => known.has(i) && known.get(i) === known.get(open)) : null;
+      const candidate = partner ?? available.find(({ i }) => !known.has(i)) ?? available[0];
+      assert.ok(candidate);
+      await click(candidate.card);
+      cards().forEach((card, i) => {
+        const el = elements.find(el => el.name === label(card) || el.symbol === label(card));
+        if (el) known.set(i, el.atomicNumber);
+      });
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
+    }
+    assert.equal(storedResults().length, turn, 'Current turn remains provisional');
+    await click(button(nextLabel));
+    assert.equal(storedResults().filter(result => result.gameId === 'element-match').length, turn + 1);
+    if (turn < 5) assert.ok(rewind().props.disabled);
+  }
+  for (const mode of ['time-trial', 'hunt']) {
+    await mount('SoloElementMatchScreen', { initialOptions: { mode, pairCount: 1, trialTarget: 'all', huntTimed: true } });
+    await click(button('Start Game'));
+    for (let round = 1; round <= 3; round++) {
+      assert.ok(label(renderer.root).includes(`Round ${round}/3`));
+      await click(button('Start Timer'));
+      await click(cards()[0]); await click(cards()[1]);
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
+      assert.equal(storedResults().length, round - 1);
+      await click(button(round < 3 ? 'Next Round' : 'Play Again'));
+      assert.equal(storedResults().length, round);
+      assert.ok(rewind().props.disabled);
+    }
+    assert.ok(label(renderer.root).includes('Round 1/3'), 'Play Again restarts at round one');
+  }
   console.log('Rewind interaction checks passed: solo/versus answers, Next boundaries, tile moves, and deferred board results.');
 } finally {
   if (renderer) await act(() => renderer.unmount());

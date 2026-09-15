@@ -1,5 +1,4 @@
 import { elements, type Element } from '../data/elements.ts';
-import { PERIODIC_LAYOUT } from '../data/periodicLayout.ts';
 import type { Difficulty } from '../engine/scoring.ts';
 
 export const FAMILY_LABELS: Record<string, string> = {
@@ -9,28 +8,28 @@ export const FAMILY_LABELS: Record<string, string> = {
   nonmetal: 'nonmetals', 'post-transition-metal': 'post-transition metals',
   lanthanide: 'lanthanides', actinide: 'actinides',
 };
-export type FamilyWindow = { id: string; row: number; column: number; tiles: Element[] };
+export const FAMILY_SIZES: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
+export const FAMILY_SINGULAR: Record<string, string> = {
+  'transition-metal': 'a transition metal', halogen: 'a halogen', 'noble-gas': 'a noble gas',
+  'alkali-metal': 'an alkali metal', 'alkaline-earth-metal': 'an alkaline earth metal',
+  metalloid: 'a metalloid', nonmetal: 'a nonmetal', 'post-transition-metal': 'a post-transition metal',
+  lanthanide: 'a lanthanide', actinide: 'an actinide',
+};
+export type FamilyWindow = { id: string; size: number; tiles: Element[] };
 export type FamilyRound = FamilyWindow & { prompt: string; category: string; answers: Element[] };
-// Complete windows need two populated rows: Explorer includes periods 1–5.
-const LIMITS: Record<Difficulty, number> = { explorer: 54, scientist: 86, professor: 118 };
 
 export function familyWindows(difficulty: Difficulty): FamilyWindow[] {
   const windows: FamilyWindow[] = [];
-  for (let row = 0; row < PERIODIC_LAYOUT.length - 1; row++) {
-    for (let column = 0; column <= 14; column++) {
-      const numbers = [0, 1].flatMap(dy => [0, 1, 2, 3].map(dx => PERIODIC_LAYOUT[row + dy]?.[column + dx] ?? 0));
-      if (numbers.some(number => number === 0 || number > LIMITS[difficulty])) continue;
-      const tiles = numbers.map(number => elements[number - 1]);
-      if (new Set(tiles.map(el => el.category)).size < 2) continue;
-      windows.push({ id: `${row}:${column}`, row, column, tiles });
-    }
+  const size = FAMILY_SIZES[difficulty];
+  for (let start = 0; start <= elements.length - size * size; start++) {
+    const tiles = elements.slice(start, start + size * size);
+    windows.push({ id: `${size}:${start + 1}`, size, tiles });
   }
   return windows;
 }
 function pick<T>(items: T[]): T { return items[Math.floor(Math.random() * items.length)]; }
 export function isFamilyAnswerCorrect(round: FamilyRound, selected: readonly number[]): boolean {
-  return selected.length === round.answers.length && new Set(selected).size === selected.length
-    && round.answers.every(el => selected.includes(el.atomicNumber));
+  return selected.length === 1 && round.answers.some(el => el.atomicNumber === selected[0]);
 }
 export function generateFamilyRounds(count: number, difficulty: Difficulty): FamilyRound[] {
   const windows = familyWindows(difficulty);
@@ -45,6 +44,6 @@ export function generateFamilyRounds(count: number, difficulty: Difficulty): Fam
     const varied = categories.filter(category => category !== previousCategory);
     const category = pick(varied.length ? varied : categories);
     used.add(window.id); previousWindow = window.id; previousCategory = category;
-    return { ...window, category, prompt: `Choose all the ${FAMILY_LABELS[category]}.`, answers: window.tiles.filter(el => el.category === category) };
+    return { ...window, category, prompt: `Find ${FAMILY_SINGULAR[category]}.`, answers: window.tiles.filter(el => el.category === category) };
   });
 }
