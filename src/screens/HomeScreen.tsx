@@ -155,7 +155,7 @@ export default function HomeScreen({ progress, playerName, onNavigate, onSwitchP
         <button className="menu-btn primary" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', marginBottom: '0.5rem' }} onClick={() => onNavigate('play')}>
           <span className="menu-icon">🎮</span>
           <span className="menu-label">Play Games</span>
-          <span className="menu-desc">Choose Solo, 2 Players, or Player vs Bot — then pick from the same seven games.</span>
+          <span className="menu-desc">Choose Solo, 2 Players, or Play Elementor — then pick from the same seven games.</span>
         </button>
 
         <MenuGroup id="explore" icon="🔍" label="Explore" open={openGroups.has('explore')} onToggle={toggleGroup}>

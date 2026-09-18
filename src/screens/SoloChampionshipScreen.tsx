@@ -59,6 +59,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const [huntTargetMode, setHuntTargetMode] = useState<HuntTargetMode>('none');
   const [huntChosenTarget, setHuntChosenTarget] = useState(1);
   const [huntUnlockPairs, setHuntUnlockPairs] = useState(0);
+  const [familyTimed, setFamilyTimed] = useState(false);
   const [championshipDifficulty, setChampionshipDifficulty] = useState<Difficulty>('explorer');
   const [atomicChallenge, setAtomicChallenge] = useState<AtomicOrderLevel>('easy');
   const [atomicMultiplier, setAtomicMultiplier] = useState<AtomicOrderMultiplier>(1);
@@ -67,6 +68,7 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   const championshipTimeTrialBoardPairs = championshipTimeTrialMatches * 3;
 
   const currentGame = activeGames[gameIndex];
+  const scoreSoFar = runId ? getChampionshipRunGameResults(runId).reduce((sum, result) => sum + result.metrics.score, 0) : 0;
   const toggleGame = (gameId: GameId) => {
     setSelectedGames(current => current.includes(gameId)
       ? current.filter(id => id !== gameId)
@@ -175,19 +177,23 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
             <div><strong>🃏 Element Match options</strong><span>{matchMode === 'hunt' ? (huntTimed ? 'Three timed Hunt rounds' : 'Three relaxed Hunt rounds') : 'Three timed rounds to the selected match target'}</span></div>
             <span className="champ-option-status">{selectedGames.includes('element-match') ? 'Included' : 'Game not selected'}</span>
           </div>
-          <div className="round-select"><span>Mode:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => setMatchMode('time-trial')}>⏱️ Time Trial</button></div>
-          {matchMode === 'hunt' && <div className="round-select"><span>Timer:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${!huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(false)}>Off</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(true)}>On</button><span className="gm-desc">Turn on for the timed Hunt leaderboard</span></div>}
-          <div className="round-select"><span>Element pool:</span><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'all' ? 'selected' : ''}`} onClick={() => setMatchPool('all')}>⚗️ All</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'exotic' ? 'selected' : ''}`} onClick={() => { setMatchPool('exotic'); if (huntChosenTarget < 84) setHuntChosenTarget(84); }}>☢️ Exotic</button></div>
-          {matchMode === 'hunt' && <div className="round-select"><span>Pairs:</span>{[12, 16, 20].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPairs === count ? 'selected' : ''}`} onClick={() => setMatchPairs(count)}>{count}</button>)}</div>}
+          <div className="champ-setting-row"><span>Mode:</span><div className="champ-setting-controls"><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => setMatchMode('time-trial')}>⏱️ Time Trial</button></div></div>
+          {matchMode === 'hunt' && <div className="champ-setting-row"><span>Timer:</span><div className="champ-setting-controls"><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${!huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(false)}>Off</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTimed ? 'selected' : ''}`} onClick={() => setHuntTimed(true)}>On</button><small className="champ-setting-help">Timed leaderboard</small></div></div>}
+          <div className="champ-setting-row"><span>Element pool:</span><div className="champ-setting-controls"><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'all' ? 'selected' : ''}`} onClick={() => setMatchPool('all')}>⚗️ All</button><button disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPool === 'exotic' ? 'selected' : ''}`} onClick={() => { setMatchPool('exotic'); if (huntChosenTarget < 84) setHuntChosenTarget(84); }}>☢️ Exotic</button></div></div>
+          {matchMode === 'hunt' && <div className="champ-setting-row"><span>Pairs:</span><div className="champ-setting-controls">{[12, 16, 20].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${matchPairs === count ? 'selected' : ''}`} onClick={() => setMatchPairs(count)}>{count}</button>)}</div></div>}
           {matchMode === 'time-trial' ? (
-            <div className="round-select"><span>Time Trial:</span><span className="gm-desc">Find {championshipTimeTrialMatches} matches on a {championshipTimeTrialBoardPairs}-pair board</span></div>
+            <div className="champ-setting-row"><span>Time Trial:</span><small className="champ-setting-help">Find {championshipTimeTrialMatches} matches on a {championshipTimeTrialBoardPairs}-pair board</small></div>
           ) : (
             <>
-              <div className="round-select"><span>Hunt target:</span>{(['none', 'random', 'choose'] as HuntTargetMode[]).map(target => <button key={target} disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTargetMode === target ? 'selected' : ''}`} onClick={() => setHuntTargetMode(target)}>{target[0].toUpperCase() + target.slice(1)}</button>)}</div>
-              {huntTargetMode === 'choose' && <label className="voice-setting-label">Element<select disabled={!selectedGames.includes('element-match')} className="voice-select" value={huntChosenTarget} onChange={event => setHuntChosenTarget(Number(event.target.value))}>{elements.filter(element => matchPool === 'all' || element.atomicNumber >= 84).map(element => <option key={element.atomicNumber} value={element.atomicNumber}>{element.name} ({element.symbol})</option>)}</select></label>}
-              {huntTargetMode !== 'none' && <div className="round-select"><span>Unlock after:</span>{[0, 1, 2, 3, 4, 5].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntUnlockPairs === count ? 'selected' : ''}`} onClick={() => setHuntUnlockPairs(count)}>{count}</button>)}<span className="gm-desc">matched pairs</span></div>}
+              <div className="champ-setting-row"><span>Hunt target:</span><div className="champ-setting-controls">{(['none', 'random', 'choose'] as HuntTargetMode[]).map(target => <button key={target} disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntTargetMode === target ? 'selected' : ''}`} onClick={() => setHuntTargetMode(target)}>{target[0].toUpperCase() + target.slice(1)}</button>)}</div></div>
+              {huntTargetMode === 'choose' && <div className="champ-setting-row"><span>Element:</span><select disabled={!selectedGames.includes('element-match')} className="voice-select" value={huntChosenTarget} onChange={event => setHuntChosenTarget(Number(event.target.value))}>{elements.filter(element => matchPool === 'all' || element.atomicNumber >= 84).map(element => <option key={element.atomicNumber} value={element.atomicNumber}>{element.name} ({element.symbol})</option>)}</select></div>}
+              {huntTargetMode !== 'none' && <div className="champ-setting-row"><span>Unlock after:</span><div className="champ-setting-controls">{[0, 1, 2, 3, 4, 5].map(count => <button key={count} disabled={!selectedGames.includes('element-match')} className={`round-btn ${huntUnlockPairs === count ? 'selected' : ''}`} onClick={() => setHuntUnlockPairs(count)}>{count}</button>)}<small className="champ-setting-help">matched pairs</small></div></div>}
             </>
           )}
+        </section>
+        <section className={`champ-options-group ${selectedGames.includes('family-finder') ? '' : 'disabled'}`} aria-disabled={!selectedGames.includes('family-finder')}>
+          <div className="champ-options-heading"><div><strong>🔎 Family Finder options</strong><span>{familyTimed ? 'Timed rounds' : 'Standard rounds'}</span></div><span className="champ-option-status">{selectedGames.includes('family-finder') ? 'Included' : 'Game not selected'}</span></div>
+          <div className="round-select"><span>Mode:</span><button disabled={!selectedGames.includes('family-finder')} className={`round-btn ${!familyTimed ? 'selected' : ''}`} onClick={() => setFamilyTimed(false)}>Standard</button><button disabled={!selectedGames.includes('family-finder')} className={`round-btn ${familyTimed ? 'selected' : ''}`} onClick={() => setFamilyTimed(true)}>Timed</button><span className="gm-desc">A countdown runs on every grid.</span></div>
         </section>
         <section className={`champ-options-group ${selectedGames.includes('atomic-order') ? '' : 'disabled'}`} aria-disabled={!selectedGames.includes('atomic-order')}>
           <div className="champ-options-heading">
@@ -238,7 +244,8 @@ export default function SoloChampionshipScreen({ onBack, playerId, playerName, p
   return (
     <>
       <div className="champ-game-banner">🏆 Solo Championship · {championshipSize[0].toUpperCase() + championshipSize.slice(1)} · {DIFFICULTY_CONFIG[championshipDifficulty].label} · Game {gameIndex + 1}/{activeGames.length} · {GAME_CATALOG[currentGame].label}</div>
-      {currentGame === 'family-finder' && <FamilyFinderScreen {...sharedProps} />}
+      <div className="champ-live-total"><span>Total championship score so far</span><strong>{scoreSoFar} points</strong></div>
+      {currentGame === 'family-finder' && <FamilyFinderScreen timed={familyTimed} {...sharedProps} />}
       {currentGame === 'quiz-battle' && <QuizScreen mode="classic" progress={progress} onComplete={() => completeCurrentLeg()} {...sharedProps} />}
       {currentGame === 'tf-blitz' && <SoloTrueFalseScreen {...sharedProps} />}
       {currentGame === 'element-match' && <SoloElementMatchScreen championshipHuntRounds={3} initialOptions={{ mode: matchMode, pool: matchPool, pairCount: matchMode === 'time-trial' ? championshipTimeTrialBoardPairs : matchPairs, trialTarget: matchMode === 'time-trial' ? championshipTimeTrialMatches as ElementMatchTrialTarget : 'all', huntTimed, targetMode: huntTargetMode, chosenTarget: huntChosenTarget, unlockPairs: huntUnlockPairs }} {...sharedProps} />}

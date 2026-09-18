@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { generateFamilyRounds, FAMILY_SINGULAR, FAMILY_SIZES, isFamilyAnswerCorrect } from '../games/familyFinder.ts';
+import { generateFamilyRounds, FAMILY_SINGULAR, FAMILY_SIZES, FAMILY_TIME_LIMITS, isFamilyAnswerCorrect } from '../games/familyFinder.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from '../engine/scoring.ts';
 import { buildGameConfigKey, recordCompletedGameResult } from '../engine/gameResults.ts';
 import { useRewind } from '../engine/useRewind.ts';
@@ -10,13 +10,18 @@ type Props = {
   onBack: () => void; playerId: string; playerName: string;
   championshipDifficulty?: Difficulty; championshipRoundCount?: number; championshipRunId?: string;
   players?: Player[]; onFinish?: (scores: number[]) => void;
+  timed?: boolean;
+  championshipScores?: { playerOne: number; playerTwo: number };
 };
 export default function FamilyFinderScreen(props: Props) {
   const [difficulty, setDifficulty] = useState<Difficulty>('explorer');
+  const [timedChoice, setTimedChoice] = useState(false);
   const [session, setSession] = useState<ReturnType<typeof generateFamilyRounds>>([]);
   const [index, setIndex] = useState(0);
   const [answers, setAnswers] = useState<(number[] | null)[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
+  const timed = props.timed ?? timedChoice;
+  const [remaining, setRemaining] = useState(FAMILY_TIME_LIMITS.explorer);
   const undo = useRewind(index);
   const [done, setDone] = useState(false);
   const saved = useRef(false);
@@ -24,6 +29,7 @@ export default function FamilyFinderScreen(props: Props) {
   const count = props.championshipRoundCount ?? 10;
   const playerIndex = index % players.length;
   const player = players[playerIndex];
+  const playerDisplayName = player.bot ? 'Elementor' : player.name;
   const round = session[index];
   const checked = answers[index] != null;
   const scores = players.map((_, p) => session.reduce((sum, q, i) => sum + (i % players.length === p && answers[i] != null && isFamilyAnswerCorrect(q, answers[i]!) ? 1 : 0), 0));
@@ -40,6 +46,26 @@ export default function FamilyFinderScreen(props: Props) {
     });
     setAnswers(current => { const next = [...current]; next[index] = [...selection]; return next; });
   };
+  const timeout = () => {
+    if (checked || !timed || player.bot) return;
+    undo.mark(() => {
+      setAnswers(current => { const next = [...current]; next[index] = null; return next; });
+      setSelected([]);
+    });
+    setAnswers(current => { const next = [...current]; next[index] = []; return next; });
+    setSelected([]);
+  };
+  useEffect(() => {
+    if (!timed || !round || checked || done || player.bot) return;
+    setRemaining(FAMILY_TIME_LIMITS[player.difficulty]);
+    const timer = setInterval(() => {
+      setRemaining(value => {
+        if (value <= 1) { clearInterval(timer); timeout(); return 0; }
+        return value - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [timed, round, checked, done, index, player.bot, player.difficulty]);
   const toggle = (number: number) => {
     if (checked || player.bot) return;
     undo.mark(() => setSelected(selected));
@@ -61,10 +87,10 @@ export default function FamilyFinderScreen(props: Props) {
     if (saved.current) return;
     saved.current = true;
     players.forEach((p, i) => recordCompletedGameResult({
-      rulesVersion: 3, gameId: 'family-finder', variantId: 'classic',
-      configKey: buildGameConfigKey('family-finder', 'classic', { difficulty: p.difficulty, rounds: count, tiles: FAMILY_SIZES[p.difficulty] ** 2, layout: 'consecutive-square', selection: 'one' }),
+      rulesVersion: 4, gameId: 'family-finder', variantId: timed ? 'timed' : 'classic',
+      configKey: buildGameConfigKey('family-finder', timed ? 'timed' : 'classic', { difficulty: p.difficulty, rounds: count, tiles: FAMILY_SIZES[p.difficulty] ** 2, layout: 'consecutive-square', selection: 'one', timeLimit: timed ? FAMILY_TIME_LIMITS[p.difficulty] : null }),
       format: players.length === 1 ? 'solo' : players.some(p => p.bot) ? 'versus-bot' : 'versus-human',
-      participant: { id: p.id, name: p.name, kind: p.bot ? 'bot' : p.id.startsWith('guest:') ? 'guest' : 'profile' },
+      participant: { id: p.id, name: p.bot ? 'Elementor' : p.name, kind: p.bot ? 'bot' : p.id.startsWith('guest:') ? 'guest' : 'profile' },
       championshipRunId: props.championshipRunId,
       metrics: { score: scores[i], correct: scores[i], total: count, normalizedScore: Math.round(scores[i] / count * 100) },
     }));
@@ -74,12 +100,14 @@ export default function FamilyFinderScreen(props: Props) {
     <button className="back-btn" onClick={props.onBack}>← Back</button><h2>Family Finder</h2>
     <p>Find one element from the requested family, then check your answer. The tiles run in atomic-number order. Explorer: 3 × 3 · Scientist: 4 × 4 · Professor: 5 × 5.</p>
     {!props.championshipDifficulty && !props.players && <div className="difficulty-select">{(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => <button className={`diff-btn ${d === difficulty ? 'selected' : ''}`} key={d} onClick={() => setDifficulty(d)}>{DIFFICULTY_CONFIG[d].label}</button>)}</div>}
+    {!props.timed && !props.players && !props.championshipDifficulty && <div className="round-select"><span>Mode:</span><button className={`round-btn ${!timedChoice ? 'selected' : ''}`} onClick={() => setTimedChoice(false)}>Standard</button><button className={`round-btn ${timedChoice ? 'selected' : ''}`} onClick={() => setTimedChoice(true)}>Timed · {FAMILY_TIME_LIMITS[difficulty]}s</button></div>}
     <button className="start-btn" onClick={start}>Start!</button>
   </div>;
-  if (done) return <div className="quiz-result"><h2>Family Finder Complete!</h2>{players.map((p, i) => <p key={p.id}>{p.name}: {scores[i]}/{count}</p>)}<button className="start-btn" onClick={() => props.onFinish ? props.onFinish(scores) : props.onBack()}>{props.championshipRunId ? 'Continue Championship →' : 'Continue →'}</button></div>;
+  if (done) return <div className="quiz-result"><h2>Family Finder Complete!</h2>{players.map((p, i) => <p key={p.id}>{p.bot ? 'Elementor' : p.name}: {scores[i]}/{count}</p>)}<button className="start-btn" onClick={() => props.onFinish ? props.onFinish(scores) : props.onBack()}>{props.championshipRunId ? 'Continue Championship →' : 'Continue →'}</button></div>;
   return <div className="quiz-setup">
     <button className="back-btn" onClick={props.onBack}>← Back</button>
-    <p>{player.name} · Round {Math.floor(index / players.length) + 1}/{count} · {scores[playerIndex]} points</p>
+    {props.championshipScores && <div className="champ-live-total"><span>{players[0]?.name}: <strong>{props.championshipScores.playerOne}</strong></span><span>{players[1]?.bot ? 'Elementor' : players[1]?.name}: <strong>{props.championshipScores.playerTwo}</strong></span></div>}
+    <p>{playerDisplayName} · Round {Math.floor(index / players.length) + 1}/{count} · {scores[playerIndex]} points {timed && !checked ? `· ${remaining}s` : ''}</p>
     <h2>{round.prompt}</h2>
     <p>Atomic numbers {round.tiles[0].atomicNumber}–{round.tiles.at(-1)!.atomicNumber} · Choose one tile</p>
     <div aria-label="Element grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${round.size}, minmax(0, 1fr))`, gap: 4, width: '100%', maxWidth: 480, margin: '16px auto' }}>
@@ -97,7 +125,7 @@ export default function FamilyFinderScreen(props: Props) {
     </div>
     {!checked && <><p>{selected.length} selected</p><button className="start-btn" disabled={!selected.length || player.bot} onClick={() => submit()}>Check answer</button></>}
     {checked && <div role="status">
-      <p><strong>{isFamilyAnswerCorrect(round, answers[index]!) ? 'Correct!' : 'Not quite.'}</strong></p>
+      <p><strong>{answers[index]!.length === 0 ? "Time's up." : isFamilyAnswerCorrect(round, answers[index]!) ? 'Correct!' : 'Not quite.'}</strong></p>
       <p>{(round.answers.find(el => el.atomicNumber === answers[index]![0]) ?? round.answers[0]).name} is {FAMILY_SINGULAR[round.category]}.</p>
       <button className="start-btn" onClick={advance}>{index + 1 === session.length ? 'Finish' : 'Next →'}</button>
     </div>}

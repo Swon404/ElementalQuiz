@@ -9,6 +9,7 @@ export const FAMILY_LABELS: Record<string, string> = {
   lanthanide: 'lanthanides', actinide: 'actinides',
 };
 export const FAMILY_SIZES: Record<Difficulty, number> = { explorer: 3, scientist: 4, professor: 5 };
+export const FAMILY_TIME_LIMITS: Record<Difficulty, number> = { explorer: 30, scientist: 35, professor: 40 };
 export const FAMILY_SINGULAR: Record<string, string> = {
   'transition-metal': 'a transition metal', halogen: 'a halogen', 'noble-gas': 'a noble gas',
   'alkali-metal': 'an alkali metal', 'alkaline-earth-metal': 'an alkaline earth metal',

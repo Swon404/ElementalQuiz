@@ -692,6 +692,8 @@ body {
 }
 
 .rounds-select label { color: var(--text-secondary); }
+.player-type-row { min-height: 38px; }
+.player-fixed-type { color: var(--text-primary); font-weight: 600; padding: 8px 16px; }
 
 .round-btn {
   padding: 8px 16px;
@@ -929,6 +931,8 @@ body {
 .gm-desc { font-size: 0.8rem; color: var(--text-secondary); text-align: center; }
 
 @media (max-width: 520px) {
+  .champ-setting-row { grid-template-columns: 1fr; gap: 0.35rem; }
+  .champ-setting-row > span:first-child { text-align: left; }
   .play-format-picker { grid-template-columns: 1fr; }
   .play-format-card {
     min-height: 0;
@@ -1490,6 +1494,16 @@ body {
 }
 .champ-options-group.disabled .champ-option-status { background: rgba(255,255,255,0.08); color: var(--text-secondary); }
 .champ-options-group .atomic-order-setup-controls { margin: 0; }
+.champ-setting-row {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 8.5rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+}
+.champ-setting-row > span:first-child { color: var(--text-secondary); text-align: right; font-size: 0.88rem; }
+.champ-setting-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; min-width: 0; }
+.champ-setting-help { color: var(--text-secondary); font-size: 0.75rem; }
+.champ-setting-row .voice-select { width: 100%; min-width: 0; margin: 0; }
 .champ-summary {
   margin: 0.5rem 0;
   color: var(--text-secondary);

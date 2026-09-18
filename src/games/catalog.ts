@@ -21,7 +21,7 @@ export const PLAYER_FORMATS: ReadonlyArray<{
 }> = [
   { id: 'solo', label: 'Solo', playerCount: 1, hasBot: false },
   { id: 'versus-human', label: '2 Players', playerCount: 2, hasBot: false },
-  { id: 'versus-bot', label: 'Player vs Bot', playerCount: 2, hasBot: true },
+  { id: 'versus-bot', label: 'Play Elementor', playerCount: 2, hasBot: true },
 ];
 
 export type GameDefinition = {
@@ -41,7 +41,7 @@ export const GAME_CATALOG: Readonly<Record<GameId, GameDefinition>> = {
   'family-finder': {
     id: 'family-finder', label: 'Family Finder', icon: '🔎',
     description: 'Find one matching element in a grid of consecutive atomic numbers.',
-    formats: ALL_FORMATS, variants: ['classic'],
+    formats: ALL_FORMATS, variants: ['classic', 'timed'],
     championshipCounts: { quick: 4, standard: 6, epic: 8 }, leaderboardMetric: 'score',
   },
   'quiz-battle': {

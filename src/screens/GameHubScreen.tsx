@@ -13,7 +13,7 @@ export default function GameHubScreen({ onBack, onLaunchGame, onLaunchChampionsh
   const [format, setFormat] = useState<PlayerFormat>('versus-human');
   const formatChoices: Array<{ id: PlayerFormat; icon: string; title: string; description: string }> = [
     { id: 'versus-human', icon: '👥', title: '2 Players', description: 'The classic pass-and-play experience.' },
-    { id: 'versus-bot', icon: '🤖', title: 'Player vs Bot', description: 'Play the same games against Bot Blaze.' },
+    { id: 'versus-bot', icon: '🤖', title: 'Play Elementor', description: 'Play the same games against Elementor.' },
     { id: 'solo', icon: '🧑‍🔬', title: 'Solo', description: 'Play alone and chase leaderboard scores.' },
   ];
   const selectedFormat = PLAYER_FORMATS.find(option => option.id === format)?.label;
@@ -27,7 +27,7 @@ export default function GameHubScreen({ onBack, onLaunchGame, onLaunchChampionsh
       <div className="play-format-picker" role="group" aria-label="Who is playing?">
         {formatChoices.map(option => (
           <button key={option.id} className={`play-format-card ${format === option.id ? 'selected' : ''}`} onClick={() => setFormat(option.id)} aria-pressed={format === option.id}>
-            <span className="play-format-icon">{option.icon}</span>
+            <span className="play-format-icon">{option.id === 'versus-bot' ? <Elementor expression="greeting" size={52} /> : option.icon}</span>
             <span className="play-format-title">{option.title}</span>
             <span className="play-format-description">{option.description}</span>
           </button>

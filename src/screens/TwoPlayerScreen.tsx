@@ -406,6 +406,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const [player1, setPlayer1] = useState<PlayerConfig>({ name: saved.name1, difficulty: savedSettings.player1Difficulty, avatar: saved.avatar1 });
   const [player2, setPlayer2] = useState<PlayerConfig>({ name: saved.name2, difficulty: savedSettings.player2Difficulty, avatar: saved.avatar2 });
   const [player2Mode, setPlayer2Mode] = useState<Player2Mode>(initialPlayer2Mode ?? savedSettings.player2Mode);
+  useEffect(() => {
+    if (player2Mode === 'bot' && player2.name !== 'Elementor') {
+      setPlayer2(current => ({ ...current, name: 'Elementor' }));
+    }
+  }, [player2Mode, player2.name]);
 
   // Shared scores
   const [p1Score, setP1Score] = useState(0);
@@ -448,6 +453,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const [huntSearch, setHuntSearch] = useState('');
   const [huntFoundMessage, setHuntFoundMessage] = useState<string | null>(null);
   const [huntRequiredPairs, setHuntRequiredPairs] = useState(savedSettings.huntRequiredPairs);
+  const [familyTimed, setFamilyTimed] = useState(false);
   const [huntStartedAt, setHuntStartedAt] = useState(0);
   const [huntTimerStarted, setHuntTimerStarted] = useState(false);
   const [huntCountdown, setHuntCountdown] = useState<number | null>(null);
@@ -629,7 +635,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       orderChallengeLevel,
       orderTileMultiplier,
     });
-  }, [champSize, huntRequiredPairs, huntTargetElementNum, huntTargetMode, huntTimed, matchExotic, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
+  }, [champSize, familyTimed, huntRequiredPairs, huntTargetElementNum, huntTargetMode, huntTimed, matchExotic, matchMode, matchTrialTarget, orderChallengeLevel, orderTileMultiplier, player1.difficulty, player2.difficulty, player2Mode, rounds, selectedChampGames]);
 
   useEffect(() => {
     if (phase === 'mode-select' && prevPhaseRef.current !== 'mode-select') {
@@ -930,15 +936,15 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     botKnownCardsRef.current.clear();
   };
 
-  const prepareHuntTimer = (pairCount: number) => {
-    setHuntStartedAt(huntTimed ? 0 : Date.now());
-    setHuntTimerStarted(!huntTimed);
+  const prepareHuntTimer = (pairCount: number, timed = huntTimed) => {
+    setHuntStartedAt(timed ? 0 : Date.now());
+    setHuntTimerStarted(!timed);
     setHuntCountdown(null);
     setHuntElapsed(0);
     setHuntNewBest(false);
     huntRecordedRef.current = false;
     huntFinishedElapsedRef.current = 0;
-    setHuntLeaderboard(huntTimed ? getElementMatchHuntLeaderboard(matchExotic ? 'exotic' : 'all', pairCount, huntTargetMode, huntRequiredPairs) : []);
+    setHuntLeaderboard(timed ? getElementMatchHuntLeaderboard(matchExotic ? 'exotic' : 'all', pairCount, huntTargetMode, huntRequiredPairs) : []);
   };
 
   const startElementMatch = useCallback(() => {
@@ -1727,7 +1733,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       size: champSize,
       playerOneDifficulty: player1.difficulty,
       playerTwoDifficulty: player2.difficulty,
-      orderedGames: games.map(game => `${game}:${game === 'element-match' ? matchMode : GAME_CATALOG[game].variants[0]}`),
+      orderedGames: games.map(game => `${game}:${game === 'element-match' ? matchMode : game === 'family-finder' ? (familyTimed ? 'timed' : 'classic') : GAME_CATALOG[game].variants[0]}`),
       elementMatchRules: JSON.stringify(matchMode === 'time-trial'
         ? {
             matchExotic,
@@ -1930,17 +1936,27 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     setIsChampionship(false);
     setGameMode('element-match');
     setMatchMode('hunt');
-    setMatchCards(generateMatchCards(12, sharedPool()));
+    // A tiebreaker starts a fresh board. Choose the target from this board (or
+    // explicitly include the selected target) so a target left over from the
+    // preceding timed leg can never be missing from the grid.
+    setHuntTimed(false);
+    const chosenTarget = huntTargetMode === 'choose' ? huntTargetElementNum : null;
+    const cards = generateMatchCards(12, sharedPool(), matchExotic, chosenTarget);
+    const boardElements = Array.from(new Set(cards.map(card => card.elementNum)));
+    const target = huntTargetMode === 'none'
+      ? null
+      : chosenTarget ?? boardElements[Math.floor(Math.random() * boardElements.length)] ?? null;
+    setMatchCards(cards);
+    setHuntTargetElementNum(target);
     setMatchTurn(1);
     setMatchFirst(null);
     setMatchLocked(false);
     setP1Score(0);
     setP2Score(0);
     setRounds(12);
-    prepareHuntTimer(12);
+    prepareHuntTimer(12, false);
     setPhase('playing');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player1.difficulty, player2.difficulty]);
+  }, [huntTargetElementNum, huntTargetMode, matchExotic, player1.difficulty, player2.difficulty]);
 
   const startGame = () => {
     undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
@@ -2302,9 +2318,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
           {[{ p: player1, setP: setPlayer1, label: 'Player 1' }, { p: player2, setP: setPlayer2, label: 'Player 2' }].map(({ p, setP, label }) => (
             <div key={label} className="player-config-card">
               <h3>{label}</h3>
-              {label === 'Player 2' && (
-                <div className="rounds-select" style={{ marginTop: '0.25rem' }}>
-                  <label>Type: </label>
+              <div className="rounds-select player-type-row" style={{ marginTop: '0.25rem' }}>
+                <label>Type: </label>
+                {label === 'Player 1' ? <span className="player-fixed-type">Human</span> : <>
                   <button
                     className={`round-btn ${player2Mode === 'human' ? 'selected' : ''}`}
                     onClick={() => setPlayer2Mode('human')}
@@ -2315,18 +2331,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                     className={`round-btn ${player2Mode === 'bot' ? 'selected' : ''}`}
                     onClick={() => {
                       setPlayer2Mode('bot');
-                      if (!p.name.trim()) setP({ ...p, name: 'Bot Blaze' });
+                      setP({ ...p, name: 'Elementor' });
                     }}
                   >
-                    Bot
+                    Elementor
                   </button>
-                </div>
-              )}
+                </>}
+              </div>
               <input
                 className="player-name-input"
-                value={p.name}
+                value={label === 'Player 2' && player2Mode === 'bot' ? 'Elementor' : p.name}
                 onChange={e => setP({ ...p, name: e.target.value })}
-                placeholder={label === 'Player 2' && player2Mode === 'bot' ? 'Bot name' : 'Enter name'}
+                disabled={label === 'Player 2' && player2Mode === 'bot'}
+                placeholder={label === 'Player 2' && player2Mode === 'bot' ? 'Elementor' : 'Enter name'}
                 maxLength={20}
               />
               <div className="avatar-select">
@@ -2363,6 +2380,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
             <button className={`round-btn ${matchMode === 'hunt' ? 'selected' : ''}`} onClick={() => setMatchMode('hunt')}>🏹 Hunt</button>
             <button className={`round-btn ${matchMode === 'time-trial' ? 'selected' : ''}`} onClick={() => { setMatchMode('time-trial'); setHuntPickerOpen(false); }}>⏱️ Time Trial</button>
             <span className="gm-desc">{matchMode === 'hunt' && !huntTimed ? 'Share one relaxed board; highest score wins.' : 'Three rounds with separate timed turns; fastest wins each round.'}</span>
+          </div>
+        )}
+        {gameMode === 'family-finder' && (
+          <div className="rounds-select match-mode-select">
+            <label>Mode: </label>
+            <button className={`round-btn ${!familyTimed ? 'selected' : ''}`} onClick={() => setFamilyTimed(false)}>Standard</button>
+            <button className={`round-btn ${familyTimed ? 'selected' : ''}`} onClick={() => setFamilyTimed(true)}>Timed</button>
+            <span className="gm-desc">Race the countdown on each grid.</span>
           </div>
         )}
         {gameMode === 'element-match' && matchMode === 'hunt' && (
@@ -3124,7 +3149,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   if (phase === 'playing' && gameMode === 'family-finder') {
     return <>{quitOverlay}
         {rewindControls}<FamilyFinderScreen playerId={playerId} playerName={playerName} onBack={() => setShowQuitConfirm(true)}
-      championshipRoundCount={rounds} championshipRunId={isChampionship ? championshipRunIdRef.current : undefined}
+      championshipRoundCount={rounds} championshipRunId={isChampionship ? championshipRunIdRef.current : undefined} timed={familyTimed}
+      championshipScores={isChampionship ? { playerOne: committedChampTotals.p1, playerTwo: committedChampTotals.p2 } : undefined}
       players={[{ ...participantForTurn(1), difficulty: player1.difficulty }, { ...participantForTurn(2), difficulty: player2.difficulty, bot: player2Mode === 'bot' }]}
       onFinish={scores => finishCurrentGame(scores[0], scores[1])} /></>;
   }
