@@ -3,7 +3,7 @@ import { useRewind } from '../engine/useRewind.ts';
 import { useEffect, useRef, useState } from 'react';
 import Elementor from '../components/Elementor.tsx';
 import { elements } from '../data/elements.ts';
-import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
+import { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult, removeCompletedGameResult, type LeaderboardEntry } from '../engine/gameResults.ts';
 import {
   recordElementMatchHuntTime,
   recordElementMatchTrialTime,
@@ -44,8 +44,8 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
   const [phase, setPhase] = useState<Phase>('setup');
   const [roundIndex, setRoundIndex] = useState(0);
   const undo = useRewind(roundIndex);
-  const pendingCommit = useRef<(() => void) | null>(null);
-  const commit = () => { pendingCommit.current?.(); pendingCommit.current = null; undo.clear(); };
+  const pendingRollback = useRef<(() => void) | null>(null);
+  const commit = () => { pendingRollback.current = null; undo.clear(); };
   const [mode, setMode] = useState<ElementMatchMode>(initialOptions?.mode ?? 'hunt');
   const [pool, setPool] = useState<ElementMatchPool>(initialOptions?.pool ?? 'all');
   const [pairCount, setPairCount] = useState(initialOptions?.pairCount ?? 12);
@@ -138,7 +138,6 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     const completedElapsedMs = Math.max(1, Date.now() - startedAt);
     setElapsedMs(completedElapsedMs);
     setTimerStarted(false);
-    pendingCommit.current = () => {
     const total = mode === 'time-trial' ? trialGoal : pairCount;
     const recorded = recordCompletedGameResult({
       rulesVersion: 1,
@@ -157,11 +156,17 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
         moves: finalMoves,
       },
     });
-    if (mode === 'time-trial') recordElementMatchTrialTime(playerName, pool, pairCount, trialTarget, completedElapsedMs);
-    else if (huntTimed) recordElementMatchHuntTime(playerName, pool, pairCount, targetMode, unlockPairs, completedElapsedMs);
+    const legacyRecord = mode === 'time-trial'
+      ? recordElementMatchTrialTime(playerName, pool, pairCount, trialTarget, completedElapsedMs)
+      : huntTimed ? recordElementMatchHuntTime(playerName, pool, pairCount, targetMode, unlockPairs, completedElapsedMs) : null;
     const updated = getGameLeaderboard('element-match', variantId, configKey, 'solo');
     setLeaderboard(updated);
     setNewBestId(recorded && updated.some(entry => entry.id === recorded.id) ? recorded.id : null);
+    pendingRollback.current = () => {
+      if (recorded) removeCompletedGameResult(recorded.id);
+      legacyRecord?.undo();
+      setLeaderboard(getGameLeaderboard('element-match', variantId, configKey, 'solo'));
+      setNewBestId(null);
     };
     playCollect();
     finishTimerRef.current = setTimeout(() => setPhase('result'), 500);
@@ -173,7 +178,7 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     if (!card || card.flipped || card.matched) return;
     undo.mark(pausedMs => {
       if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
-      pendingCommit.current = null; completedRef.current = false;
+      pendingRollback.current?.(); pendingRollback.current = null; completedRef.current = false;
       setCards(cards); setFirstCardId(firstCardId); setLocked(false); setScore(score); setMoves(moves);
       setTimerStarted(timerStarted); setStartedAt(startedAt ? startedAt + pausedMs : 0);
       setElapsedMs(elapsedMs); setMessage(message); setPhase('playing');

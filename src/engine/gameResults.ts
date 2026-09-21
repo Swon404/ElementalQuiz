@@ -21,6 +21,12 @@ export type GameResultMetrics = {
   moves?: number;
 };
 
+export type GameReplay = {
+  version: number;
+  kind: string;
+  data: unknown;
+};
+
 export type CompletedGameResult = {
   id: string;
   schemaVersion: typeof RESULT_SCHEMA_VERSION;
@@ -31,6 +37,7 @@ export type CompletedGameResult = {
   format: PlayerFormat;
   participant: ParticipantIdentity;
   metrics: GameResultMetrics;
+  replay?: GameReplay;
   completedAt: string;
   championshipRunId?: string;
 };
@@ -121,6 +128,11 @@ export function getCompletedGameResults(): CompletedGameResult[] {
   return loadGameResults();
 }
 
+/** Removes one provisional result when a completed round is rewound before continuing. */
+export function removeCompletedGameResult(id: string): void {
+  saveGameResults(loadGameResults().filter(result => result.id !== id));
+}
+
 export function getChampionshipRunGameResults(runId: string): CompletedGameResult[] {
   return loadGameResults().filter(result => result.championshipRunId === runId);
 }
@@ -207,6 +219,12 @@ export function getGameLeaderboard(gameId: GameId, variantId: string, configKey:
     .filter(result => result.gameId === gameId && result.variantId === variantId)
     .filter(result => result.configKey === configKey && result.format === format)
     .sort(compareResults);
+
+  // A timed leaderboard represents the fastest individual runs. Keep each
+  // completed round visible, including several runs by the same player.
+  if (GAME_CATALOG[gameId].leaderboardMetric === 'time') {
+    return compatible.slice(0, limit).map((result, index) => ({ ...result, rank: index + 1 }));
+  }
 
   const bestByParticipant = new Map<string, CompletedGameResult>();
   for (const result of compatible) {

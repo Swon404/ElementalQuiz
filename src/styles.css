@@ -1473,6 +1473,41 @@ body {
 .champ-game-toggle.selected {
   color: var(--text-primary); border-color: #f9ca24; background: rgba(249,202,36,0.16);
 }
+.atomic-order-replay-btn {
+  margin-left: 0.4rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(79, 195, 247, 0.55);
+  border-radius: 999px;
+  background: rgba(79, 195, 247, 0.12);
+  color: #81d4fa;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.atomic-order-watch-replay {
+  padding: 0.75rem 1.15rem;
+  border: 2px solid #4fc3f7;
+  border-radius: 0.75rem;
+  background: rgba(79, 195, 247, 0.18);
+  color: #b3e5fc;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.atomic-order-watch-replay:hover { background: rgba(79, 195, 247, 0.3); }
+.atomic-order-replay .atomic-order-tile { cursor: default; }
+.atomic-order-replay-check {
+  min-height: 1.5rem;
+  margin: 0.65rem 0 0;
+  color: var(--text-secondary);
+  font-weight: 700;
+  text-align: center;
+}
+.atomic-order-replay-check.visible { color: #a5d6a7; }
+.atomic-order-tiles.replay-checking { animation: replay-check-pulse 0.3s ease; }
+@keyframes replay-check-pulse {
+  50% { filter: brightness(1.35); transform: scale(1.01); }
+}
 .champ-options-group {
   display: flex; flex-direction: column; gap: 0.75rem;
   margin: 0.5rem 0; padding: 0.85rem;

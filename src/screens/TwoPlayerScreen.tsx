@@ -1,6 +1,7 @@
 import RewindButton from '../components/RewindButton.tsx';
 import { useRewind } from '../engine/useRewind.ts';
 import FamilyFinderScreen from './FamilyFinderScreen.tsx';
+import { AtomicOrderReplayViewer, replayData, type AtomicOrderReplayData, type AtomicOrderReplaySelection } from './ElementOrderScreen.tsx';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
@@ -49,6 +50,7 @@ import {
   getGameLeaderboard,
   recordCompletedChampionshipResult,
   recordCompletedGameResult,
+  removeCompletedGameResult,
   type ChampionshipLeaderboardEntry,
   type LeaderboardEntry,
 } from '../engine/gameResults.ts';
@@ -528,6 +530,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const [orderElapsed, setOrderElapsed] = useState(0);
   const [orderLeaderboardP1, setOrderLeaderboardP1] = useState<AtomicOrderLeaderboardEntry[]>([]);
   const [orderLeaderboardP2, setOrderLeaderboardP2] = useState<AtomicOrderLeaderboardEntry[]>([]);
+  const [orderReplayEntriesP1, setOrderReplayEntriesP1] = useState<LeaderboardEntry[]>([]);
+  const [orderReplayEntriesP2, setOrderReplayEntriesP2] = useState<LeaderboardEntry[]>([]);
+  const [orderReplaySelection, setOrderReplaySelection] = useState<AtomicOrderReplaySelection | null>(null);
+  const orderReplayRef = useRef<AtomicOrderReplayData>({ initialTiles: [], actions: [], durationMs: 0 });
   const [orderTurnNewBest, setOrderTurnNewBest] = useState(false);
   const [orderChallengeLevel, setOrderChallengeLevel] = useState<AtomicOrderLevel>(savedSettings.orderChallengeLevel);
   const [orderTileMultiplier, setOrderTileMultiplier] = useState<AtomicOrderMultiplier>(savedSettings.orderTileMultiplier);
@@ -547,18 +553,22 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const prevPhaseRef = useRef<Phase>('mode-select');
   const undo = useRewind(`${gameMode}:${tfIndex}:${snapIndex}:${symbolIndex}:${atomIndex}:${orderRoundIndex}:${matchTrialRoundIndex}`);
   const pendingTurnCommit = useRef<(() => void) | null>(null);
+  const pendingTurnRollback = useRef<(() => void) | null>(null);
   const [pendingMatchFinish, setPendingMatchFinish] = useState<[number, number] | null>(null);
-  const commitTurn = () => { pendingTurnCommit.current?.(); pendingTurnCommit.current = null; undo.clear(); };
+  const commitTurn = () => { pendingTurnCommit.current?.(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; undo.clear(); };
   const captureRewind = () => {
     if (isBotTurn) { undo.clear(); return; }
     const memory = new Map(botKnownCardsRef.current);
+    const replayActions = orderReplayRef.current.actions.map(action => ({ ...action }));
     undo.mark(pausedMs => {
       if (lockTimer.current) clearTimeout(lockTimer.current);
       if (matchFinishTimerRef.current) clearTimeout(matchFinishTimerRef.current);
       if (botTimerRef.current) clearTimeout(botTimerRef.current);
       lockTimer.current = null; matchFinishTimerRef.current = null; botTimerRef.current = null;
+      pendingTurnRollback.current?.(); pendingTurnRollback.current = null;
       pendingTurnCommit.current = null; setPendingMatchFinish(null);
       botKnownCardsRef.current = memory;
+      if (gameMode === 'atomic-order') orderReplayRef.current.actions = replayActions;
       setP1Score(p1Score);
       setP2Score(p2Score);
       setTfAnswered(tfAnswered);
@@ -685,6 +695,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   // Shared pool size for content-neutral games: use the easier player's pool so both can compete
   const sharedPool = () => Math.min(DIFFICULTY_CONFIG[player1.difficulty].elementPool, DIFFICULTY_CONFIG[player2.difficulty].elementPool);
   const currentPlayerFormat = () => player2Mode === 'bot' ? 'versus-bot' as const : 'versus-human' as const;
+  const atomicOrderConfigKey = (difficulty: Difficulty) => buildGameConfigKey('atomic-order', 'arrange', {
+    difficulty,
+    challenge: orderChallengeLevel,
+    multiplier: orderTileMultiplier,
+    tiles: ATOMIC_ORDER_TILE_COUNTS[difficulty] * orderTileMultiplier,
+  });
   const participantForTurn = (turn: 1 | 2) => turn === 1
     ? { id: playerId, name: player1.name || playerName, kind: playerId.startsWith('guest:') ? 'guest' as const : 'profile' as const }
     : player2Mode === 'bot'
@@ -920,7 +936,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Element Match ---
   const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2) => {
-    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
+    undo.clear(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; setPendingMatchFinish(null);
     matchTrialTurnRef.current = turn;
     setMatchCards(generateMatchCardsForElements(elementNums));
     setMatchTurn(turn);
@@ -1016,9 +1032,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     setMatchTrialTimerStarted(false);
     setMatchTrialResult(result);
 
-    pendingTurnCommit.current = () => {
     const botFinisher = completedTurn === 2 && player2Mode === 'bot';
-    recordCompletedGameResult({
+    const recordedResult = recordCompletedGameResult({
       rulesVersion: 1,
       championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
       gameId: 'element-match',
@@ -1042,15 +1057,25 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         elapsedMs: result.elapsedMs,
       },
     });
-    if (!botFinisher && !isTimedHunt) {
+    let undoLegacyRecord: (() => void) | null = null;
+    if (!botFinisher) {
       const finisher = completedTurn === 1 ? player1 : player2;
-      const recorded = recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
-      setMatchTrialLeaderboard(recorded.leaderboard);
+      const recorded = isTimedHunt
+        ? recordElementMatchHuntTime(finisher.name, matchTrialPool, rounds, huntTargetMode, huntRequiredPairs, result.elapsedMs)
+        : recordElementMatchTrialTime(finisher.name, matchTrialPool, rounds, matchTrialTarget, result.elapsedMs);
+      if (isTimedHunt) setHuntLeaderboard(recorded.leaderboard);
+      else setMatchTrialLeaderboard(recorded.leaderboard);
       setMatchTrialNewBest(recorded.madeLeaderboard);
+      undoLegacyRecord = recorded.undo;
     } else {
       setMatchTrialNewBest(false);
     }
-
+    pendingTurnRollback.current = () => {
+      if (recordedResult) removeCompletedGameResult(recordedResult.id);
+      undoLegacyRecord?.();
+      if (isTimedHunt) setHuntLeaderboard(getElementMatchHuntLeaderboard(matchTrialPool, rounds, huntTargetMode, huntRequiredPairs));
+      else setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchTrialPool, rounds, matchTrialTarget));
+      setMatchTrialNewBest(false);
     };
 
     if (completedTurn === 1) {
@@ -1425,11 +1450,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   // --- Atomic Order ---
   const beginAtomicOrderTurn = (gameRounds: AtomicOrderRound[], roundIndex: number, turn: 1 | 2) => {
-    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
+    undo.clear(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; setPendingMatchFinish(null);
     const puzzle = gameRounds[roundIndex];
     if (!puzzle) return;
+    const initialTiles = [...(turn === 1 ? puzzle.p1 : puzzle.p2)];
     setOrderTurn(turn);
-    setOrderTiles([...(turn === 1 ? puzzle.p1 : puzzle.p2)]);
+    setOrderTiles(initialTiles);
+    orderReplayRef.current = { initialTiles, actions: [], durationMs: 0 };
     setOrderAttempts(0);
     setOrderFeedback([]);
     setOrderCorrectCount(null);
@@ -1451,6 +1478,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     setOrderRoundWinner(null);
     setOrderLeaderboardP1(getAtomicOrderLeaderboard(player1.difficulty, orderChallengeLevel, orderTileMultiplier));
     setOrderLeaderboardP2(getAtomicOrderLeaderboard(player2.difficulty, orderChallengeLevel, orderTileMultiplier));
+    setOrderReplayEntriesP1(getGameLeaderboard('atomic-order', 'arrange', atomicOrderConfigKey(player1.difficulty), currentPlayerFormat(), 5));
+    setOrderReplayEntriesP2(getGameLeaderboard('atomic-order', 'arrange', atomicOrderConfigKey(player2.difficulty), currentPlayerFormat(), 5));
     resetScores();
     setRounds(count);
     beginAtomicOrderTurn(gameRounds, 0, 1);
@@ -1465,6 +1494,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const moveAtomicOrderTile = (fromIndex: number, toIndex: number) => {
     if (!orderTimerStarted || orderTurnResult || fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
     captureRewind();
+    orderReplayRef.current.actions.push({ type: 'move', atMs: Math.max(0, Date.now() - orderStartedAt), from: fromIndex, to: toIndex });
     setOrderTiles(current => {
       const next = [...current];
       const [moved] = next.splice(fromIndex, 1);
@@ -1482,6 +1512,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     if (orderSelected === null) setOrderSelected(index);
     else if (orderSelected === index) setOrderSelected(null);
     else {
+      orderReplayRef.current.actions.push({ type: 'swap', atMs: Math.max(0, Date.now() - orderStartedAt), first: orderSelected, second: index });
       setOrderTiles(current => {
         const next = [...current];
         [next[orderSelected], next[index]] = [next[index], next[orderSelected]];
@@ -1496,19 +1527,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const finishAtomicOrderTurn = (result: AtomicOrderResult) => {
     setOrderTurnResult(result);
 
-    pendingTurnCommit.current = () => {
     const finisher = orderTurn === 1 ? player1 : player2;
-    recordCompletedGameResult({
+    const completedReplay: AtomicOrderReplayData = {
+      initialTiles: [...orderReplayRef.current.initialTiles],
+      actions: orderReplayRef.current.actions.map(action => ({ ...action })),
+      durationMs: result.elapsedMs,
+    };
+    orderReplayRef.current.durationMs = result.elapsedMs;
+    const recordedResult = recordCompletedGameResult({
       rulesVersion: 1,
       championshipRunId: isChampionship ? championshipRunIdRef.current : undefined,
       gameId: 'atomic-order',
       variantId: 'arrange',
-      configKey: buildGameConfigKey('atomic-order', 'arrange', {
-        difficulty: finisher.difficulty,
-        challenge: orderChallengeLevel,
-        multiplier: orderTileMultiplier,
-        tiles: ATOMIC_ORDER_TILE_COUNTS[finisher.difficulty] * orderTileMultiplier,
-      }),
+      configKey: atomicOrderConfigKey(finisher.difficulty),
       format: currentPlayerFormat(),
       participant: participantForTurn(orderTurn),
       metrics: {
@@ -1517,19 +1548,34 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         elapsedMs: result.elapsedMs,
         attempts: result.attempts,
       },
+      replay: { version: 1, kind: 'atomic-order', data: completedReplay },
     });
 
     // Bot times are simulated for pacing, not a genuine result — skip the leaderboard for bot turns.
     const isBotFinisher = orderTurn === 2 && player2Mode === 'bot';
+    let undoLegacyRecord: (() => void) | null = null;
     if (!isBotFinisher) {
-      const { leaderboard, madeLeaderboard } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderChallengeLevel, orderTileMultiplier, result.elapsedMs);
+      const { leaderboard, madeLeaderboard, undo: undoRecordedTime } = recordAtomicOrderTime(finisher.name, finisher.difficulty, orderChallengeLevel, orderTileMultiplier, result.elapsedMs);
       if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderLeaderboardP1(leaderboard);
       if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderLeaderboardP2(leaderboard);
       setOrderTurnNewBest(madeLeaderboard);
+      undoLegacyRecord = undoRecordedTime;
     } else {
       setOrderTurnNewBest(false);
     }
-
+    const updatedReplayEntries = getGameLeaderboard('atomic-order', 'arrange', atomicOrderConfigKey(finisher.difficulty), currentPlayerFormat(), 5);
+    if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderReplayEntriesP1(updatedReplayEntries);
+    if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderReplayEntriesP2(updatedReplayEntries);
+    pendingTurnRollback.current = () => {
+      if (recordedResult) removeCompletedGameResult(recordedResult.id);
+      undoLegacyRecord?.();
+      const restored = getAtomicOrderLeaderboard(finisher.difficulty, orderChallengeLevel, orderTileMultiplier);
+      if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderLeaderboardP1(restored);
+      if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderLeaderboardP2(restored);
+      const restoredReplayEntries = getGameLeaderboard('atomic-order', 'arrange', atomicOrderConfigKey(finisher.difficulty), currentPlayerFormat(), 5);
+      if (orderTurn === 1 || player1.difficulty === player2.difficulty) setOrderReplayEntriesP1(restoredReplayEntries);
+      if (orderTurn === 2 || player1.difficulty === player2.difficulty) setOrderReplayEntriesP2(restoredReplayEntries);
+      setOrderTurnNewBest(false);
     };
 
     if (orderTurn === 1) {
@@ -1551,6 +1597,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const submitAtomicOrder = () => {
     if (!orderTimerStarted || orderTurnResult || orderTiles.length < 3) return;
     captureRewind();
+    orderReplayRef.current.actions.push({ type: 'check', atMs: Math.max(0, Date.now() - orderStartedAt) });
     setOrderSelected(null);
     const sorted = [...orderTiles].sort((a, b) => a - b);
     const feedback = orderTiles.map((atomicNumber, index): AtomicOrderFeedback => {
@@ -1925,7 +1972,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   const nextChampGame = () => {
-    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
+    undo.clear(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; setPendingMatchFinish(null);
     const next = champStep + 1;
     setChampStep(next);
     launchSubGame(activeChampGames[next]);
@@ -1959,7 +2006,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   }, [huntTargetElementNum, huntTargetMode, matchExotic, player1.difficulty, player2.difficulty]);
 
   const startGame = () => {
-    undo.clear(); pendingTurnCommit.current = null; setPendingMatchFinish(null);
+    undo.clear(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; setPendingMatchFinish(null);
     setIsChampionship(false);
     if (gameMode === 'quiz-battle') startQuizBattle();
     else if (gameMode === 'tf-blitz') startTFBlitz();
@@ -2213,6 +2260,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   // --- MODE SELECT ---
   const rewindControls = <>{gameMode !== 'quiz-battle' && gameMode !== 'family-finder' && <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />}
         {pendingMatchFinish && <button className="start-btn" onClick={() => { undo.clear(); const scores = pendingMatchFinish; setPendingMatchFinish(null); finishCurrentGame(scores[0], scores[1]); }}>Next →</button>}</>;
+
+  if (orderReplaySelection) {
+    return <AtomicOrderReplayViewer selection={orderReplaySelection} challenge={orderChallengeLevel} onClose={() => setOrderReplaySelection(null)} />;
+  }
 
   if (phase === 'mode-select') {
     return (
@@ -2926,19 +2977,19 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               </div>
             )}
 
-            {!isTimedHunt && <div className="atomic-order-leaderboard match-trial-leaderboard">
-              <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · Find {matchTrialTarget === 'all' ? 'all' : matchTrialTarget}</span>
-              <span className="atomic-order-best-label">🏆 Time Trial Top 5</span>
-              {matchTrialLeaderboard.length ? (
+            <div className="atomic-order-leaderboard match-trial-leaderboard">
+              <span className="atomic-order-best-mode">{matchExotic ? 'Exotic' : 'All'} · {rounds} pairs · {isTimedHunt ? (huntTargetMode === 'none' ? 'Full board' : `${huntTargetMode === 'choose' ? 'Chosen' : 'Random'} target`) : `Find ${matchTrialTarget === 'all' ? 'all' : matchTrialTarget}`}</span>
+              <span className="atomic-order-best-label">🏆 {isTimedHunt ? 'Hunt' : 'Time Trial'} Top 5</span>
+              {(isTimedHunt ? huntLeaderboard : matchTrialLeaderboard).length ? (
                 <ol className="atomic-order-leaderboard-list">
-                  {matchTrialLeaderboard.map((entry, index) => (
+                  {(isTimedHunt ? huntLeaderboard : matchTrialLeaderboard).map((entry, index) => (
                     <li key={`${entry.name}-${entry.timeMs}-${index}`} className={entry.name === cp.name.trim() ? 'me' : ''}>
                       <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
                     </li>
                   ))}
                 </ol>
               ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
-            </div>}
+            </div>
           </div>
         </div>
       );
@@ -3395,13 +3446,16 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                   </p>
                 </>
               )}
-              <button className="start-btn" onClick={nextAtomicOrderStage} disabled={isBotTurn}>
-                {orderTurn === 1
-                  ? `Pass to ${player2.name} →`
-                  : orderRoundIndex + 1 >= orderRounds.length
-                    ? 'See Results'
-                    : 'Next Round →'}
-              </button>
+              <div className="result-actions">
+                {!isBotTurn && <button className="atomic-order-watch-replay" onClick={() => setOrderReplaySelection({ name: orderTurn === 1 ? player1.name : player2.name, data: { initialTiles: [...orderReplayRef.current.initialTiles], actions: orderReplayRef.current.actions.map(action => ({ ...action })), durationMs: currentResult.elapsedMs }, backLabel: 'Back to round' })}>▶ Watch Replay</button>}
+                <button className="start-btn" onClick={nextAtomicOrderStage} disabled={isBotTurn}>
+                  {orderTurn === 1
+                    ? `Pass to ${player2.name} →`
+                    : orderRoundIndex + 1 >= orderRounds.length
+                      ? 'See Results'
+                      : 'Next Round →'}
+                </button>
+              </div>
             </div>
           )}
           </>}
@@ -3412,11 +3466,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                 <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player1.difficulty].label} Top 5</span>
                 {orderLeaderboardP1.length ? (
                   <ol className="atomic-order-leaderboard-list">
-                    {orderLeaderboardP1.map((entry, i) => (
-                      <li key={i} className={entry.name === player1.name.trim() ? 'me' : ''}>
-                        <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
-                      </li>
-                    ))}
+                    {orderLeaderboardP1.map((entry, i) => {
+                      const storedEntry = orderReplayEntriesP1.find(result => result.participant.name === entry.name && result.metrics.elapsedMs === entry.timeMs);
+                      const data = storedEntry ? replayData(storedEntry) : null;
+                      return <li key={i} className={entry.name === player1.name.trim() ? 'me' : ''}>
+                        <span>{entry.name} {data && <button className="atomic-order-replay-btn" onClick={() => setOrderReplaySelection({ name: entry.name, data, backLabel: 'Back to leaderboard' })}>▶ Replay</button>}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                      </li>;
+                    })}
                   </ol>
                 ) : <span className="atomic-order-best-values">No times yet</span>}
               </div>
@@ -3425,11 +3481,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                   <span className="atomic-order-best-label">🏆 {DIFFICULTY_CONFIG[player2.difficulty].label} Top 5</span>
                   {orderLeaderboardP2.length ? (
                     <ol className="atomic-order-leaderboard-list">
-                      {orderLeaderboardP2.map((entry, i) => (
-                        <li key={i} className={entry.name === player2.name.trim() ? 'me' : ''}>
-                          <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
-                        </li>
-                      ))}
+                      {orderLeaderboardP2.map((entry, i) => {
+                        const storedEntry = orderReplayEntriesP2.find(result => result.participant.name === entry.name && result.metrics.elapsedMs === entry.timeMs);
+                        const data = storedEntry ? replayData(storedEntry) : null;
+                        return <li key={i} className={entry.name === player2.name.trim() ? 'me' : ''}>
+                          <span>{entry.name} {data && <button className="atomic-order-replay-btn" onClick={() => setOrderReplaySelection({ name: entry.name, data, backLabel: 'Back to leaderboard' })}>▶ Replay</button>}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                        </li>;
+                      })}
                     </ol>
                   ) : <span className="atomic-order-best-values">No times yet</span>}
                 </div>

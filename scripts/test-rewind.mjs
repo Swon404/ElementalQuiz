@@ -118,7 +118,7 @@ try {
   assert.deepEqual(tiles().map(label), original, 'Order swap undone');
   assert.equal(storedResults().length, 0);
 
-  // Solved Atomic Order is provisional until Next, including its leaderboard entry.
+  // Solved Atomic Order appears immediately, but Rewind removes that result again.
   let ordered = tiles().map(label);
   const number = text => Number(text.match(/#(\d+)/)?.[1]);
   const target = [...ordered].sort((a, b) => number(a) - number(b));
@@ -131,12 +131,30 @@ try {
     if (source !== i) { await click(tiles()[i]); await click(tiles()[source]); }
   }
   await click(button('Check Order'));
-  assert.equal(storedResults().length, 0, 'Solved order not saved before Next');
+  assert.equal(storedResults().length, 1, 'Solved order is saved immediately');
   await click(rewind());
   assert.equal(storedResults().length, 0, 'Undo does not leave a saved win');
   await click(button('Check Order'));
+  assert.equal(storedResults().length, 1, 'Replayed solution is saved immediately');
+  await click(button('Watch Replay'));
+  assert.ok(button('Back to round'), 'Completed round offers an immediate replay');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+  assert.ok(label(renderer.root).includes('Order checked'), 'Replay visibly shows the check result');
+  assert.ok(button('Replay Again'), 'Finished replay offers to play again');
+  await click(button('Back to round'));
   await click(button('Next Round'));
-  assert.equal(storedResults().length, 1, 'Next saves one order result');
+  assert.equal(storedResults().length, 1, 'Next does not duplicate the order result');
+  const orderReplay = storedResults()[0].replay;
+  assert.equal(orderReplay?.kind, 'atomic-order', 'Atomic Order result includes a replay');
+  assert.ok(orderReplay.data.initialTiles.length > 0, 'Replay stores the starting board');
+  assert.ok(orderReplay.data.actions.some(action => action.type === 'swap'), 'Replay stores swaps');
+  assert.ok(orderReplay.data.actions.some(action => action.type === 'check'), 'Replay stores checks');
+  await click(button('Replay'));
+  assert.ok(button('Back to leaderboard'));
+  await click(button('Pause'));
+  assert.ok(button('Continue'));
+  await click(button('Restart'));
+  await click(button('Back to leaderboard'));
   assert.ok(rewind().props.disabled);
 
   await mount('SoloElementMatchScreen', { initialOptions: { mode: 'hunt', pairCount: 2, huntTimed: false } });
@@ -152,14 +170,16 @@ try {
   await click(button('Start Game'));
   await click(cards()[0]); await click(cards()[1]);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
-  assert.equal(storedResults().length, 0, 'Completed Hunt not saved before Next');
+  assert.equal(storedResults().length, 1, 'Completed Hunt is saved immediately');
   await click(rewind());
+  assert.equal(storedResults().length, 0, 'Rewind removes the completed Hunt result');
   assert.ok(cards()[0].props.className.includes('flipped'));
   assert.ok(!cards()[1].props.className.includes('flipped'));
   await click(cards()[1]);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
+  assert.equal(storedResults().length, 1, 'Replayed Hunt is saved immediately');
   await click(button('Next Round'));
-  assert.equal(storedResults().length, 1, 'Next saves Hunt exactly once');
+  assert.equal(storedResults().length, 1, 'Next does not duplicate Hunt');
   assert.ok(rewind().props.disabled);
 
   for (const mode of ['tf-blitz', 'symbol-pick', 'atom-quiz', 'clue-duel']) {
@@ -181,6 +201,27 @@ try {
     await click(buttons().find(isNext));
     assert.ok(rewind().props.disabled, `${mode} versus: Next locks undo`);
   }
+
+  await mount('TwoPlayerScreen', { initialMode: 'atomic-order', initialPlayer2Mode: 'human' });
+  await click(button('Start'));
+  await click(button('Start Timer'));
+  for (let tick = 0; tick < 4; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
+  const versusOrderTiles = () => buttons().filter(b => String(b.props.className).startsWith('atomic-order-tile '));
+  const atomicNumberForTile = tile => familyElements.find(element => label(tile).includes(element.name))?.atomicNumber;
+  for (let index = 0; index < versusOrderTiles().length; index++) {
+    const remaining = versusOrderTiles().slice(index);
+    const lowest = Math.min(...remaining.map(atomicNumberForTile));
+    const sourceOffset = remaining.findIndex(tile => atomicNumberForTile(tile) === lowest);
+    if (sourceOffset > 0) { await click(versusOrderTiles()[index]); await click(versusOrderTiles()[index + sourceOffset]); }
+  }
+  await click(button('Check order'));
+  assert.ok(button('Watch Replay'), 'Versus Atomic Order offers an immediate replay');
+  assert.equal(storedResults()[0].replay?.kind, 'atomic-order', 'Versus Atomic Order saves replay data');
+  const versusLeaderboardReplay = buttons().find(b => label(b).includes('Replay') && !label(b).includes('Watch'));
+  assert.ok(versusLeaderboardReplay, 'Versus Atomic Order leaderboard shows Replay');
+  await click(versusLeaderboardReplay);
+  assert.ok(button('Back to leaderboard'));
+  await click(button('Back to leaderboard'));
 
   // A complete timed player turn can be rewound, but not after handing over.
   await mount('TwoPlayerScreen', { initialMode: 'element-match', initialPlayer2Mode: 'human' });
@@ -207,12 +248,14 @@ try {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
   }
   assert.ok(button('Pass to'));
-  assert.equal(storedResults().length, 0, 'Timed result provisional');
+  assert.equal(storedResults().length, 1, 'Timed result is saved immediately');
   await click(rewind());
+  assert.equal(storedResults().length, 0, 'Rewind removes the timed result');
   assert.ok(!buttons().some(b => label(b).startsWith('Pass to')));
   await click(cards()[finalIndex]);
+  assert.equal(storedResults().length, 1, 'Replayed timed result is saved immediately');
   await click(button('Pass to'));
-  assert.equal(storedResults().length, 1, 'Handover saves one result');
+  assert.equal(storedResults().length, 1, 'Handover does not duplicate the result');
   assert.ok(rewind().props.disabled, 'Handover locks prior turn');
   // Finish all remaining turns: two players per round, three rounds total.
   for (let turn = 1; turn < 6; turn++) {
@@ -234,7 +277,7 @@ try {
       });
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
     }
-    assert.equal(storedResults().length, turn, 'Current turn remains provisional');
+    assert.equal(storedResults().length, turn + 1, 'Current turn is saved immediately');
     await click(button(nextLabel));
     assert.equal(storedResults().filter(result => result.gameId === 'element-match').length, turn + 1);
     if (turn < 5) assert.ok(rewind().props.disabled);
@@ -247,14 +290,22 @@ try {
       await click(button('Start Timer'));
       await click(cards()[0]); await click(cards()[1]);
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
-      assert.equal(storedResults().length, round - 1);
+      assert.equal(storedResults().length, round, 'Solo timed round is saved immediately');
       await click(button(round < 3 ? 'Next Round' : 'Play Again'));
       assert.equal(storedResults().length, round);
       assert.ok(rewind().props.disabled);
     }
     assert.ok(label(renderer.root).includes('Round 1/3'), 'Play Again restarts at round one');
   }
-  console.log('Rewind interaction checks passed: solo/versus answers, Next boundaries, tile moves, and deferred board results.');
+  memory.clear();
+  const { buildGameConfigKey, getGameLeaderboard, recordCompletedGameResult } = await server.ssrLoadModule('/src/engine/gameResults.ts');
+  const repeatedRunConfig = buildGameConfigKey('atomic-order', 'arrange', { difficulty: 'explorer', challenge: 'easy', multiplier: 1, tiles: 3 });
+  for (const elapsedMs of [5400, 6200]) recordCompletedGameResult({
+    rulesVersion: 1, gameId: 'atomic-order', variantId: 'arrange', configKey: repeatedRunConfig, format: 'solo',
+    participant: { id: 'guest:test', name: 'Test', kind: 'guest' }, metrics: { score: 1, normalizedScore: 100, elapsedMs, attempts: 1 },
+  });
+  assert.equal(getGameLeaderboard('atomic-order', 'arrange', repeatedRunConfig, 'solo').length, 2, 'Timed leaderboard shows multiple rounds by the same player');
+  console.log('Rewind interaction checks passed: immediate timed results, rollback, Next boundaries, and tile moves.');
 } finally {
   if (renderer) await act(() => renderer.unmount());
   await server.close();

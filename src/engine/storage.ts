@@ -201,8 +201,9 @@ export function getAtomicOrderLeaderboard(difficulty: Difficulty, level: AtomicO
  * Record a new Atomic Order time, keeping only each player's fastest 3.
  * Returns the refreshed leaderboard (top 5) and whether this run made the leaderboard.
  */
-export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean } {
+export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty, level: AtomicOrderLevel, multiplier: AtomicOrderMultiplier, elapsedMs: number): { leaderboard: AtomicOrderLeaderboardEntry[]; madeLeaderboard: boolean; undo: () => void } {
   const store = loadAtomicOrderTimesStore();
+  const previousStore = structuredClone(store);
   const key = atomicOrderTimesKey(playerName, difficulty, level, multiplier);
   const name = playerName.trim() || 'Player';
   const existing = store[key]?.times ?? [];
@@ -211,7 +212,7 @@ export function recordAtomicOrderTime(playerName: string, difficulty: Difficulty
   saveAtomicOrderTimesStore(store);
   const leaderboard = atomicOrderLeaderboardFromStore(store, difficulty, level, multiplier, 5);
   const madeLeaderboard = leaderboard.some(e => e.name === name && e.timeMs === elapsedMs);
-  return { leaderboard, madeLeaderboard };
+  return { leaderboard, madeLeaderboard, undo: () => saveAtomicOrderTimesStore(previousStore) };
 }
 
 /* ===== Element Match Time Trial Leaderboard (Two Player) ===== */
@@ -256,8 +257,9 @@ export function getElementMatchTrialLeaderboard(pool: ElementMatchPool, pairCoun
 }
 
 /** Record a completed human Time Trial, keeping each player's fastest three times in this category. */
-export function recordElementMatchTrialTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean } {
+export function recordElementMatchTrialTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchTrialTarget, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean; undo: () => void } {
   const store = loadElementMatchTrialTimesStore();
+  const previousStore = structuredClone(store);
   const key = elementMatchTrialTimesKey(playerName, pool, pairCount, target);
   const name = playerName.trim() || 'Player';
   const existing = store[key]?.times ?? [];
@@ -267,6 +269,7 @@ export function recordElementMatchTrialTime(playerName: string, pool: ElementMat
   return {
     leaderboard,
     madeLeaderboard: leaderboard.some(entry => entry.name === name && entry.timeMs === elapsedMs),
+    undo: () => saveElementMatchTrialTimesStore(previousStore),
   };
 }
 
@@ -310,8 +313,9 @@ export function getElementMatchHuntLeaderboard(pool: ElementMatchPool, pairCount
 }
 
 /** Record the winning player's completion time, keeping their fastest three in this Hunt category. */
-export function recordElementMatchHuntTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchHuntTarget, unlockPairs: number, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean } {
+export function recordElementMatchHuntTime(playerName: string, pool: ElementMatchPool, pairCount: number, target: ElementMatchHuntTarget, unlockPairs: number, elapsedMs: number): { leaderboard: ElementMatchLeaderboardEntry[]; madeLeaderboard: boolean; undo: () => void } {
   const store = loadElementMatchHuntTimesStore();
+  const previousStore = structuredClone(store);
   const category = elementMatchHuntCategory(pool, pairCount, target, unlockPairs);
   const name = playerName.trim() || 'Player';
   const key = `${name.toLowerCase()}::${category}`;
@@ -322,6 +326,7 @@ export function recordElementMatchHuntTime(playerName: string, pool: ElementMatc
   return {
     leaderboard,
     madeLeaderboard: leaderboard.some(entry => entry.name === name && entry.timeMs === elapsedMs),
+    undo: () => saveElementMatchHuntTimesStore(previousStore),
   };
 }
 
