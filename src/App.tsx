@@ -16,6 +16,7 @@ import SoloClueDuelScreen from './screens/SoloClueDuelScreen.tsx';
 import SoloElementMatchScreen from './screens/SoloElementMatchScreen.tsx';
 import GameHubScreen from './screens/GameHubScreen.tsx';
 import SoloChampionshipScreen from './screens/SoloChampionshipScreen.tsx';
+import HighScoresScreen from './screens/HighScoresScreen.tsx';
 import type { GameId, PlayerFormat } from './games/catalog.ts';
 import {
   loadProgress, saveProgress, collectElement, addQuizResult,
@@ -25,7 +26,7 @@ import {
 import type { Difficulty } from './engine/scoring.ts';
 
 type QuizBattleScreen = 'quiz-battle-classic' | 'quiz-battle-sprint' | 'quiz-battle-deep-dive' | 'quiz-battle-showdown';
-type Screen = 'family-finder' | 'intro' | 'profile' | 'home' | 'play' | QuizBattleScreen | 'two-player' | 'two-player-champ' | 'solo-champ' | 'explore' | 'atomic-order' | 'atom-quiz' | 'quiz-battle-exotic' | 'element-lab' | 'symbol-pick' | 'solo-tf-blitz' | 'solo-clue-duel' | 'solo-element-match';
+type Screen = 'family-finder' | 'intro' | 'profile' | 'home' | 'play' | 'high-scores' | QuizBattleScreen | 'two-player' | 'two-player-champ' | 'solo-champ' | 'explore' | 'atomic-order' | 'atom-quiz' | 'quiz-battle-exotic' | 'element-lab' | 'symbol-pick' | 'solo-tf-blitz' | 'solo-clue-duel' | 'solo-element-match';
 
 const QUIZ_BATTLE_SCREENS: Record<QuizBattleScreen, 'classic' | 'sprint' | 'deep-dive' | 'showdown'> = {
   'quiz-battle-classic': 'classic',
@@ -221,8 +222,10 @@ export default function App() {
           onLaunchGame={handleLaunchGame}
           onLaunchChampionship={handleLaunchChampionship}
           onLaunchQuizVariant={handleLaunchQuizVariant}
+          onHighScores={() => setScreen('high-scores')}
         />
       )}
+      {screen === 'high-scores' && <HighScoresScreen onBack={() => setScreen('play')} />}
       {isQuizBattleScreen(screen) && (
         <QuizScreen
           mode={QUIZ_BATTLE_SCREENS[screen]}

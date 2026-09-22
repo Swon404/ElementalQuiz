@@ -25,6 +25,14 @@ interface SoloElementMatchScreenProps {
 
 type Phase = 'setup' | 'playing' | 'result';
 export type HuntTargetMode = 'none' | 'random' | 'choose';
+export type ElementMatchReplayData = {
+  initialCards: Array<Pick<MatchCard, 'id' | 'text' | 'elementNum'>>;
+  actions: Array<{ cardId: number; atMs: number }>;
+  durationMs: number;
+  targetElementNum: number | null;
+  unlockPairs: number;
+};
+export type ElementMatchReplaySelection = { name: string; data: ElementMatchReplayData; backLabel: string };
 export type SoloElementMatchOptions = {
   mode: ElementMatchMode;
   pool: ElementMatchPool;
@@ -39,6 +47,76 @@ export type SoloElementMatchOptions = {
 const TARGET_PAIR_POINTS = 2;
 const HUNT_WIN_BONUS = 2;
 const MISMATCH_FLIP_DELAY_MS = 180;
+
+export function elementMatchReplayData(entry: LeaderboardEntry): ElementMatchReplayData | null {
+  if (entry.replay?.kind !== 'element-match-hunt' || entry.replay.version !== 1) return null;
+  const data = entry.replay.data as Partial<ElementMatchReplayData>;
+  if (!Array.isArray(data.initialCards) || !Array.isArray(data.actions) || typeof data.durationMs !== 'number') return null;
+  return data as ElementMatchReplayData;
+}
+
+function replayBoard(data: ElementMatchReplayData, elapsed: number): { cards: MatchCard[]; matchedPairs: number; message: string } {
+  const cards: MatchCard[] = data.initialCards.map(card => ({ ...card, flipped: false, matched: false }));
+  let firstCardId: number | null = null;
+  let message = '';
+  for (const action of data.actions) {
+    if (action.atMs > elapsed) break;
+    const card = cards.find(item => item.id === action.cardId);
+    if (!card || card.flipped || card.matched) continue;
+    const matchedPairs = Math.floor(cards.filter(item => item.matched).length / 2);
+    if (data.targetElementNum !== null && card.elementNum === data.targetElementNum && matchedPairs < data.unlockPairs) {
+      message = `Target locked — ${data.unlockPairs - matchedPairs} more pair${data.unlockPairs - matchedPairs === 1 ? '' : 's'} needed`;
+      continue;
+    }
+    card.flipped = true;
+    if (firstCardId === null) {
+      firstCardId = card.id;
+      continue;
+    }
+    const first = cards.find(item => item.id === firstCardId)!;
+    if (first.elementNum === card.elementNum) {
+      cards.filter(item => item.elementNum === card.elementNum).forEach(item => { item.flipped = true; item.matched = true; });
+      message = data.targetElementNum === card.elementNum ? 'Target found!' : 'Pair matched!';
+      firstCardId = null;
+    } else if (elapsed >= action.atMs + MISMATCH_FLIP_DELAY_MS) {
+      first.flipped = false;
+      card.flipped = false;
+      message = 'Not a match';
+      firstCardId = null;
+    } else {
+      message = 'Not a match';
+      break;
+    }
+  }
+  return { cards, matchedPairs: Math.floor(cards.filter(card => card.matched).length / 2), message };
+}
+
+export function ElementMatchReplayViewer({ selection, onClose }: { selection: ElementMatchReplaySelection; onClose: () => void }) {
+  const { data } = selection;
+  const [elapsed, setElapsed] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const finished = elapsed >= data.durationMs;
+  const board = replayBoard(data, elapsed);
+  const target = elements.find(element => element.atomicNumber === data.targetElementNum);
+  const restart = () => { setElapsed(0); setPlaying(true); };
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = setInterval(() => setElapsed(current => Math.min(data.durationMs, current + 50)), 50);
+    return () => clearInterval(timer);
+  }, [data.durationMs, playing]);
+
+  useEffect(() => { if (finished) setPlaying(false); }, [finished]);
+
+  return <div className="element-match-playing match-trial-playing">
+    <button className="back-btn" onClick={onClose}>← {selection.backLabel}</button>
+    <div className="atomic-order-card match-hunt-timer-card"><span className="atomic-order-best-label">▶ {selection.name}'s Hunt replay</span><div className="atomic-order-big-timer">{(elapsed / 1000).toFixed(1)}<span>s</span></div></div>
+    {target && <div className="hunt-target-banner">Target: <strong>{target.name} ({target.symbol})</strong>{data.unlockPairs > 0 && <span className="hunt-unlock-status">{board.matchedPairs >= data.unlockPairs ? 'Unlocked' : `Unlocks after ${data.unlockPairs} pairs (${board.matchedPairs}/${data.unlockPairs})`}</span>}</div>}
+    <p className="hunt-found-message" role="status">{board.message || 'Watch the cards being selected…'}</p>
+    <div className="match-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>{board.cards.map(card => <div key={card.id} className={`match-card ${card.flipped || card.matched ? 'flipped' : ''} ${card.matched ? 'matched matched-p1' : ''}`}><span className="match-card-inner">{card.flipped || card.matched ? card.text : '?'}</span></div>)}</div>
+    <div className="result-actions"><button className="start-btn" onClick={finished ? restart : () => setPlaying(value => !value)}>{finished ? 'Replay Again' : playing ? 'Pause' : 'Continue'}</button>{!finished && <button className="back-btn" onClick={restart}>Restart</button>}</div>
+  </div>;
+}
 
 export default function SoloElementMatchScreen({ onBack, playerId, playerName, championshipRunId, championshipHuntRounds = 1, initialOptions }: SoloElementMatchScreenProps) {
   const [phase, setPhase] = useState<Phase>('setup');
@@ -66,6 +144,8 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
   const [message, setMessage] = useState<string | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [newBestId, setNewBestId] = useState<string | null>(null);
+  const [replaySelection, setReplaySelection] = useState<ElementMatchReplaySelection | null>(null);
+  const replayRef = useRef<ElementMatchReplayData>({ initialCards: [], actions: [], durationMs: 0, targetElementNum: null, unlockPairs: 0 });
   const finishTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
   const completedRef = useRef(false);
 
@@ -111,6 +191,7 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
       : required ?? boardElements[Math.floor(Math.random() * boardElements.length)] ?? null;
     setCards(nextCards);
     setTargetElementNum(target);
+    replayRef.current = { initialCards: nextCards.map(({ id, text, elementNum }) => ({ id, text, elementNum })), actions: [], durationMs: 0, targetElementNum: target, unlockPairs };
     setFirstCardId(null);
     setLocked(false);
     const startImmediately = mode === 'hunt' && !huntTimed;
@@ -136,6 +217,8 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     if (completedRef.current) return;
     completedRef.current = true;
     const completedElapsedMs = Math.max(1, Date.now() - startedAt);
+    const completedReplay: ElementMatchReplayData = { ...replayRef.current, initialCards: replayRef.current.initialCards.map(card => ({ ...card })), actions: replayRef.current.actions.map(action => ({ ...action })), durationMs: completedElapsedMs };
+    replayRef.current.durationMs = completedElapsedMs;
     setElapsedMs(completedElapsedMs);
     setTimerStarted(false);
     const total = mode === 'time-trial' ? trialGoal : pairCount;
@@ -155,6 +238,7 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
         elapsedMs: completedElapsedMs,
         moves: finalMoves,
       },
+      replay: mode === 'hunt' ? { version: 1, kind: 'element-match-hunt', data: completedReplay } : undefined,
     });
     const legacyRecord = mode === 'time-trial'
       ? recordElementMatchTrialTime(playerName, pool, pairCount, trialTarget, completedElapsedMs)
@@ -176,13 +260,16 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     if (!timerStarted || locked || completedRef.current) return;
     const card = cards.find(item => item.id === cardId);
     if (!card || card.flipped || card.matched) return;
+    const replayActions = replayRef.current.actions.map(action => ({ ...action }));
     undo.mark(pausedMs => {
       if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
       pendingRollback.current?.(); pendingRollback.current = null; completedRef.current = false;
       setCards(cards); setFirstCardId(firstCardId); setLocked(false); setScore(score); setMoves(moves);
       setTimerStarted(timerStarted); setStartedAt(startedAt ? startedAt + pausedMs : 0);
       setElapsedMs(elapsedMs); setMessage(message); setPhase('playing');
+      replayRef.current.actions = replayActions;
     });
+    replayRef.current.actions.push({ cardId, atMs: Math.max(0, Date.now() - startedAt) });
     const matchedBefore = Math.floor(cards.filter(item => item.matched).length / 2);
     if (mode === 'hunt' && targetElementNum !== null && card.elementNum === targetElementNum && matchedBefore < unlockPairs) {
       const remaining = unlockPairs - matchedBefore;
@@ -228,6 +315,8 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     }, MISMATCH_FLIP_DELAY_MS);
   };
 
+  if (replaySelection) return <ElementMatchReplayViewer selection={replaySelection} onClose={() => setReplaySelection(null)} />;
+
   if (phase === 'setup') {
     const availableTargets = pool === 'exotic' ? elements.filter(element => element.atomicNumber >= 84) : elements;
     return (
@@ -269,6 +358,6 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
   }
 
   return (
-    <div className="quiz-result"><RewindButton enabled={undo.canRewind} onRewind={undo.rewind} /><Elementor expression="celebrate" message={mode === 'hunt' && !huntTimed ? 'Hunt complete!' : `${mode === 'hunt' ? 'Hunt' : 'Time Trial'} complete in ${(elapsedMs / 1000).toFixed(1)} seconds!`} /><div className="result-card"><h2>{huntRoundCount > 1 ? `${mode === 'hunt' ? 'Hunt' : 'Time Trial'} Round ${roundIndex + 1}/${huntRoundCount} Complete!` : 'Element Match Complete!'}</h2><div className="result-stats"><div className="result-stat"><span className="stat-value">{score}</span><span className="stat-label">Points</span></div><div className="result-stat"><span className="stat-value">{moves}</span><span className="stat-label">Moves</span></div>{(mode === 'time-trial' || huntTimed) && <div className="result-stat"><span className="stat-value">{(elapsedMs / 1000).toFixed(1)}s</span><span className="stat-label">Time</span></div>}</div></div><div className="atomic-order-leaderboard match-trial-leaderboard"><span className="atomic-order-best-mode">{pool === 'exotic' ? 'Exotic' : 'All'} · {pairCount} pairs · {mode === 'hunt' ? (huntTimed ? 'Timed Hunt' : 'Relaxed Hunt') : `Find ${trialTarget}`}</span><span className="atomic-order-best-label">🏆 Element Match Top 10</span>{newBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}{leaderboard.length ? <ol className="atomic-order-leaderboard-list">{leaderboard.map(entry => <li key={entry.id} className={entry.id === newBestId ? 'me' : ''}><span>{entry.participant.name} · {entry.metrics.moves} moves</span><span>{mode === 'hunt' && !huntTimed ? `${entry.metrics.score} points` : entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span></li>)}</ol> : <span className="atomic-order-best-values">No results yet — set the first!</span>}</div><div className="result-actions">{championshipRunId ? <button className="start-btn" onClick={hasNextRound ? nextRound : () => { commit(); onBack(); }}>{hasNextRound ? 'Next Round →' : 'Continue Championship →'}</button> : <><button className="start-btn" onClick={hasNextRound ? nextRound : () => { setRoundIndex(0); startGame(); }}>{hasNextRound ? 'Next Round →' : 'Play Again'}</button><button className="back-btn" onClick={() => { commit(); onBack(); }}>Back to Games</button></>}</div></div>
+    <div className="quiz-result"><RewindButton enabled={undo.canRewind} onRewind={undo.rewind} /><Elementor expression="celebrate" message={mode === 'hunt' && !huntTimed ? 'Hunt complete!' : `${mode === 'hunt' ? 'Hunt' : 'Time Trial'} complete in ${(elapsedMs / 1000).toFixed(1)} seconds!`} /><div className="result-card"><h2>{huntRoundCount > 1 ? `${mode === 'hunt' ? 'Hunt' : 'Time Trial'} Round ${roundIndex + 1}/${huntRoundCount} Complete!` : 'Element Match Complete!'}</h2><div className="result-stats"><div className="result-stat"><span className="stat-value">{score}</span><span className="stat-label">Points</span></div><div className="result-stat"><span className="stat-value">{moves}</span><span className="stat-label">Moves</span></div>{(mode === 'time-trial' || huntTimed) && <div className="result-stat"><span className="stat-value">{(elapsedMs / 1000).toFixed(1)}s</span><span className="stat-label">Time</span></div>}</div></div><div className="atomic-order-leaderboard match-trial-leaderboard"><span className="atomic-order-best-mode">{pool === 'exotic' ? 'Exotic' : 'All'} · {pairCount} pairs · {mode === 'hunt' ? (huntTimed ? 'Timed Hunt' : 'Relaxed Hunt') : `Find ${trialTarget}`}</span><span className="atomic-order-best-label">🏆 Element Match Top 10</span>{newBestId && <span className="atomic-order-new-best">🎉 New leaderboard best!</span>}{leaderboard.length ? <ol className="atomic-order-leaderboard-list">{leaderboard.map(entry => { const data = elementMatchReplayData(entry); return <li key={entry.id} className={entry.id === newBestId ? 'me' : ''}><span>{entry.participant.name} · {entry.metrics.moves} moves {data && <button className="atomic-order-replay-btn" onClick={() => setReplaySelection({ name: entry.participant.name, data, backLabel: 'Back to leaderboard' })}>▶ Replay</button>}</span><span>{mode === 'hunt' && !huntTimed ? `${entry.metrics.score} points` : entry.metrics.elapsedMs ? `${(entry.metrics.elapsedMs / 1000).toFixed(1)}s` : '—'}</span></li>; })}</ol> : <span className="atomic-order-best-values">No results yet — set the first!</span>}</div><div className="result-actions">{mode === 'hunt' && <button className="atomic-order-watch-replay" onClick={() => setReplaySelection({ name: playerName, data: { ...replayRef.current, initialCards: replayRef.current.initialCards.map(card => ({ ...card })), actions: replayRef.current.actions.map(action => ({ ...action })), durationMs: elapsedMs }, backLabel: 'Back to results' })}>▶ Watch Replay</button>}{championshipRunId ? <button className="start-btn" onClick={hasNextRound ? nextRound : () => { commit(); onBack(); }}>{hasNextRound ? 'Next Round →' : 'Continue Championship →'}</button> : <><button className="start-btn" onClick={hasNextRound ? nextRound : () => { setRoundIndex(0); startGame(); }}>{hasNextRound ? 'Next Round →' : 'Play Again'}</button><button className="back-btn" onClick={() => { commit(); onBack(); }}>Back to Games</button></>}</div></div>
   );
 }

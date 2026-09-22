@@ -2,6 +2,7 @@ import RewindButton from '../components/RewindButton.tsx';
 import { useRewind } from '../engine/useRewind.ts';
 import FamilyFinderScreen from './FamilyFinderScreen.tsx';
 import { AtomicOrderReplayViewer, replayData, type AtomicOrderReplayData, type AtomicOrderReplaySelection } from './ElementOrderScreen.tsx';
+import { ElementMatchReplayViewer, elementMatchReplayData, type ElementMatchReplayData, type ElementMatchReplaySelection } from './SoloElementMatchScreen.tsx';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import QuizCard from '../components/QuizCard.tsx';
 import Elementor from '../components/Elementor.tsx';
@@ -461,6 +462,9 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const [huntCountdown, setHuntCountdown] = useState<number | null>(null);
   const [huntElapsed, setHuntElapsed] = useState(0);
   const [huntLeaderboard, setHuntLeaderboard] = useState<ElementMatchLeaderboardEntry[]>([]);
+  const [huntReplayEntries, setHuntReplayEntries] = useState<LeaderboardEntry[]>([]);
+  const [huntReplaySelection, setHuntReplaySelection] = useState<ElementMatchReplaySelection | null>(null);
+  const huntReplayRef = useRef<ElementMatchReplayData>({ initialCards: [], actions: [], durationMs: 0, targetElementNum: null, unlockPairs: 0 });
   const [huntNewBest, setHuntNewBest] = useState(false);
   const [matchTrialElementNums, setMatchTrialElementNums] = useState<number[]>([]);
   const [matchTrialStartedAt, setMatchTrialStartedAt] = useState(0);
@@ -560,6 +564,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     if (isBotTurn) { undo.clear(); return; }
     const memory = new Map(botKnownCardsRef.current);
     const replayActions = orderReplayRef.current.actions.map(action => ({ ...action }));
+    const huntReplayActions = huntReplayRef.current.actions.map(action => ({ ...action }));
     undo.mark(pausedMs => {
       if (lockTimer.current) clearTimeout(lockTimer.current);
       if (matchFinishTimerRef.current) clearTimeout(matchFinishTimerRef.current);
@@ -569,6 +574,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       pendingTurnCommit.current = null; setPendingMatchFinish(null);
       botKnownCardsRef.current = memory;
       if (gameMode === 'atomic-order') orderReplayRef.current.actions = replayActions;
+      if (gameMode === 'element-match' && matchMode === 'hunt' && huntTimed) huntReplayRef.current.actions = huntReplayActions;
       setP1Score(p1Score);
       setP2Score(p2Score);
       setTfAnswered(tfAnswered);
@@ -700,6 +706,11 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     challenge: orderChallengeLevel,
     multiplier: orderTileMultiplier,
     tiles: ATOMIC_ORDER_TILE_COUNTS[difficulty] * orderTileMultiplier,
+  });
+  const timedHuntConfigKey = () => buildGameConfigKey('element-match', 'hunt', {
+    pool: matchExotic ? 'exotic' : 'all', pairs: rounds, targetMode: huntTargetMode,
+    targetElement: huntTargetMode === 'choose' ? huntTargetElementNum : null,
+    unlockAfterPairs: huntRequiredPairs, timed: true, turnMode: 'separate',
   });
   const participantForTurn = (turn: 1 | 2) => turn === 1
     ? { id: playerId, name: player1.name || playerName, kind: playerId.startsWith('guest:') ? 'guest' as const : 'profile' as const }
@@ -935,10 +946,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   };
 
   // --- Element Match ---
-  const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2) => {
+  const beginMatchTrialTurn = (elementNums: number[], turn: 1 | 2, replayTarget: number | null = huntTargetElementNum) => {
     undo.clear(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; setPendingMatchFinish(null);
     matchTrialTurnRef.current = turn;
-    setMatchCards(generateMatchCardsForElements(elementNums));
+    const nextCards = generateMatchCardsForElements(elementNums);
+    setMatchCards(nextCards);
+    huntReplayRef.current = { initialCards: nextCards.map(({ id, text, elementNum }) => ({ id, text, elementNum })), actions: [], durationMs: 0, targetElementNum: replayTarget, unlockPairs: huntRequiredPairs };
     setMatchTurn(turn);
     setMatchFirst(null);
     setMatchLocked(false);
@@ -995,7 +1008,8 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       setMatchTrialComplete(false);
       setMatchTrialLeaderboard([]);
       resetScores();
-      beginMatchTrialTurn(boardElementNums, 1);
+      setHuntReplayEntries(getGameLeaderboard('element-match', 'hunt', timedHuntConfigKey(), currentPlayerFormat(), 5));
+      beginMatchTrialTurn(boardElementNums, 1, targetNum);
       setPhase('playing');
       return;
     }
@@ -1028,6 +1042,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
 
   const finishMatchTrialTurn = (result: MatchTrialResult) => {
     const completedTurn = matchTrialTurnRef.current;
+    const completedHuntReplay: ElementMatchReplayData = {
+      ...huntReplayRef.current,
+      initialCards: huntReplayRef.current.initialCards.map(card => ({ ...card })),
+      actions: huntReplayRef.current.actions.map(action => ({ ...action })),
+      durationMs: result.elapsedMs,
+    };
+    huntReplayRef.current.durationMs = result.elapsedMs;
     setMatchTrialElapsed(result.elapsedMs);
     setMatchTrialTimerStarted(false);
     setMatchTrialResult(result);
@@ -1056,6 +1077,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         total: matchTrialGoal,
         elapsedMs: result.elapsedMs,
       },
+      replay: isTimedHunt ? { version: 1, kind: 'element-match-hunt', data: completedHuntReplay } : undefined,
     });
     let undoLegacyRecord: (() => void) | null = null;
     if (!botFinisher) {
@@ -1070,11 +1092,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     } else {
       setMatchTrialNewBest(false);
     }
+    if (isTimedHunt) setHuntReplayEntries(getGameLeaderboard('element-match', 'hunt', timedHuntConfigKey(), currentPlayerFormat(), 5));
     pendingTurnRollback.current = () => {
       if (recordedResult) removeCompletedGameResult(recordedResult.id);
       undoLegacyRecord?.();
       if (isTimedHunt) setHuntLeaderboard(getElementMatchHuntLeaderboard(matchTrialPool, rounds, huntTargetMode, huntRequiredPairs));
       else setMatchTrialLeaderboard(getElementMatchTrialLeaderboard(matchTrialPool, rounds, matchTrialTarget));
+      if (isTimedHunt) setHuntReplayEntries(getGameLeaderboard('element-match', 'hunt', timedHuntConfigKey(), currentPlayerFormat(), 5));
       setMatchTrialNewBest(false);
     };
 
@@ -1104,13 +1128,14 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       const chosenTarget = isTimedHunt && huntTargetMode === 'choose' ? huntTargetElementNum : null;
       const cards = generateMatchCards(rounds, 118, matchExotic, chosenTarget);
       const numbers = Array.from(new Set(cards.map(card => card.elementNum)));
-      if (isTimedHunt) setHuntTargetElementNum(huntTargetMode === 'none' ? null : chosenTarget ?? numbers[Math.floor(Math.random() * numbers.length)]);
+      const nextTarget = huntTargetMode === 'none' ? null : chosenTarget ?? numbers[Math.floor(Math.random() * numbers.length)];
+      if (isTimedHunt) setHuntTargetElementNum(nextTarget);
       setMatchTrialRoundIndex(index => index + 1);
       setMatchTrialElementNums(numbers);
       setMatchTrialP1Result(null);
       setMatchTrialWinner(null);
       setMatchTrialComplete(false);
-      beginMatchTrialTurn(numbers, 1);
+      beginMatchTrialTurn(numbers, 1, nextTarget);
       return;
     }
     finishCurrentGame(p1Score, p2Score);
@@ -1129,6 +1154,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
     const card = matchCards.find(c => c.id === cardId);
     if (!card || card.flipped || card.matched) return;
     captureRewind();
+    if (isTimedHunt) huntReplayRef.current.actions.push({ cardId, atMs: Math.max(0, Date.now() - matchTrialStartedAt) });
     const claimedPairsBeforeFlip = Math.floor(matchCards.filter(c => c.matched).length / 2);
     if (
       gameMode === 'element-match' && matchMode === 'hunt' &&
@@ -1509,6 +1535,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const selectAtomicOrderTile = (index: number) => {
     if (!orderTimerStarted || orderTurnResult || isBotTurn) return;
     captureRewind();
+    orderReplayRef.current.actions.push({ type: 'select', atMs: Math.max(0, Date.now() - orderStartedAt), index });
     if (orderSelected === null) setOrderSelected(index);
     else if (orderSelected === index) setOrderSelected(null);
     else {
@@ -2261,6 +2288,10 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const rewindControls = <>{gameMode !== 'quiz-battle' && gameMode !== 'family-finder' && <RewindButton enabled={undo.canRewind} onRewind={undo.rewind} />}
         {pendingMatchFinish && <button className="start-btn" onClick={() => { undo.clear(); const scores = pendingMatchFinish; setPendingMatchFinish(null); finishCurrentGame(scores[0], scores[1]); }}>Next →</button>}</>;
 
+  if (huntReplaySelection) {
+    return <ElementMatchReplayViewer selection={huntReplaySelection} onClose={() => setHuntReplaySelection(null)} />;
+  }
+
   if (orderReplaySelection) {
     return <AtomicOrderReplayViewer selection={orderReplaySelection} challenge={orderChallengeLevel} onClose={() => setOrderReplaySelection(null)} />;
   }
@@ -2971,9 +3002,12 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
                     </p>
                   </>
                 )}
-                <button className="start-btn" onClick={nextMatchTrialStage} disabled={isBotTurn}>
-                  {matchTurn === 1 ? `Pass to ${player2.name} →` : matchTrialRoundIndex < 2 ? 'Next Round →' : 'See Results'}
-                </button>
+                <div className="result-actions">
+                  {isTimedHunt && !isBotTurn && <button className="atomic-order-watch-replay" onClick={() => setHuntReplaySelection({ name: matchTurn === 1 ? player1.name : player2.name, data: { ...huntReplayRef.current, initialCards: huntReplayRef.current.initialCards.map(card => ({ ...card })), actions: huntReplayRef.current.actions.map(action => ({ ...action })), durationMs: matchTrialResult.elapsedMs }, backLabel: 'Back to round' })}>▶ Watch Replay</button>}
+                  <button className="start-btn" onClick={nextMatchTrialStage} disabled={isBotTurn}>
+                    {matchTurn === 1 ? `Pass to ${player2.name} →` : matchTrialRoundIndex < 2 ? 'Next Round →' : 'See Results'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2982,11 +3016,13 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
               <span className="atomic-order-best-label">🏆 {isTimedHunt ? 'Hunt' : 'Time Trial'} Top 5</span>
               {(isTimedHunt ? huntLeaderboard : matchTrialLeaderboard).length ? (
                 <ol className="atomic-order-leaderboard-list">
-                  {(isTimedHunt ? huntLeaderboard : matchTrialLeaderboard).map((entry, index) => (
-                    <li key={`${entry.name}-${entry.timeMs}-${index}`} className={entry.name === cp.name.trim() ? 'me' : ''}>
-                      <span>{entry.name}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
-                    </li>
-                  ))}
+                  {(isTimedHunt ? huntLeaderboard : matchTrialLeaderboard).map((entry, index) => {
+                    const storedEntry = isTimedHunt ? huntReplayEntries.find(result => result.participant.name === entry.name && result.metrics.elapsedMs === entry.timeMs) : null;
+                    const data = storedEntry ? elementMatchReplayData(storedEntry) : null;
+                    return <li key={`${entry.name}-${entry.timeMs}-${index}`} className={entry.name === cp.name.trim() ? 'me' : ''}>
+                      <span>{entry.name} {data && <button className="atomic-order-replay-btn" onClick={() => setHuntReplaySelection({ name: entry.name, data, backLabel: 'Back to leaderboard' })}>▶ Replay</button>}</span><span>{(entry.timeMs / 1000).toFixed(1)}s</span>
+                    </li>;
+                  })}
                 </ol>
               ) : <span className="atomic-order-best-values">No times yet — set the first!</span>}
             </div>

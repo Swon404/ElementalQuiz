@@ -330,6 +330,33 @@ export function recordElementMatchHuntTime(playerName: string, pool: ElementMatc
   };
 }
 
+function keepFastestLegacyEntries(store: ElementMatchTrialTimesStore, categoryParts: number): { store: ElementMatchTrialTimesStore; removed: number } {
+  const best = new Map<string, { key: string; name: string; timeMs: number }>();
+  let total = 0;
+  for (const [key, entry] of Object.entries(store)) {
+    const category = key.split('::').slice(-categoryParts).join('::');
+    for (const timeMs of entry.times) {
+      total++;
+      const current = best.get(category);
+      if (!current || timeMs < current.timeMs) best.set(category, { key, name: entry.name, timeMs });
+    }
+  }
+  const kept: ElementMatchTrialTimesStore = {};
+  for (const entry of best.values()) kept[entry.key] = { name: entry.name, times: [entry.timeMs] };
+  return { store: kept, removed: total - best.size };
+}
+
+/** Keeps only the fastest entry in each older Atomic Order and Element Match time category. */
+export function keepOnlyTopLegacyTimes(): number {
+  const atomic = keepFastestLegacyEntries(loadAtomicOrderTimesStore(), 3);
+  const trial = keepFastestLegacyEntries(loadElementMatchTrialTimesStore(), 3);
+  const hunt = keepFastestLegacyEntries(loadElementMatchHuntTimesStore(), 4);
+  saveAtomicOrderTimesStore(atomic.store);
+  saveElementMatchTrialTimesStore(trial.store);
+  saveElementMatchHuntTimesStore(hunt.store);
+  return atomic.removed + trial.removed + hunt.removed;
+}
+
 function getDefaultProgress(): PlayerProgress {
   return {
     totalEP: 0,

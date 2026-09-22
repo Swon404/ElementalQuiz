@@ -34,6 +34,7 @@ export type SoloAtomicOrderOptions = {
 
 type Phase = 'setup' | 'playing' | 'result';
 export type AtomicOrderReplayAction =
+  | { type: 'select'; atMs: number; index: number }
   | { type: 'swap'; atMs: number; first: number; second: number }
   | { type: 'move'; atMs: number; from: number; to: number }
   | { type: 'check'; atMs: number };
@@ -56,13 +57,14 @@ export function AtomicOrderReplayViewer({ selection, challenge, onClose }: { sel
   const [checking, setChecking] = useState(false);
   const [feedback, setFeedback] = useState<AtomicOrderFeedback[]>([]);
   const [checkMessage, setCheckMessage] = useState('');
+  const [highlighted, setHighlighted] = useState<number[]>([]);
   const tilesRef = useRef([...data.initialTiles]);
   const finished = elapsed >= data.durationMs;
 
   const restart = () => {
     const initialTiles = [...data.initialTiles];
     tilesRef.current = initialTiles;
-    setTiles(initialTiles); setElapsed(0); setActionIndex(0); setChecking(false); setFeedback([]); setCheckMessage(''); setPlaying(true);
+    setTiles(initialTiles); setElapsed(0); setActionIndex(0); setChecking(false); setFeedback([]); setCheckMessage(''); setHighlighted([]); setPlaying(true);
   };
 
   useEffect(() => {
@@ -77,15 +79,21 @@ export function AtomicOrderReplayViewer({ selection, challenge, onClose }: { sel
     let tilesChanged = false;
     while (nextIndex < data.actions.length && data.actions[nextIndex].atMs <= elapsed) {
       const action = data.actions[nextIndex];
-      if (action.type === 'swap') {
+      if (action.type === 'select') {
+        setHighlighted(current => current.length === 1 && current[0] === action.index ? [] : [action.index]);
+      } else if (action.type === 'swap') {
         [nextTiles[action.first], nextTiles[action.second]] = [nextTiles[action.second], nextTiles[action.first]];
         tilesChanged = true;
+        setHighlighted([action.first, action.second]);
+        setTimeout(() => setHighlighted([]), 350);
         setFeedback([]);
         setCheckMessage('');
       } else if (action.type === 'move') {
         const [moved] = nextTiles.splice(action.from, 1);
         nextTiles.splice(action.to, 0, moved);
         tilesChanged = true;
+        setHighlighted([action.from, action.to]);
+        setTimeout(() => setHighlighted([]), 350);
         setFeedback([]);
         setCheckMessage('');
       } else {
@@ -121,7 +129,7 @@ export function AtomicOrderReplayViewer({ selection, challenge, onClose }: { sel
         const rules = ATOMIC_ORDER_LEVELS[challenge];
         const raw = feedback[index];
         const visibleFeedback = rules.countOnlyFeedback ? undefined : raw === 'correct' ? 'correct' : rules.showHints ? raw : undefined;
-        return <div key={atomicNumber} className={`atomic-order-tile ${visibleFeedback ?? ''}`}><strong>{element.symbol}</strong><span>{element.name}</span>{!rules.countOnlyFeedback && <span className="atomic-order-number">#{element.atomicNumber}</span>}{visibleFeedback === 'left' && <small>Move left ←</small>}{visibleFeedback === 'right' && <small>Move right →</small>}</div>;
+        return <div key={atomicNumber} className={`atomic-order-tile ${visibleFeedback ?? ''} ${highlighted.includes(index) ? 'selected' : ''}`}><strong>{element.symbol}</strong><span>{element.name}</span>{!rules.countOnlyFeedback && <span className="atomic-order-number">#{element.atomicNumber}</span>}{visibleFeedback === 'left' && <small>Move left ←</small>}{visibleFeedback === 'right' && <small>Move right →</small>}</div>;
       })}</div>
       <p className={`atomic-order-replay-check ${checkMessage ? 'visible' : ''}`} role="status">{checkMessage || 'Waiting for the player to check the order…'}</p>
       <div className="result-actions"><button className="start-btn" onClick={finished ? restart : () => setPlaying(value => !value)}>{finished ? 'Replay Again' : playing ? 'Pause' : 'Continue'}</button>{!finished && <button className="back-btn" onClick={restart}>Restart</button>}</div>
@@ -199,9 +207,9 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
     setElapsedMs(0);
   };
 
-  const swapTiles = (first: number, second: number) => {
+  const swapTiles = (first: number, second: number, replayActionsBefore?: AtomicOrderReplayAction[]) => {
     if (!startedAt || result || first === second) return;
-    const replayActions = [...replayRef.current.actions];
+    const replayActions = replayActionsBefore ?? [...replayRef.current.actions];
     undo.mark(pausedMs => {
       setTiles(tiles); setSelected(selected); setFeedback(feedback); setAttempts(attempts);
       setResult(result); setElapsedMs(elapsedMs); setStartedAt(startedAt ? startedAt + pausedMs : 0);
@@ -220,11 +228,13 @@ export default function ElementOrderScreen({ onBack, playerId, playerName, champ
 
   const selectTile = (index: number) => {
     if (!startedAt || result) return;
-    undo.mark(() => setSelected(selected));
+    const replayActions = [...replayRef.current.actions];
+    replayRef.current.actions.push({ type: 'select', atMs: Math.max(0, Date.now() - startedAt), index });
+    undo.mark(() => { setSelected(selected); replayRef.current.actions = replayActions; });
     if (selected === null) setSelected(index);
     else if (selected === index) setSelected(null);
     else {
-      swapTiles(selected, index);
+      swapTiles(selected, index, replayActions);
       setSelected(null);
     }
   };

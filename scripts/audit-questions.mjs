@@ -62,6 +62,7 @@ try {
     assert.equal(new Set(q.choices.map(choiceKey)).size, q.choices.length, q.questionText);
     assert.ok(q.explanation?.length >= 65, `${q.questionText}: ${q.explanation}`);
     assert.ok(q.explanation.split(/\s+/).length <= 85, q.questionText);
+    if (!q.topic) assert.ok(!/substantial energy|reversibly|characteristic signals?|electrical resistance|extended structure|regulate|interfere with|oxidised|displaces air/i.test(q.explanation), `Textbook wording: ${q.explanation}`);
     assert.notEqual(normalise(q.explanation), normalise(q.choices[q.correctIndex]), q.questionText);
     assert.ok(extraFactCandidates(q).includes(q.extraFact), 'Fun fact belongs to the correct element or subject');
     assert.ok(!normalise(q.explanation).includes(normalise(q.extraFact)), q.questionText);

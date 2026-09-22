@@ -147,6 +147,7 @@ try {
   const orderReplay = storedResults()[0].replay;
   assert.equal(orderReplay?.kind, 'atomic-order', 'Atomic Order result includes a replay');
   assert.ok(orderReplay.data.initialTiles.length > 0, 'Replay stores the starting board');
+  assert.ok(orderReplay.data.actions.some(action => action.type === 'select'), 'Replay stores tile selections');
   assert.ok(orderReplay.data.actions.some(action => action.type === 'swap'), 'Replay stores swaps');
   assert.ok(orderReplay.data.actions.some(action => action.type === 'check'), 'Replay stores checks');
   await click(button('Replay'));
@@ -225,7 +226,8 @@ try {
 
   // A complete timed player turn can be rewound, but not after handing over.
   await mount('TwoPlayerScreen', { initialMode: 'element-match', initialPlayer2Mode: 'human' });
-  await click(button('Time Trial'));
+  await click(button('Hunt'));
+  await click(button('On'));
   await click(button('Start'));
   await click(button('Start Timer'));
   for (let tick = 0; tick < 3; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
@@ -248,6 +250,13 @@ try {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
   }
   assert.ok(button('Pass to'));
+  assert.ok(button('Watch Replay'), 'Versus timed Hunt offers an immediate replay');
+  assert.equal(storedResults()[0].replay?.kind, 'element-match-hunt', 'Versus timed Hunt saves replay data');
+  const huntLeaderboardReplay = buttons().find(b => label(b).includes('Replay') && !label(b).includes('Watch'));
+  assert.ok(huntLeaderboardReplay, 'Versus timed Hunt leaderboard shows Replay');
+  await click(huntLeaderboardReplay);
+  assert.ok(button('Back to leaderboard'));
+  await click(button('Back to leaderboard'));
   assert.equal(storedResults().length, 1, 'Timed result is saved immediately');
   await click(rewind());
   assert.equal(storedResults().length, 0, 'Rewind removes the timed result');
@@ -291,6 +300,12 @@ try {
       await click(cards()[0]); await click(cards()[1]);
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
       assert.equal(storedResults().length, round, 'Solo timed round is saved immediately');
+      if (mode === 'hunt') {
+        assert.ok(button('Watch Replay'), 'Solo timed Hunt offers an immediate replay');
+        assert.equal(storedResults().at(-1).replay?.kind, 'element-match-hunt', 'Solo timed Hunt saves replay data');
+        const replay = buttons().find(b => label(b).includes('Replay') && !label(b).includes('Watch'));
+        assert.ok(replay, 'Solo timed Hunt leaderboard shows Replay');
+      }
       await click(button(round < 3 ? 'Next Round' : 'Play Again'));
       assert.equal(storedResults().length, round);
       assert.ok(rewind().props.disabled);
@@ -305,6 +320,14 @@ try {
     participant: { id: 'guest:test', name: 'Test', kind: 'guest' }, metrics: { score: 1, normalizedScore: 100, elapsedMs, attempts: 1 },
   });
   assert.equal(getGameLeaderboard('atomic-order', 'arrange', repeatedRunConfig, 'solo').length, 2, 'Timed leaderboard shows multiple rounds by the same player');
+  const { default: HighScoresScreen } = await server.ssrLoadModule('/src/screens/HighScoresScreen.tsx');
+  if (renderer) await act(() => renderer.unmount());
+  await act(() => { renderer = create(React.createElement(HighScoresScreen, { onBack() {} })); });
+  assert.ok(label(renderer.root).includes('Atomic Order'), 'High Scores page lists stored game boards');
+  await click(button('Clear lower scores'));
+  assert.ok(button('Confirm: keep only #1'));
+  await click(button('Confirm: keep only #1'));
+  assert.equal(storedResults().length, 1, 'High Scores cleanup preserves only the winning entry');
   console.log('Rewind interaction checks passed: immediate timed results, rollback, Next boundaries, and tile moves.');
 } finally {
   if (renderer) await act(() => renderer.unmount());

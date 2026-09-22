@@ -1,5 +1,5 @@
 import { elements, type Element } from '../data/elements.ts';
-import { focusedExplanation } from './questionFeedback.ts';
+import { focusedExplanation, simplifyExplanation } from './questionFeedback.ts';
 import { addExtraFacts, pickExtraFact, extraFactCandidates } from './extraFacts.ts';
 import { MORE_TRIVIA } from '../data/moreTrivia.ts';
 import { DIFFICULTY_CONFIG, type Difficulty } from './scoring.ts';
@@ -58,7 +58,7 @@ function elementNameChoices(el: Element, pool: Element[], count: number): string
 }
 
 function enrichQuestion(question: Question): Question {
-  const explanation = focusedExplanation(question);
+  const explanation = simplifyExplanation(focusedExplanation(question));
   return {
     ...question,
     questionText: question.questionText.replace(/\b(GROUP|PERIOD|DENSEST|RAREST|BIGGEST|HIGHEST)\b/g, word => word.toLowerCase()),

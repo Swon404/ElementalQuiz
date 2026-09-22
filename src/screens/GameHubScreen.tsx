@@ -7,9 +7,10 @@ interface GameHubScreenProps {
   onLaunchGame: (gameId: GameId, format: PlayerFormat) => void;
   onLaunchChampionship: (format: PlayerFormat) => void;
   onLaunchQuizVariant: (variant: 'sprint' | 'showdown') => void;
+  onHighScores: () => void;
 }
 
-export default function GameHubScreen({ onBack, onLaunchGame, onLaunchChampionship, onLaunchQuizVariant }: GameHubScreenProps) {
+export default function GameHubScreen({ onBack, onLaunchGame, onLaunchChampionship, onLaunchQuizVariant, onHighScores }: GameHubScreenProps) {
   const [format, setFormat] = useState<PlayerFormat>('versus-human');
   const formatChoices: Array<{ id: PlayerFormat; icon: string; title: string; description: string }> = [
     { id: 'versus-human', icon: '👥', title: '2 Players', description: 'The classic pass-and-play experience.' },
@@ -36,7 +37,7 @@ export default function GameHubScreen({ onBack, onLaunchGame, onLaunchChampionsh
 
       <div className="play-selection-heading">
         <h3>Choose a game</h3>
-        <span className="champ-option-status">{selectedFormat}</span>
+        <div className="play-heading-actions"><button className="high-scores-link" onClick={onHighScores}>🏆 High Scores</button><span className="champ-option-status">{selectedFormat}</span></div>
       </div>
       <div className="game-mode-grid">
         <button className="game-mode-btn championship" onClick={() => onLaunchChampionship(format)}>

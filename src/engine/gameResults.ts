@@ -128,6 +128,25 @@ export function getCompletedGameResults(): CompletedGameResult[] {
   return loadGameResults();
 }
 
+function gameLeaderboardGroupKey(result: CompletedGameResult): string {
+  return `${result.gameId}\u0000${result.variantId}\u0000${result.configKey}\u0000${result.format}`;
+}
+
+/** Keeps the single best result in every distinct game/rules/format leaderboard. */
+export function keepOnlyTopGameResults(): number {
+  const results = loadGameResults();
+  const bestByLeaderboard = new Map<string, CompletedGameResult>();
+  for (const result of results) {
+    const key = gameLeaderboardGroupKey(result);
+    const current = bestByLeaderboard.get(key);
+    if (!current || compareResults(result, current) < 0) bestByLeaderboard.set(key, result);
+  }
+  const keptIds = new Set([...bestByLeaderboard.values()].map(result => result.id));
+  const kept = results.filter(result => keptIds.has(result.id));
+  saveGameResults(kept);
+  return results.length - kept.length;
+}
+
 /** Removes one provisional result when a completed round is rewound before continuing. */
 export function removeCompletedGameResult(id: string): void {
   saveGameResults(loadGameResults().filter(result => result.id !== id));
@@ -146,6 +165,29 @@ function loadChampionshipResults(): CompletedChampionshipResult[] {
   } catch {
     return [];
   }
+}
+
+export function getCompletedChampionshipResults(): CompletedChampionshipResult[] {
+  return loadChampionshipResults();
+}
+
+/** Keeps the winning result in every distinct championship setup. */
+export function keepOnlyTopChampionshipResults(): number {
+  const results = loadChampionshipResults();
+  const bestByLeaderboard = new Map<string, CompletedChampionshipResult>();
+  for (const result of results) {
+    const key = `${result.combinationKey}\u0000${result.format}`;
+    const current = bestByLeaderboard.get(key);
+    const better = !current
+      || result.championshipPoints > current.championshipPoints
+      || (result.championshipPoints === current.championshipPoints && result.gamesWon > current.gamesWon)
+      || (result.championshipPoints === current.championshipPoints && result.gamesWon === current.gamesWon && result.elapsedMs < current.elapsedMs);
+    if (better) bestByLeaderboard.set(key, result);
+  }
+  const keptIds = new Set([...bestByLeaderboard.values()].map(result => result.id));
+  const kept = results.filter(result => keptIds.has(result.id));
+  try { localStorage.setItem(CHAMPIONSHIP_RESULTS_KEY, JSON.stringify(kept)); } catch { /* Storage may be unavailable. */ }
+  return results.length - kept.length;
 }
 
 export function recordCompletedChampionshipResult(
