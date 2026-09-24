@@ -58,6 +58,7 @@ try {
   const check = q => {
     assert.ok(q.questionText.trim());
     assert.ok(q.correctIndex >= 0 && q.correctIndex < q.choices.length, q.questionText);
+    if (!q.topic) assert.ok(q.choices.length >= 4, `Quiz Battle needs at least four choices: ${q.questionText}`);
     const choiceKey = choice => choice.toLowerCase().replace(/[^a-z0-9+−-]+/g, ' ').trim();
     assert.equal(new Set(q.choices.map(choiceKey)).size, q.choices.length, q.questionText);
     assert.ok(q.explanation?.length >= 65, `${q.questionText}: ${q.explanation}`);

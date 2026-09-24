@@ -260,15 +260,21 @@ export default function SoloElementMatchScreen({ onBack, playerId, playerName, c
     if (!timerStarted || locked || completedRef.current) return;
     const card = cards.find(item => item.id === cardId);
     if (!card || card.flipped || card.matched) return;
-    const replayActions = replayRef.current.actions.map(action => ({ ...action }));
-    undo.mark(pausedMs => {
-      if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
-      pendingRollback.current?.(); pendingRollback.current = null; completedRef.current = false;
-      setCards(cards); setFirstCardId(firstCardId); setLocked(false); setScore(score); setMoves(moves);
-      setTimerStarted(timerStarted); setStartedAt(startedAt ? startedAt + pausedMs : 0);
-      setElapsedMs(elapsedMs); setMessage(message); setPhase('playing');
-      replayRef.current.actions = replayActions;
-    });
+    if (!undo.canRewind) {
+      const initialCards = replayRef.current.initialCards.map(item => ({ ...item }));
+      undo.mark(() => {
+        if (finishTimerRef.current) clearTimeout(finishTimerRef.current);
+        finishTimerRef.current = null;
+        pendingRollback.current?.(); pendingRollback.current = null; completedRef.current = false;
+        setCards(initialCards.map(item => ({ ...item, flipped: false, matched: false })));
+        setFirstCardId(null); setLocked(false); setScore(0); setMoves(0);
+        const startImmediately = mode === 'hunt' && !huntTimed;
+        setTimerStarted(startImmediately); setStartedAt(startImmediately ? Date.now() : 0);
+        setElapsedMs(0); setMessage(null); setNewBestId(null); setPhase('playing');
+        replayRef.current.actions = [];
+        replayRef.current.durationMs = 0;
+      });
+    }
     replayRef.current.actions.push({ cardId, atMs: Math.max(0, Date.now() - startedAt) });
     const matchedBefore = Math.floor(cards.filter(item => item.matched).length / 2);
     if (mode === 'hunt' && targetElementNum !== null && card.elementNum === targetElementNum && matchedBefore < unlockPairs) {

@@ -51,6 +51,33 @@ function normalizeForComparison(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
+function variedQuestionText(question: Question): string {
+  const el = question.element;
+  const variants = [question.questionText];
+  if (question.id.startsWith('sn-1')) variants.push(`Choose the chemical symbol that belongs to ${el.name}.`);
+  else if (question.id.startsWith('sn-2')) variants.push(`The symbol ${el.symbol} represents which element?`);
+  else if (question.id.startsWith('sn-3')) variants.push(`Which element's symbol is ${el.symbol}, taken from an older name?`);
+  else if (question.id.startsWith('an-1')) variants.push(`How many protons are in every ${el.name} atom?`);
+  else if (question.id.startsWith('an-2')) variants.push(`Atomic number ${el.atomicNumber} belongs to which element?`);
+  else if (question.id.startsWith('an-3')) variants.push(`An atom has ${el.atomicNumber} protons. Which element is it?`);
+  else if (question.id.startsWith('gc-1')) variants.push(`Which periodic-table family does ${el.name} belong to?`);
+  else if (question.id.startsWith('gc-2')) variants.push(`Find the group number for ${el.name}.`);
+  else if (question.id.startsWith('gc-4')) variants.push(`Find the period (row) containing ${el.name}.`);
+  else if (question.id.startsWith('di-1')) variants.push(`Which scientist or team is credited with discovering ${el.name}?`);
+  else if (question.id.startsWith('di-2')) variants.push(`${el.name} was discovered during which century?`);
+  else if (question.id.startsWith('di-3')) variants.push(`Where was ${el.name} first identified?`);
+  else if (question.id.startsWith('st-1')) variants.push(`At around 20°C, is ${el.name} a solid, liquid, gas or plasma?`);
+  else if (question.id.startsWith('ra-1')) variants.push(`What do we know about the stability of ${el.name}'s isotopes?`);
+  else if (question.id.startsWith('is-1')) variants.push(`How many non-radioactive isotopes does ${el.name} have?`);
+  else if (question.id.startsWith('co-1') || question.id.startsWith('co-2')) variants.push(`Which formula includes the symbol for ${el.name}?`);
+  else if (question.id.startsWith('po-1')) variants.push(`Which element sits at group ${el.group}, period ${el.period}?`);
+  else if (question.id.startsWith('wb-1')) variants.push('Which option packs the most mass into the same amount of space?');
+  else if (question.id.startsWith('wb-4')) variants.push("Which option is least common in Earth's crust?");
+  else if (question.id.startsWith('wb-5')) variants.push('Which option has the greatest atomic mass?');
+  else if (question.id.startsWith('wb-6')) variants.push('Which option needs the highest temperature to melt?');
+  return variants[Math.floor(Math.random() * variants.length)];
+}
+
 function elementNameChoices(el: Element, pool: Element[], count: number): string[] {
   const sameCategory = shuffleArray(pool.filter(e => e.category === el.category && e.atomicNumber !== el.atomicNumber));
   const otherCategories = shuffleArray(pool.filter(e => e.category !== el.category && e.atomicNumber !== el.atomicNumber));
@@ -61,7 +88,7 @@ function enrichQuestion(question: Question): Question {
   const explanation = simplifyExplanation(focusedExplanation(question));
   return {
     ...question,
-    questionText: question.questionText.replace(/\b(GROUP|PERIOD|DENSEST|RAREST|BIGGEST|HIGHEST)\b/g, word => word.toLowerCase()),
+    questionText: variedQuestionText(question).replace(/\b(GROUP|PERIOD|DENSEST|RAREST|BIGGEST|HIGHEST)\b/g, word => word.toLowerCase()),
     explanation,
     extraFact: pickExtraFact(`${question.questionText} ${explanation}`, new Set(), extraFactCandidates(question)),
   };
@@ -687,6 +714,24 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `This element is a ${categoryLabel(el.category)}.`,
       };
     },
+    // Match an element name to the correct symbol pair.
+    (el, pool, n) => {
+      const others = pickRandom(pool, n - 1, [el]);
+      if (others.length < n - 1) return null;
+      const wrongPairs = others.map((other, index) => `${other.name} — ${others[(index + 1) % others.length].symbol}`);
+      const correct = `${el.name} — ${el.symbol}`;
+      const choices = shuffleArray([correct, ...wrongPairs]);
+      return {
+        id: `sn-4-${el.atomicNumber}-${others.map(other => other.atomicNumber).sort((a, b) => a - b).join('-')}`,
+        category: 'symbol-name',
+        questionText: 'Which element and chemical symbol are correctly matched?',
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: '',
+        hint: `Look carefully at capital and lowercase letters.`,
+      };
+    },
   ],
 
   'atomic-number': [
@@ -816,6 +861,38 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
         hint: `Its atomic number is ${el.atomicNumber}.`,
       };
     },
+    // Reverse the usual family question: choose an example from the family.
+    (el, pool, n) => {
+      const correct = el.name;
+      const distractors = pickRandom(pool.filter(other => other.category !== el.category), n - 1, [el]).map(other => other.name);
+      if (distractors.length < n - 1) return null;
+      const choices = shuffleArray([correct, ...distractors]);
+      return {
+        id: `gc-5-${el.atomicNumber}`,
+        category: 'group-classification',
+        questionText: `Which of these elements is a ${categoryLabel(el.category)}?`,
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: '',
+        hint: 'Think about where each choice sits on the periodic table.',
+      };
+    },
+    // Identify the s, p, d or f block.
+    (el, _pool, _n) => {
+      const correct = `${el.block} block`;
+      const choices = shuffleArray(['s block', 'p block', 'd block', 'f block']);
+      return {
+        id: `gc-6-${el.atomicNumber}`,
+        category: 'group-classification',
+        questionText: `Which periodic-table block contains ${el.name}?`,
+        choices,
+        correctIndex: choices.indexOf(correct),
+        element: el,
+        explanation: '',
+        hint: 'The s block is mostly on the left, d in the middle, p on the right and f below.',
+      };
+    },
   ],
 
   'discovery': [
@@ -899,7 +976,7 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
   'state': [
     (el, _pool, _n) => {
       if (el.atomicNumber > 99) return null; // No bulk sample: state is often only predicted.
-      const states = ['solid', 'liquid', 'gas'];
+      const states = ['solid', 'liquid', 'gas', 'plasma'];
       const choices = shuffleArray(states);
       return {
         id: `st-1-${el.atomicNumber}`,
@@ -939,12 +1016,17 @@ const generators: Record<QuestionCategory, QuestionGenerator[]> = {
 
   'radioactivity': [
     (el, _pool, _n) => {
-      const choices = ['Yes', 'No'];
-      const correct = el.stableIsotopes > 0 ? 'Yes' : 'No';
+      const correct = el.stableIsotopes > 0
+        ? 'It has at least one stable isotope'
+        : 'None of its known isotopes are stable';
+      const alternatives = el.stableIsotopes > 0
+        ? ['None of its known isotopes are stable', 'Every isotope is radioactive', 'It has no isotopes at all']
+        : ['It has at least one stable isotope', 'Every isotope lasts forever', 'It has no atomic nucleus'];
+      const choices = shuffleArray([correct, ...alternatives]);
       return {
         id: `ra-1-${el.atomicNumber}`,
         category: 'radioactivity',
-        questionText: `Does ${el.name} have any stable isotopes?`,
+        questionText: `Which statement about ${el.name}'s isotopes is correct?`,
         choices,
         correctIndex: choices.indexOf(correct),
         element: el,

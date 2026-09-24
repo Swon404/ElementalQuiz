@@ -98,7 +98,7 @@ export default function FamilyFinderScreen(props: Props) {
   };
   if (!session.length) return <div className="quiz-setup">
     <button className="back-btn" onClick={props.onBack}>← Back</button><h2>Family Finder</h2>
-    <p>Find one element from the requested family, then check your answer. The tiles run in atomic-number order. Explorer: 3 × 3 · Scientist: 4 × 4 · Professor: 5 × 5.</p>
+    <p>Find an element from the family named in the question. Tap one tile, then check your answer.</p>
     {!props.championshipDifficulty && !props.players && <div className="difficulty-select">{(Object.keys(DIFFICULTY_CONFIG) as Difficulty[]).map(d => <button className={`diff-btn ${d === difficulty ? 'selected' : ''}`} key={d} onClick={() => setDifficulty(d)}>{DIFFICULTY_CONFIG[d].label}</button>)}</div>}
     {!props.timed && !props.players && !props.championshipDifficulty && <div className="round-select"><span>Mode:</span><button className={`round-btn ${!timedChoice ? 'selected' : ''}`} onClick={() => setTimedChoice(false)}>Standard</button><button className={`round-btn ${timedChoice ? 'selected' : ''}`} onClick={() => setTimedChoice(true)}>Timed · {FAMILY_TIME_LIMITS[difficulty]}s</button></div>}
     <button className="start-btn" onClick={start}>Start!</button>

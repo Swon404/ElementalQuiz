@@ -30,11 +30,11 @@ export const DIFFICULTY_CONFIG = {
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
       26, 29, 47, 50, 53, 74, 78, 79, 80, 82,  // Fe Cu Ag Sn I W Pt Au Hg Pb
     ],
-    choiceCount: 3,
+    choiceCount: 4,
     timerSeconds: 30,
     basePoints: 10,
     secondChance: true,
-    questionCategories: ['symbol-name', 'atomic-number', 'state', 'fun-fact', 'which-is-bigger'],
+    questionCategories: ['symbol-name', 'atomic-number', 'group-classification', 'discovery', 'state', 'compounds', 'fun-fact', 'uses', 'which-is-bigger'],
   },
   scientist: {
     label: 'Scientist',

@@ -400,8 +400,7 @@ body {
 }
 
 .quiz-exit-btn {
-  position: absolute;
-  left: 16px;
+  position: static;
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.2);
   border-radius: 50%;
@@ -414,6 +413,9 @@ body {
   align-items: center;
   justify-content: center;
   transition: all 0.2s;
+  flex-shrink: 0;
+  order: 99;
+  margin-left: auto;
 }
 .quiz-exit-btn:hover { background: rgba(255,255,255,0.2); color: var(--text-primary); }
 
@@ -1910,7 +1912,7 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px;
+  padding: 20px 56px 20px 20px;
   color: #1a1a2e;
   font-weight: 700;
   position: relative;

@@ -562,9 +562,39 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
   const commitTurn = () => { pendingTurnCommit.current?.(); pendingTurnCommit.current = null; pendingTurnRollback.current = null; undo.clear(); };
   const captureRewind = () => {
     if (isBotTurn) { undo.clear(); return; }
+    if (gameMode === 'element-match') {
+      if (undo.canRewind) return;
+      const initialCards = huntReplayRef.current.initialCards.map(card => ({ ...card }));
+      const startingP1Score = p1Score;
+      const startingP2Score = p2Score;
+      const startingTurn = matchTurn;
+      const startingP1Result = matchTrialP1Result;
+      undo.mark(() => {
+        if (lockTimer.current) clearTimeout(lockTimer.current);
+        if (matchFinishTimerRef.current) clearTimeout(matchFinishTimerRef.current);
+        if (botTimerRef.current) clearTimeout(botTimerRef.current);
+        lockTimer.current = null; matchFinishTimerRef.current = null; botTimerRef.current = null;
+        pendingTurnRollback.current?.(); pendingTurnRollback.current = null;
+        pendingTurnCommit.current = null; setPendingMatchFinish(null);
+        botKnownCardsRef.current.clear();
+        setMatchCards(initialCards.map(card => ({ ...card, flipped: false, matched: false })));
+        setP1Score(startingP1Score); setP2Score(startingP2Score); setMatchTurn(startingTurn);
+        setMatchFirst(null); setMatchLocked(false); setHuntFoundMessage(null);
+        setMatchTrialResult(null); setMatchTrialP1Result(startingP1Result);
+        setMatchTrialWinner(null); setMatchTrialComplete(false); setMatchTrialNewBest(false);
+        huntReplayRef.current.actions = []; huntReplayRef.current.durationMs = 0;
+        if (isMatchTimedRun) {
+          setMatchTrialTimerStarted(false); setMatchTrialCountdown(null);
+          setMatchTrialStartedAt(0); setMatchTrialElapsed(0);
+        } else {
+          setHuntCountdown(null); setHuntStartedAt(Date.now());
+          setHuntElapsed(0); setHuntTimerStarted(true);
+        }
+      });
+      return;
+    }
     const memory = new Map(botKnownCardsRef.current);
     const replayActions = orderReplayRef.current.actions.map(action => ({ ...action }));
-    const huntReplayActions = huntReplayRef.current.actions.map(action => ({ ...action }));
     undo.mark(pausedMs => {
       if (lockTimer.current) clearTimeout(lockTimer.current);
       if (matchFinishTimerRef.current) clearTimeout(matchFinishTimerRef.current);
@@ -574,7 +604,6 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       pendingTurnCommit.current = null; setPendingMatchFinish(null);
       botKnownCardsRef.current = memory;
       if (gameMode === 'atomic-order') orderReplayRef.current.actions = replayActions;
-      if (gameMode === 'element-match' && matchMode === 'hunt' && huntTimed) huntReplayRef.current.actions = huntReplayActions;
       setP1Score(p1Score);
       setP2Score(p2Score);
       setTfAnswered(tfAnswered);
@@ -1001,6 +1030,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
       : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
     setMatchCards(cards);
     setHuntTargetElementNum(targetNum);
+    huntReplayRef.current = { initialCards: cards.map(({ id, text, elementNum }) => ({ id, text, elementNum })), actions: [], durationMs: 0, targetElementNum: targetNum, unlockPairs: huntRequiredPairs };
     if (huntTimed && !isChampTiebreaker) {
       setMatchTrialElementNums(boardElementNums);
       setMatchTrialP1Result(null);
@@ -1743,6 +1773,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         : chosenTarget ?? boardElementNums[Math.floor(Math.random() * boardElementNums.length)] ?? cards[0]?.elementNum ?? 1;
       setMatchCards(cards);
       setHuntTargetElementNum(targetNum);
+      huntReplayRef.current = { initialCards: cards.map(({ id, text, elementNum }) => ({ id, text, elementNum })), actions: [], durationMs: 0, targetElementNum: targetNum, unlockPairs: huntRequiredPairs };
       if (huntTimed) {
         setMatchTrialElementNums(boardElementNums);
         setMatchTrialP1Result(null);
@@ -1750,7 +1781,7 @@ export default function TwoPlayerScreen({ onComplete, onBack, initialMode, initi
         setMatchTrialComplete(false);
         setMatchTrialLeaderboard([]);
         setRounds(n);
-        beginMatchTrialTurn(boardElementNums, 1);
+        beginMatchTrialTurn(boardElementNums, 1, targetNum);
         setPhase('playing');
         return;
       }

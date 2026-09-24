@@ -174,9 +174,8 @@ try {
   assert.equal(storedResults().length, 1, 'Completed Hunt is saved immediately');
   await click(rewind());
   assert.equal(storedResults().length, 0, 'Rewind removes the completed Hunt result');
-  assert.ok(cards()[0].props.className.includes('flipped'));
-  assert.ok(!cards()[1].props.className.includes('flipped'));
-  await click(cards()[1]);
+  assert.ok(cards().every(card => !card.props.className.includes('flipped')), 'Hunt rewind resets the whole board');
+  await click(cards()[0]); await click(cards()[1]);
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 550)); });
   assert.equal(storedResults().length, 1, 'Replayed Hunt is saved immediately');
   await click(button('Next Round'));
@@ -228,12 +227,14 @@ try {
   await mount('TwoPlayerScreen', { initialMode: 'element-match', initialPlayer2Mode: 'human' });
   await click(button('Hunt'));
   await click(button('On'));
+  await click(button('Random'));
   await click(button('Start'));
   await click(button('Start Timer'));
   for (let tick = 0; tick < 3; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
   const { elements } = await server.ssrLoadModule('/src/data/elements.ts');
+  const visibleHuntTarget = elements.find(element => label(renderer.root).includes(`Hunt ${element.name}`))?.atomicNumber;
+  assert.ok(visibleHuntTarget, 'Timed Hunt displays its target');
   const seen = new Map();
-  let finalIndex;
   for (let moves = 0; moves < 200 && !buttons().some(b => label(b).startsWith('Pass to')); moves++) {
     const available = cards().map((card, i) => ({ card, i })).filter(({ card }) => !card.props.disabled);
     const open = cards().findIndex(card => card.props.className.includes('active-p1'));
@@ -241,7 +242,6 @@ try {
     const partner = open >= 0 ? available.find(({ i }) => seen.has(i) && seen.get(i) === openElement) : null;
     const candidate = partner ?? available.find(({ i }) => !seen.has(i)) ?? available[0];
     assert.ok(candidate, 'A hidden card is available');
-    finalIndex = candidate.i;
     await click(candidate.card);
     cards().forEach((card, i) => {
       const el = elements.find(el => el.name === label(card) || el.symbol === label(card));
@@ -252,6 +252,7 @@ try {
   assert.ok(button('Pass to'));
   assert.ok(button('Watch Replay'), 'Versus timed Hunt offers an immediate replay');
   assert.equal(storedResults()[0].replay?.kind, 'element-match-hunt', 'Versus timed Hunt saves replay data');
+  assert.equal(storedResults()[0].replay?.data.targetElementNum, visibleHuntTarget, 'Hunt replay stores the target shown during the go');
   const huntLeaderboardReplay = buttons().find(b => label(b).includes('Replay') && !label(b).includes('Watch'));
   assert.ok(huntLeaderboardReplay, 'Versus timed Hunt leaderboard shows Replay');
   await click(huntLeaderboardReplay);
@@ -261,7 +262,25 @@ try {
   await click(rewind());
   assert.equal(storedResults().length, 0, 'Rewind removes the timed result');
   assert.ok(!buttons().some(b => label(b).startsWith('Pass to')));
-  await click(cards()[finalIndex]);
+  assert.ok(button('Start Timer'), 'Timed Hunt rewind returns to the start of the go');
+  assert.ok(cards().every(card => !/active|matched/.test(card.props.className)), 'Timed Hunt rewind resets every card');
+  await click(button('Start Timer'));
+  for (let tick = 0; tick < 3; tick++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); });
+  const replayedSeen = new Map();
+  for (let moves = 0; moves < 200 && !buttons().some(b => label(b).startsWith('Pass to')); moves++) {
+    const available = cards().map((card, i) => ({ card, i })).filter(({ card }) => !card.props.disabled);
+    const open = cards().findIndex(card => card.props.className.includes('active-p1'));
+    const openElement = replayedSeen.get(open);
+    const partner = open >= 0 ? available.find(({ i }) => replayedSeen.has(i) && replayedSeen.get(i) === openElement) : null;
+    const candidate = partner ?? available.find(({ i }) => !replayedSeen.has(i)) ?? available[0];
+    assert.ok(candidate, 'A hidden card is available after restarting the go');
+    await click(candidate.card);
+    cards().forEach((card, i) => {
+      const el = elements.find(el => el.name === label(card) || el.symbol === label(card));
+      if (el) replayedSeen.set(i, el.atomicNumber);
+    });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 200)); });
+  }
   assert.equal(storedResults().length, 1, 'Replayed timed result is saved immediately');
   await click(button('Pass to'));
   assert.equal(storedResults().length, 1, 'Handover does not duplicate the result');

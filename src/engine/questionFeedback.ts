@@ -84,6 +84,10 @@ export function focusedExplanation(question: Question): string {
       return `Every ${el.name.toLowerCase()} atom has ${el.atomicNumber} proton${el.atomicNumber === 1 ? '' : 's'} in its nucleus. Change the number of protons and it becomes a different element. The periodic table is arranged in order of this proton count.`;
     case 'group-classification':
       if (question.id.startsWith('gc-4')) return `Period ${el.period} is a row across the table, not an element family. Elements in the same row can still behave very differently. Moving across a period adds protons and electrons one at a time.`;
+      if (question.id.startsWith('gc-6')) {
+        const locations: Record<string, string> = { s: 'mainly on the left', p: 'on the right', d: 'in the middle', f: 'in the two rows shown below the main table' };
+        return `${el.name} belongs to the ${el.block} block, found ${locations[el.block]}. A block groups elements by the type of electron space being filled in their atoms.`;
+      }
       return explainCategory(el);
     case 'position':
       return question.id.startsWith('po-2')
@@ -96,10 +100,20 @@ export function focusedExplanation(question: Question): string {
         15: 'Hennig Brand found phosphorus while studying material left from urine. The glowing substance was a surprise because he had been trying to make gold. Its glow comes from a slow reaction with oxygen in the air.',
         55: 'Bunsen and Kirchhoff saw unfamiliar lines of light while studying mineral water. Those lines revealed the new element caesium. Its name comes from a Latin word for the sky-blue colour of its strongest lines.',
       };
-      if (stories[el.atomicNumber]) return stories[el.atomicNumber];
-      return question.id.startsWith('di-2')
-        ? `The recorded discovery year is ${el.discoveryYear}. For example, the 19th century runs from 1801 to 1900. Discovery dates tell us when scientists first gathered convincing evidence for an element.`
-        : `${el.discoveredBy} is credited with discovering it${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}. Scientists can prove an element is new before they manage to collect a pure sample. They check measurements and repeat experiments before a discovery is accepted.`;
+      const methodFact = el.additionalFacts.find(fact =>
+        /\b(discover|found|isolat|identified|created|produced)\w*\b/i.test(fact) &&
+        /\b(using|while|from|after|accident|spectrum|spectroscop|light|electric|reactor|bombard|mineral|ore|experiment|laboratory|predicted)\w*\b/i.test(fact)
+      );
+      const how = stories[el.atomicNumber]
+        ?? methodFact
+        ?? 'The evidence came from careful measurements that did not match any element already known.';
+      if (question.id.startsWith('di-1')) {
+        return `${el.discoveredBy} is credited with discovering ${el.name.toLowerCase()}${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}. ${how}`;
+      }
+      if (question.id.startsWith('di-3')) {
+        return `${el.name} was first identified in ${el.discoveryCountry}${el.discoveryYear ? ` in ${el.discoveryYear}` : ''}. ${how}`;
+      }
+      return `The recorded discovery year is ${el.discoveryYear}, so it belongs to the ${Math.ceil((el.discoveryYear ?? 0) / 100)}${Math.ceil((el.discoveryYear ?? 0) / 100) === 21 ? 'st' : 'th'} century. ${el.discoveredBy} received credit for the discovery. ${how}`;
     }
     case 'state': {
       const explanations: Record<string, string> = {

@@ -8,9 +8,13 @@
     "build": "tsc && vite build",
     "test:questions": "node scripts/audit-questions.mjs",
     "test:rewind": "node scripts/test-rewind.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:all": "npm run test:questions && npm run test:rewind && npm run test:e2e && npm run build",
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
